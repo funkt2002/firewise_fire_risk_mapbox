@@ -1,0 +1,48 @@
+Understanding Reverse Weighting Based on Parcel Selection
+====================================================
+
+What is Reverse Weighting?
+-------------------------
+Reverse weighting is a smart feature that helps determine the most important risk factors based on your parcel selection. Instead of you manually setting weights, the system analyzes your selected parcels and suggests appropriate weights that would prioritize similar parcels.
+
+How It Works
+-----------
+1. Selection Process
+   - Draw a rectangle on the map to select parcels you're interested in
+   - The system analyzes these selected parcels and compares them with non-selected parcels
+
+2. Weight Calculation
+   - The system looks at six key risk factors for each parcel:
+     * Quarter Mile Interface (qtrmi_s)
+     * Wildland-Urban Interface (hwui_s)
+     * Agricultural Interface (hagri_s)
+     * Very High Fire Hazard Zone (hvhsz_s)
+     * Parcel Slope (uphill_s)
+     * Distance to Nearest Neighbor (neigh1d_s)
+
+3. Optimization Process
+   - The system uses mathematical optimization to:
+     * Find weights that would rank your selected parcels highly
+     * Ensure the weights make sense and sum to 100%
+     * Consider your budget constraints (max parcels)
+
+4. Results
+   - The system provides suggested weights for each risk factor
+   - These weights are automatically applied to the sliders
+   - The map updates to show parcels that match these new weights
+
+Benefits
+--------
+- Saves time by automatically determining appropriate weights
+- Helps identify patterns in your parcel selection
+- Ensures consistency in risk assessment
+- Adapts to your specific area of interest
+
+Tips for Best Results
+--------------------
+1. Select a representative sample of parcels you're interested in
+2. Make sure your selection includes enough parcels for meaningful analysis
+3. Consider your budget constraints when making selections
+4. You can always adjust the suggested weights manually if needed
+
+Note: The system requires at least one parcel in your selection to be included in the final results based on your budget constraints. 

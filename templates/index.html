@@ -712,6 +712,19 @@
             }
         };
 
+        // Function to load layer data
+        async function loadLayer(name) {
+            try {
+                const response = await fetch(`/api/${name}`);
+                const geojson = await response.json();
+                if (map.getSource(name)) {
+                    map.getSource(name).setData(geojson);
+                }
+            } catch (error) {
+                console.error(`Error loading ${name} layer:`, error);
+            }
+        }
+
         // Initialize map
         mapboxgl.accessToken = '{{ mapbox_token }}' || 'YOUR_MAPBOX_TOKEN';
         
@@ -1164,7 +1177,7 @@
                                 paint: layer.paint
                             });
                             
-                            // Reload layer data
+                            // Load layer data
                             loadLayer(layer.id);
                         });
                         
@@ -1312,21 +1325,8 @@
                     layout: { 'visibility': 'none' },
                     paint: layer.paint
                 });
-            });
-
-            // Function to load layer data
-            async function loadLayer(name) {
-                try {
-                    const response = await fetch(`/api/${name}`);
-                    const geojson = await response.json();
-                    map.getSource(name).setData(geojson);
-                } catch (error) {
-                    console.error(`Error loading ${name} layer:`, error);
-                }
-            }
-
-            // Load all auxiliary layers
-            auxiliaryLayers.forEach(layer => {
+                
+                // Load layer data
                 loadLayer(layer.id);
             });
 
