@@ -28,27 +28,6 @@
             width: 100%; 
         }
         
-        /* GitHub link style */
-        .github-link {
-            position: absolute;
-            top: 10px;
-            right: 10px;
-            background: rgba(0, 0, 0, 0.8);
-            padding: 8px 15px;
-            border-radius: 4px;
-            color: #fff;
-            text-decoration: none;
-            font-size: 13px;
-            z-index: 10;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-        
-        .github-link:hover {
-            background: rgba(0, 0, 0, 0.9);
-        }
-        
         /* Main control panel */
         .control-panel {
             position: absolute;
@@ -411,17 +390,48 @@
         .mapboxgl-popup-anchor-top .mapboxgl-popup-tip {
             border-bottom-color: rgba(26, 26, 26, 0.95);
         }
+        
+        /* Add spinner styles */
+        .spinner-container {
+            display: none;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 1000;
+        }
+        
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 4px solid rgba(255, 255, 255, 0.3);
+            border-top: 4px solid #4a90e2;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        
+        .spinner-text {
+            color: #4a90e2;
+            margin-top: 10px;
+            text-align: center;
+            font-size: 14px;
+            font-weight: 500;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
     </style>
 </head>
 <body>
     <div id="map"></div>
     
-    <a href="https://github.com" class="github-link" target="_blank">
-        <svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16">
-            <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.012 8.012 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>
-        </svg>
-        GitHub
-    </a>
+    <!-- Add spinner HTML -->
+    <div class="spinner-container" id="spinner">
+        <div class="spinner"></div>
+        <div class="spinner-text">Calculating...</div>
+    </div>
     
     <div class="control-panel">
         <h1>Fire Risk Calculator</h1>
@@ -431,7 +441,7 @@
             <div id="weight-sliders">
                 <div class="slider-container">
                     <div class="slider-label">
-                        <span>Distance to Nearest Structure</span>
+                        <span>Number of Structures Within Window (1/4 mile)</span>
                         <span class="slider-value" id="qtrmi_s-value">30%</span>
                     </div>
                     <input type="range" class="slider weight-slider" id="qtrmi_s" min="0" max="100" value="30">
@@ -514,7 +524,7 @@
                     <span class="stats-value" id="avg-risk">0.82</span>
                 </div>
             </div>
-            <button class="button" id="export-geojson">Export GeoJSON</button>
+            <button class="button" id="export-shapefile">Export Shapefile</button>
         </div>
         
         <div class="control-section">
@@ -543,20 +553,8 @@
             <h2>Map Layers</h2>
             <div class="toggle-container">
                 <label class="toggle-label">
-                    <input type="checkbox" class="layer-toggle" data-layer="dark" checked>
-                    Dark
-                </label>
-            </div>
-            <div class="toggle-container">
-                <label class="toggle-label">
-                    <input type="checkbox" class="layer-toggle" data-layer="light">
-                    Light
-                </label>
-            </div>
-            <div class="toggle-container">
-                <label class="toggle-label">
-                    <input type="checkbox" class="layer-toggle" data-layer="satellite">
-                    Satellite
+                    <input type="checkbox" class="layer-toggle" data-layer="parcels" checked>
+                    Parcels
                 </label>
             </div>
             <div class="toggle-container">
@@ -589,6 +587,25 @@
                     Firewise Communities
                 </label>
             </div>
+            <h3 style="font-size: 12px; color: #aaa; margin: 15px 0 5px 0;">Base Layers</h3>
+            <div class="toggle-container">
+                <label class="toggle-label">
+                    <input type="checkbox" class="layer-toggle" data-layer="dark" checked>
+                    Dark
+                </label>
+            </div>
+            <div class="toggle-container">
+                <label class="toggle-label">
+                    <input type="checkbox" class="layer-toggle" data-layer="light">
+                    Light
+                </label>
+            </div>
+            <div class="toggle-container">
+                <label class="toggle-label">
+                    <input type="checkbox" class="layer-toggle" data-layer="satellite">
+                    Satellite
+                </label>
+            </div>
         </div>
         
         <div class="control-section">
@@ -614,6 +631,87 @@
     </div>
 
     <script>
+        // Custom rectangle drawing mode
+        const DrawRectangle = {
+            onSetup(opts) {
+                // Create an empty polygon feature for the rectangle
+                const rectangle = this.newFeature({
+                    type: 'Feature',
+                    properties: {},
+                    geometry: {
+                        type: 'Polygon',
+                        coordinates: [[]]  // empty polygon coordinates array
+                    }
+                });
+                this.addFeature(rectangle);               // add it to the draw canvas
+                this.clearSelectedFeatures();
+                // Disable map zoom on double-click while drawing
+                this.map.doubleClickZoom.disable();
+                this.updateUIClasses({ mouse: 'add' });   // switch cursor to crosshair (add mode)
+                this.setActionableState({ trash: true }); // allow deletion (trash button)
+                return { rectangle, startPoint: null };
+            },
+            onClick(state, e) {
+                // On first click, set start corner coordinate
+                if (!state.startPoint) {
+                    state.startPoint = [e.lngLat.lng, e.lngLat.lat];
+                } else {
+                    // On second click, finish drawing the rectangle
+                    const endPoint = [e.lngLat.lng, e.lngLat.lat];
+                    // Prevent zero-area box: only finish if endPoint is different
+                    if (endPoint[0] !== state.startPoint[0] || endPoint[1] !== state.startPoint[1]) {
+                        this.updateUIClasses({ mouse: 'pointer' });
+                        state.rectangle.updateCoordinate('0.4', ...state.startPoint); // remove temporary close coord
+                        // Switch to simple_select mode to finalize the rectangle
+                        this.changeMode('simple_select', { featuresId: [state.rectangle.id] });
+                    }
+                }
+            },
+            onMouseMove(state, e) {
+                // While moving the mouse, update the opposite corners of the rectangle
+                if (state.startPoint) {
+                    const start = state.startPoint;
+                    const current = [e.lngLat.lng, e.lngLat.lat];
+                    // Update rectangle coordinates: 0.0 = startPoint, 0.1 = top-right, 0.2 = current (opposite corner), 0.3 = bottom-left
+                    state.rectangle.updateCoordinate('0.0', start[0], start[1]);         // start corner
+                    state.rectangle.updateCoordinate('0.1', current[0], start[1]);       // same lat as start, lng from current
+                    state.rectangle.updateCoordinate('0.2', current[0], current[1]);     // opposite corner (current point)
+                    state.rectangle.updateCoordinate('0.3', start[0], current[1]);       // same lng as start, lat from current
+                    state.rectangle.updateCoordinate('0.4', start[0], start[1]);         // close polygon by repeating start
+                }
+            },
+            onStop(state) {
+                // Re-enable double-click zoom once drawing is finished
+                this.map.doubleClickZoom.enable();
+                this.updateUIClasses({ mouse: 'none' });
+                this.activateUIButton();  // reset Draw control UI button states
+                if (!state.rectangle.getCoordinate('0.0')) return;  // no rectangle drawn
+                // If the rectangle has 4 corners (valid polygon), fire the draw.create event
+                if (state.rectangle.isValid()) {
+                    // Remove the redundant closing coordinate before exporting
+                    state.rectangle.removeCoordinate('0.4');
+                    this.map.fire('draw.create', { features: [state.rectangle.toGeoJSON()] });  // trigger event with rectangle
+                } else {
+                    // Invalid rectangle (e.g. zero size) -> delete it
+                    this.deleteFeature([state.rectangle.id], { silent: true });
+                }
+            },
+            toDisplayFeatures(state, geojson, display) {
+                // Only render the rectangle polygon while drawing
+                const isActive = geojson.properties.id === state.rectangle.id;
+                geojson.properties.active = isActive ? 'true' : 'false';
+                if (!isActive) return display(geojson);
+                // Only display the rectangle after the first click (when startPoint exists)
+                if (!state.startPoint) return;
+                return display(geojson);
+            },
+            onTrash(state) {
+                // Handle trash (delete) button – delete the drawn rectangle
+                this.deleteFeature([state.rectangle.id], { silent: true });
+                this.changeMode('simple_select');
+            }
+        };
+
         // Initialize map
         mapboxgl.accessToken = '{{ mapbox_token }}' || 'YOUR_MAPBOX_TOKEN';
         
@@ -626,16 +724,61 @@
             bearing: 0
         });
         
-        // Initialize drawing
+        // Initialize drawing with custom rectangle mode
         const draw = new MapboxDraw({
             displayControlsDefault: false,
-            modes: Object.assign({}, MapboxDraw.modes),
+            modes: {
+                ...MapboxDraw.modes,
+                draw_rectangle: DrawRectangle
+            },
             controls: {
                 polygon: false,
                 trash: false
-            }
+            },
+            styles: [
+                // ACTIVE (being drawn)
+                {
+                    'id': 'gl-draw-polygon-fill-inactive',
+                    'type': 'fill',
+                    'filter': ['all', ['==', 'active', 'false'], ['==', '$type', 'Polygon']],
+                    'paint': {
+                        'fill-color': '#0066ff',
+                        'fill-outline-color': '#0066ff',
+                        'fill-opacity': 1
+                    }
+                },
+                {
+                    'id': 'gl-draw-polygon-stroke-inactive',
+                    'type': 'line',
+                    'filter': ['all', ['==', 'active', 'false'], ['==', '$type', 'Polygon']],
+                    'paint': {
+                        'line-color': '#0066ff',
+                        'line-width': 4
+                    }
+                },
+                // INACTIVE (static, already drawn)
+                {
+                    'id': 'gl-draw-polygon-fill-active',
+                    'type': 'fill',
+                    'filter': ['all', ['==', 'active', 'true'], ['==', '$type', 'Polygon']],
+                    'paint': {
+                        'fill-color': '#0066ff',
+                        'fill-outline-color': '#0066ff',
+                        'fill-opacity': 1
+                    }
+                },
+                {
+                    'id': 'gl-draw-polygon-stroke-active',
+                    'type': 'line',
+                    'filter': ['all', ['==', 'active', 'true'], ['==', '$type', 'Polygon']],
+                    'paint': {
+                        'line-color': '#0066ff',
+                        'line-width': 4
+                    }
+                }
+            ]
         });
-        map.addControl(draw);
+        map.addControl(draw, 'top-right');  // Add draw control to top-right to ensure it's above other layers
         
         // State
         let currentData = null;
@@ -695,6 +838,9 @@
         async function updateScores() {
             const startTime = Date.now();
             
+            // Show spinner
+            document.getElementById('spinner').style.display = 'block';
+            
             // Get weights
             const weights = {};
             const total = Array.from(weightSliders).reduce((sum, slider) => sum + parseFloat(slider.value), 0);
@@ -736,6 +882,9 @@
                 
             } catch (error) {
                 console.error('Error updating scores:', error);
+            } finally {
+                // Hide spinner
+                document.getElementById('spinner').style.display = 'none';
             }
         }
         
@@ -751,6 +900,9 @@
         
         // Rectangle drawing
         document.getElementById('draw-rectangle').addEventListener('click', () => {
+            // Clear any existing selections
+            draw.deleteAll();
+            // Enter rectangle drawing mode
             draw.changeMode('draw_rectangle');
         });
         
@@ -760,7 +912,7 @@
             document.getElementById('infer-weights').disabled = true;
         });
         
-        map.on('draw.create', async (e) => {
+        map.on('draw.create', (e) => {
             const selection = e.features[0];
             document.getElementById('infer-weights').disabled = false;
             
@@ -769,42 +921,78 @@
                 selectedParcels = currentData.features.filter(feature => {
                     return turf.booleanIntersects(feature, selection);
                 });
+                
+                // Update stats for selected area
+                const selectedCount = selectedParcels.length;
+                const totalRisk = selectedParcels.reduce((sum, f) => sum + f.properties.score, 0);
+                const avgRisk = selectedCount > 0 ? totalRisk / selectedCount : 0;
+                
+                document.getElementById('selected-parcels').textContent = selectedCount.toLocaleString();
+                document.getElementById('total-risk').textContent = totalRisk.toFixed(2);
+                document.getElementById('avg-risk').textContent = avgRisk.toFixed(2);
             }
         });
         
-        // Infer weights
+        // Add infer weights button handler
         document.getElementById('infer-weights').addEventListener('click', async () => {
-            if (!draw.getAll().features.length) return;
-            
-            const selection = draw.getAll().features[0].geometry;
-            
+            // Get the rectangle feature from the draw control
+            const features = draw.getAll().features;
+            if (!features.length) {
+                alert('Draw a rectangle first!');
+                return;
+            }
+
+            const rectangle = features[0].geometry;  // Get the GeoJSON Polygon geometry
+
             try {
+                // Show spinner
+                document.getElementById('spinner').style.display = 'block';
+                
+                // Send the rectangle geometry to backend for weight inference
                 const response = await fetch('/api/infer-weights', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ selection: selection })
+                    body: JSON.stringify({ selection: rectangle })
                 });
                 
-                const result = await response.json();
-                
-                // Update sliders
-                for (const [key, value] of Object.entries(result.weights)) {
-                    const slider = document.getElementById(key);
-                    if (slider) {
-                        slider.value = value;
-                    }
+                if (!response.ok) {
+                    const err = await response.json();
+                    throw new Error(err.error || response.statusText);
                 }
                 
+                const weights = await response.json();
+                
+                // Update sliders with inferred weights
+                Object.entries(weights).forEach(([key, value]) => {
+                    const slider = document.getElementById(key);
+                    if (slider) {
+                        slider.value = value * 100;
+                        updateSliderFill(slider);
+                    }
+                });
+                
+                // Normalize weights and update display
                 normalizeWeights();
+                
+                // Recalculate scores with new weights
                 updateScores();
                 
             } catch (error) {
                 console.error('Error inferring weights:', error);
+                alert('Failed to infer weights: ' + error.message);
+            } finally {
+                // Hide spinner
+                document.getElementById('spinner').style.display = 'none';
             }
         });
         
-        // Export GeoJSON
-        document.getElementById('export-geojson').addEventListener('click', () => {
+        map.on('draw.delete', () => {
+            selectedParcels = [];
+            document.getElementById('infer-weights').disabled = true;
+        });
+        
+        // Export Shapefile
+        document.getElementById('export-shapefile').addEventListener('click', async () => {
             if (!currentData) return;
             
             const selectedFeatures = currentData.features.filter(f => f.properties.top500);
@@ -813,15 +1001,34 @@
                 features: selectedFeatures
             };
             
-            const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = 'fire_risk_selected_parcels.geojson';
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
+            try {
+                const response = await fetch('/api/export-shapefile', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(exportData)
+                });
+                
+                if (!response.ok) {
+                    throw new Error('Export failed');
+                }
+                
+                // Get the blob from the response
+                const blob = await response.blob();
+                
+                // Create a download link
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'fire_risk_selected_parcels.zip';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                window.URL.revokeObjectURL(url);
+                
+            } catch (error) {
+                console.error('Error exporting shapefile:', error);
+                alert('Failed to export shapefile. Please try again.');
+            }
         });
         
         // Layer toggles for basemaps (radio button behavior)
@@ -840,6 +1047,130 @@
                         'satellite': 'mapbox://styles/mapbox/satellite-streets-v12'
                     };
                     map.setStyle(styleMap[e.target.dataset.layer]);
+                    
+                    // Re-add layers and reload data when style loads
+                    map.once('style.load', () => {
+                        // Re-add parcel source and layers
+                        map.addSource('parcels', {
+                            type: 'geojson',
+                            data: currentData || { type: 'FeatureCollection', features: [] }
+                        });
+                        
+                        map.addLayer({
+                            id: 'parcels-fill',
+                            type: 'fill',
+                            source: 'parcels',
+                            paint: {
+                                'fill-color': [
+                                    'interpolate',
+                                    ['linear'],
+                                    ['get', 'score'],
+                                    0, '#ffffff',
+                                    0.2, '#ffdddd',
+                                    0.4, '#ffaaaa',
+                                    0.6, '#ff6666',
+                                    0.8, '#ff3333',
+                                    1, '#990000'
+                                ],
+                                'fill-opacity': 0.8
+                            }
+                        });
+                        
+                        // Add parcel boundaries layer
+                        map.addLayer({
+                            id: 'parcels-boundary',
+                            type: 'line',
+                            source: 'parcels',
+                            minzoom: 14, // Only show at higher zoom levels
+                            paint: {
+                                'line-color': '#ffffff',
+                                'line-width': 0.5,
+                                'line-opacity': 0.3
+                            }
+                        });
+                        
+                        map.addLayer({
+                            id: 'parcels-top500',
+                            type: 'line',
+                            source: 'parcels',
+                            filter: ['==', ['get', 'top500'], true],
+                            paint: {
+                                'line-color': '#0066ff',
+                                'line-width': 2
+                            }
+                        });
+                        
+                        // Re-add auxiliary layers
+                        const auxiliaryLayers = [
+                            {
+                                id: 'agricultural',
+                                type: 'fill',
+                                paint: {
+                                    'fill-color': '#00ff00',
+                                    'fill-opacity': 0.5
+                                }
+                            },
+                            {
+                                id: 'wui',
+                                type: 'fill',
+                                paint: {
+                                    'fill-color': '#0066ff',
+                                    'fill-opacity': 0.5
+                                }
+                            },
+                            {
+                                id: 'hazard',
+                                type: 'fill',
+                                paint: {
+                                    'fill-color': '#ff9900',
+                                    'fill-opacity': 0.25
+                                }
+                            },
+                            {
+                                id: 'structures',
+                                type: 'circle',
+                                paint: {
+                                    'circle-radius': 2,
+                                    'circle-color': '#000000',
+                                    'circle-opacity': 0.3
+                                }
+                            },
+                            {
+                                id: 'firewise',
+                                type: 'line',
+                                paint: {
+                                    'line-color': '#ff9900',
+                                    'line-width': 2
+                                }
+                            }
+                        ];
+                        
+                        // Add sources and layers for auxiliary data
+                        auxiliaryLayers.forEach(layer => {
+                            map.addSource(layer.id, {
+                                type: 'geojson',
+                                data: { type: 'FeatureCollection', features: [] }
+                            });
+                            
+                            map.addLayer({
+                                id: layer.id,
+                                type: layer.type,
+                                source: layer.id,
+                                layout: { 'visibility': 'none' },
+                                paint: layer.paint
+                            });
+                            
+                            // Reload layer data
+                            loadLayer(layer.id);
+                        });
+                        
+                        // Reload parcel data if we have current data
+                        if (currentData) {
+                            updateMap();
+                        } else {
+                            updateScores();
+                        }
+                    });
                 }
             });
         });
@@ -850,7 +1181,15 @@
                 const layerId = e.target.dataset.layer;
                 const visibility = e.target.checked ? 'visible' : 'none';
                 
-                if (map.getLayer(layerId)) {
+                if (layerId === 'parcels') {
+                    // Toggle both parcel layers
+                    if (map.getLayer('parcels-fill')) {
+                        map.setLayoutProperty('parcels-fill', 'visibility', visibility);
+                    }
+                    if (map.getLayer('parcels-top500')) {
+                        map.setLayoutProperty('parcels-top500', 'visibility', visibility);
+                    }
+                } else if (map.getLayer(layerId)) {
                     map.setLayoutProperty(layerId, 'visibility', visibility);
                 }
             });
@@ -882,6 +1221,19 @@
                         1, '#990000'
                     ],
                     'fill-opacity': 0.8
+                }
+            });
+
+            // Add parcel boundaries layer
+            map.addLayer({
+                id: 'parcels-boundary',
+                type: 'line',
+                source: 'parcels',
+                minzoom: 14, // Only show at higher zoom levels
+                paint: {
+                    'line-color': '#ffffff',
+                    'line-width': 0.5,
+                    'line-opacity': 0.3
                 }
             });
             
@@ -976,18 +1328,22 @@
 
             // Add popup
             map.on('click', 'parcels-fill', (e) => {
+                // Don't show popup if we're in rectangle drawing mode or if we just finished drawing
+                if (draw.getMode() === 'draw_rectangle' || draw.getMode() === 'simple_select') {
+                    return;
+                }
+                
                 const props = e.features[0].properties;
                 const content = `
                     <h3>Parcel Information</h3>
-                    <p><strong>Score:</strong> ${props.score.toFixed(3)}</p>
-                    <p><strong>Rank:</strong> ${props.rank}</p>
                     <p><strong>Year Built:</strong> ${props.yearbuilt || 'Unknown'}</p>
-                    <p><strong>Quarter Mile:</strong> ${props.qtrmi_s?.toFixed(2) || 'N/A'}</p>
-                    <p><strong>WUI:</strong> ${props.hwui_s?.toFixed(2) || 'N/A'}</p>
-                    <p><strong>Agricultural:</strong> ${props.hagri_s?.toFixed(2) || 'N/A'}</p>
-                    <p><strong>VHSZ:</strong> ${props.hvhsz_s?.toFixed(2) || 'N/A'}</p>
-                    <p><strong>Uphill:</strong> ${props.uphill_s?.toFixed(2) || 'N/A'}</p>
-                    <p><strong>Neighbor Distance:</strong> ${props.neigh1d_s?.toFixed(2) || 'N/A'}</p>
+                    <p><strong>Structures in 1/4 mi window (qtrmi_cnt):</strong> ${props.qtrmi_cnt || 'N/A'}</p>
+                    <p><strong>Agricultural % cover in 1/2 mi buffer (hlfmi_agri):</strong> ${props.hlfmi_agri?.toFixed(2) || 'N/A'}</p>
+                    <p><strong>WUI % cover in 1/2 mi buffer (hlfmi_wui):</strong> ${props.hlfmi_wui?.toFixed(2) || 'N/A'}</p>
+                    <p><strong>VHSZ % cover in 1/2 mi buffer (hlfmi_vhsz):</strong> ${props.hlfmi_vhsz?.toFixed(2) || 'N/A'}</p>
+                    <p><strong>Number of Neighbors (num_neighb):</strong> ${props.num_neighb || 'N/A'}</p>
+                    <p><strong>Score:</strong> ${props.score?.toFixed(3) || 'N/A'}</p>
+                    <p><strong>Rank:</strong> ${props.rank || 'N/A'}</p>
                 `;
                 
                 new mapboxgl.Popup()
@@ -996,13 +1352,17 @@
                     .addTo(map);
             });
             
-            // Change cursor on hover
+            // Prevent cursor changes when in drawing mode
             map.on('mouseenter', 'parcels-fill', () => {
-                map.getCanvas().style.cursor = 'pointer';
+                if (draw.getMode() !== 'draw_rectangle') {
+                    map.getCanvas().style.cursor = 'pointer';
+                }
             });
             
             map.on('mouseleave', 'parcels-fill', () => {
-                map.getCanvas().style.cursor = '';
+                if (draw.getMode() !== 'draw_rectangle') {
+                    map.getCanvas().style.cursor = '';
+                }
             });
             
             // Initial calculations

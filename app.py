@@ -2,7 +2,7 @@
 
 import os
 import json
-from flask import Flask, request, jsonify, render_template
+from flask import Flask, request, jsonify, render_template, send_file
 from flask_cors import CORS
 import psycopg2
 from psycopg2.extras import RealDictCursor
@@ -11,6 +11,10 @@ from pulp import *
 import redis
 from functools import wraps
 import time
+import geopandas as gpd
+from shapely.geometry import shape
+import tempfile
+import zipfile
 
 app = Flask(__name__)
 CORS(app)
@@ -384,6 +388,55 @@ def get_firewise():
     } for row in rows]
     
     return jsonify({"type": "FeatureCollection", "features": features})
+
+@app.route('/api/export-shapefile', methods=['POST'])
+def export_shapefile():
+    """Export selected parcels as a shapefile"""
+    try:
+        data = request.get_json()
+        if not data or 'features' not in data:
+            return jsonify({"error": "No data provided"}), 400
+
+        # Create a temporary directory
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Convert GeoJSON to GeoDataFrame
+            features = []
+            for feature in data['features']:
+                if feature['geometry']:
+                    geom = shape(feature['geometry'])
+                    props = feature['properties']
+                    features.append({
+                        'geometry': geom,
+                        'properties': props
+                    })
+            
+            gdf = gpd.GeoDataFrame.from_features(features)
+            
+            # Set the CRS to match the database (EPSG:3857)
+            gdf.set_crs(epsg=3857, inplace=True)
+            
+            # Save as shapefile
+            shapefile_path = os.path.join(tmpdir, 'fire_risk_selected_parcels.shp')
+            gdf.to_file(shapefile_path)
+            
+            # Create a zip file containing all shapefile components
+            zip_path = os.path.join(tmpdir, 'fire_risk_selected_parcels.zip')
+            with zipfile.ZipFile(zip_path, 'w') as zipf:
+                for ext in ['.shp', '.shx', '.dbf', '.prj']:
+                    file_path = shapefile_path.replace('.shp', ext)
+                    if os.path.exists(file_path):
+                        zipf.write(file_path, os.path.basename(file_path))
+            
+            # Send the zip file
+            return send_file(
+                zip_path,
+                mimetype='application/zip',
+                as_attachment=True,
+                download_name='fire_risk_selected_parcels.zip'
+            )
+            
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 # Database initialization
 def init_db():
