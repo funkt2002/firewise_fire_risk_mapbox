@@ -143,6 +143,8 @@ def infer_weights():
     """Infer weights from selected parcels using inverse optimization"""
     data = request.get_json()
     selection_polygon = data.get('selection')
+    max_parcels = data.get('max_parcels', 500)  # Get max_parcels from request, default to 500
+    min_selected_included = 1  # Now allow at least 1 (not 2)
     
     if not selection_polygon:
         return jsonify({"error": "No selection provided"}), 400
@@ -162,6 +164,7 @@ def infer_weights():
     """.format(vars=', '.join(WEIGHT_VARS)), 
     (json.dumps(selection_polygon),))
     selected = cur.fetchall()
+    selected_ids = set(row['id'] for row in selected)
     
     # Get non-selected parcels (sample for performance)
     cur.execute("""
@@ -177,55 +180,124 @@ def infer_weights():
     (json.dumps(selection_polygon),))
     non_selected = cur.fetchall()
     
+    # For scoring all parcels later
+    cur.execute(f"""
+        SELECT id, {', '.join(WEIGHT_VARS)}
+        FROM parcels
+    """)
+    all_parcels = cur.fetchall()
+    
     cur.close()
     conn.close()
     
     if not selected or not non_selected:
         return jsonify({"error": "Insufficient data for optimization"}), 400
     
-    # Solve inverse optimization problem
+    # Try different optimization approaches
+    weights = None
+    max_selected = 0
+    
+    # Approach 1: Try to maximize number of selected parcels
     prob = LpProblem("WeightInference", LpMaximize)
     
     # Weight variables
     w_vars = {var: LpVariable(f"w_{var}", 0, 1) for var in WEIGHT_VARS}
     
-    # Slack variable for feasibility
-    slack = LpVariable("slack", 0)
+    # Binary variables for each selected parcel
+    selected_vars = {i: LpVariable(f"selected_{i}", 0, 1) for i in range(len(selected))}
     
-    # Objective: maximize coverage minus slack penalty
-    prob += lpSum(w_vars.values()) - 100 * slack
+    # Objective: maximize number of selected parcels
+    prob += lpSum(selected_vars.values())
     
     # Constraint: weights sum to 1
     prob += lpSum(w_vars.values()) == 1
     
+    # Constraint: can't select more than max_parcels
+    prob += lpSum(selected_vars.values()) <= max_parcels
+    
     # Constraints: selected parcels score higher than non-selected
     epsilon = 0.01
-    for sel in selected[:50]:  # Limit constraints for performance
-        for non_sel in non_selected[:20]:
+    for i, sel in enumerate(selected):
+        for non_sel in non_selected[:20]:  # Limit comparisons for performance
             score_diff = lpSum([
                 w_vars[var] * (float(sel.get(var, 0) or 0) - float(non_sel.get(var, 0) or 0))
                 for var in WEIGHT_VARS
             ])
-            prob += score_diff >= epsilon - slack
+            # If selected_vars[i] is 1, this parcel must score higher
+            prob += score_diff >= epsilon - (1 - selected_vars[i]) * 100
     
     # Solve
     prob.solve()
     
-    # Extract solution
-    weights = {}
     if LpStatus[prob.status] == 'Optimal':
-        for var in WEIGHT_VARS:
-            weights[var] = value(w_vars[var])
+        # Count how many parcels were selected
+        num_selected = sum(value(selected_vars[i]) for i in range(len(selected)))
+        if num_selected > 0:
+            weights = {var: value(w_vars[var]) for var in WEIGHT_VARS}
+            max_selected = num_selected
+    
+    # If first approach didn't work, try simpler approach
+    if not weights:
+        # Try to find weights that maximize the average score of selected parcels
+        prob = LpProblem("WeightInferenceSimple", LpMaximize)
         
+        # Weight variables
+        w_vars = {var: LpVariable(f"w_{var}", 0, 1) for var in WEIGHT_VARS}
+        
+        # Objective: maximize average score of selected parcels
+        avg_score = lpSum([
+            lpSum([w_vars[var] * float(sel.get(var, 0) or 0) for var in WEIGHT_VARS])
+            for sel in selected
+        ]) / len(selected)
+        prob += avg_score
+        
+        # Constraint: weights sum to 1
+        prob += lpSum(w_vars.values()) == 1
+        
+        # Solve
+        prob.solve()
+        
+        if LpStatus[prob.status] == 'Optimal':
+            weights = {var: value(w_vars[var]) for var in WEIGHT_VARS}
+    
+    if weights:
         # Convert to percentages
         total = sum(weights.values())
         if total > 0:
             weights = {k: round(v/total * 100, 1) for k, v in weights.items()}
-    else:
-        # Default weights if optimization fails
-        weights = {var: round(100/len(WEIGHT_VARS), 1) for var in WEIGHT_VARS}
+            # --- New logic: check if at least min_selected_included selected parcels are in top N ---
+            # Score all parcels
+            scored = []
+            for row in all_parcels:
+                score = sum((row.get(var, 0) or 0) * (weights[var]/100) for var in WEIGHT_VARS)
+                scored.append((row['id'], score))
+            # Sort by score descending
+            scored.sort(key=lambda x: -x[1])
+            # Get top N ids
+            top_ids = set([row[0] for row in scored[:max_parcels]])
+            # Count how many selected_ids are in top_ids
+            num_selected_in_top = len(selected_ids & top_ids)
+            if num_selected_in_top < min_selected_included:
+                return jsonify({
+                    "error": "No parcels from your selection can be included in the current budget. Please increase your budget or select different parcels.",
+                    "total_selected": len(selected),
+                    "max_parcels": max_parcels
+                }), 400
+            # --- End new logic ---
+            return jsonify({
+                "weights": weights,
+                "num_selected": max_selected,
+                "total_selected": len(selected),
+                "max_parcels": max_parcels,
+                "num_selected_in_top": num_selected_in_top
+            })
     
-    return jsonify({"weights": weights})
+    # If no solution found, return error
+    return jsonify({
+        "error": "No feasible solution found for selected parcels",
+        "total_selected": len(selected),
+        "max_parcels": max_parcels
+    }), 400
 
 @app.route('/api/parcels', methods=['GET'])
 def get_parcels():

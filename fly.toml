@@ -1,39 +1,22 @@
-# fly.toml
-app = "fire-risk-calculator"
-primary_region = "lax"
+# fly.toml app configuration file generated for firewise-application-v3 on 2025-05-30T15:31:23-07:00
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
+app = 'firewise-application-v3'
+primary_region = 'lax'
 
 [build]
-  builder = "paket:full"
-
-[env]
-  PORT = "8080"
 
 [http_service]
-  internal_port = 8080
+  internal_port = 5000
   force_https = true
-  auto_stop_machines = true
+  auto_stop_machines = 'stop'
   auto_start_machines = true
-  min_machines_running = 1
-  processes = ["app"]
+  min_machines_running = 0
+  processes = ['app']
 
-[[services]]
-  http_checks = []
-  internal_port = 8080
-  processes = ["app"]
-  protocol = "tcp"
-  script_checks = []
-
-  [[services.ports]]
-    force_https = true
-    handlers = ["http"]
-    port = 80
-
-  [[services.ports]]
-    handlers = ["tls", "http"]
-    port = 443
-
-  [[services.tcp_checks]]
-    grace_period = "1s"
-    interval = "15s"
-    restart_limit = 0
-    timeout = "2s"
+[[vm]]
+  memory = '2gb'
+  cpu_kind = 'shared'
+  cpus = 4

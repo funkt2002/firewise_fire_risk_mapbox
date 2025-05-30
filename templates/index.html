@@ -943,30 +943,33 @@
             }
 
             const rectangle = features[0].geometry;  // Get the GeoJSON Polygon geometry
+            const maxParcels = parseInt(document.getElementById('max-parcels').value);
+
+            // Show spinner (move this up so it's always visible during the process)
+            document.getElementById('spinner').style.display = 'block';
 
             try {
-                // Show spinner
-                document.getElementById('spinner').style.display = 'block';
-                
                 // Send the rectangle geometry to backend for weight inference
                 const response = await fetch('/api/infer-weights', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ selection: rectangle })
+                    body: JSON.stringify({ 
+                        selection: rectangle,
+                        max_parcels: maxParcels
+                    })
                 });
                 
+                const data = await response.json();
+                
                 if (!response.ok) {
-                    const err = await response.json();
-                    throw new Error(err.error || response.statusText);
+                    throw new Error(data.error || response.statusText);
                 }
                 
-                const weights = await response.json();
-                
                 // Update sliders with inferred weights
-                Object.entries(weights).forEach(([key, value]) => {
+                Object.entries(data.weights).forEach(([key, value]) => {
                     const slider = document.getElementById(key);
                     if (slider) {
-                        slider.value = value * 100;
+                        slider.value = value;
                         updateSliderFill(slider);
                     }
                 });
@@ -974,14 +977,15 @@
                 // Normalize weights and update display
                 normalizeWeights();
                 
+                // No alert for success, just update UI
                 // Recalculate scores with new weights
-                updateScores();
+                await updateScores();
                 
             } catch (error) {
                 console.error('Error inferring weights:', error);
-                alert('Failed to infer weights: ' + error.message);
+                alert(error.message);
             } finally {
-                // Hide spinner
+                // Hide spinner after all UI updates are done
                 document.getElementById('spinner').style.display = 'none';
             }
         });
@@ -1328,8 +1332,8 @@
 
             // Add popup
             map.on('click', 'parcels-fill', (e) => {
-                // Don't show popup if we're in rectangle drawing mode or if we just finished drawing
-                if (draw.getMode() === 'draw_rectangle' || draw.getMode() === 'simple_select') {
+                // Don't show popup if we're in rectangle drawing mode
+                if (draw.getMode() === 'draw_rectangle') {
                     return;
                 }
                 
@@ -1337,11 +1341,11 @@
                 const content = `
                     <h3>Parcel Information</h3>
                     <p><strong>Year Built:</strong> ${props.yearbuilt || 'Unknown'}</p>
-                    <p><strong>Structures in 1/4 mi window (qtrmi_cnt):</strong> ${props.qtrmi_cnt || 'N/A'}</p>
-                    <p><strong>Agricultural % cover in 1/2 mi buffer (hlfmi_agri):</strong> ${props.hlfmi_agri?.toFixed(2) || 'N/A'}</p>
-                    <p><strong>WUI % cover in 1/2 mi buffer (hlfmi_wui):</strong> ${props.hlfmi_wui?.toFixed(2) || 'N/A'}</p>
-                    <p><strong>VHSZ % cover in 1/2 mi buffer (hlfmi_vhsz):</strong> ${props.hlfmi_vhsz?.toFixed(2) || 'N/A'}</p>
-                    <p><strong>Number of Neighbors (num_neighb):</strong> ${props.num_neighb || 'N/A'}</p>
+                    <p><strong>Structures in 1/4 mi window:</strong> ${props.qtrmi_cnt || 'N/A'}</p>
+                    <p><strong>Agricultural % cover in 1/2 mi buffer:</strong> ${props.hlfmi_agri?.toFixed(2) || 'N/A'}</p>
+                    <p><strong>WUI % cover in 1/2 mi buffer:</strong> ${props.hlfmi_wui?.toFixed(2) || 'N/A'}</p>
+                    <p><strong>VHSZ % cover in 1/2 mi buffer:</strong> ${props.hlfmi_vhsz?.toFixed(2) || 'N/A'}</p>
+                    <p><strong>Number of Neighbors:</strong> ${props.num_neighb || 'N/A'}</p>
                     <p><strong>Score:</strong> ${props.score?.toFixed(3) || 'N/A'}</p>
                     <p><strong>Rank:</strong> ${props.rank || 'N/A'}</p>
                 `;
