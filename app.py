@@ -140,20 +140,18 @@ def calculate_scores():
 
 @app.route('/api/infer-weights', methods=['POST'])
 def infer_weights():
-    """Infer weights from selected parcels using inverse optimization"""
+    """Infer weights using heuristic approach - fast iterative search"""
     data = request.get_json()
     selection_polygon = data.get('selection')
-    max_parcels = data.get('max_parcels', 500)  # Get max_parcels from request, default to 500
-    min_selected_included = 1  # Now allow at least 1 (not 2)
+    max_parcels = data.get('max_parcels', 500)  # Budget
     
     if not selection_polygon:
         return jsonify({"error": "No selection provided"}), 400
     
-    # Get parcels within selection
     conn = get_db()
     cur = conn.cursor()
     
-    # Get selected parcels
+    # Get parcels within selection
     cur.execute("""
         SELECT id, {vars}
         FROM parcels
@@ -163,24 +161,10 @@ def infer_weights():
         )
     """.format(vars=', '.join(WEIGHT_VARS)), 
     (json.dumps(selection_polygon),))
-    selected = cur.fetchall()
-    selected_ids = set(row['id'] for row in selected)
+    selected_parcels = cur.fetchall()
+    selected_ids = set(row['id'] for row in selected_parcels)
     
-    # Get non-selected parcels (sample for performance)
-    cur.execute("""
-        SELECT id, {vars}
-        FROM parcels
-        WHERE NOT ST_Intersects(
-            geom, 
-            ST_Transform(ST_SetSRID(ST_GeomFromGeoJSON(%s), 4326), 3857)
-        )
-        ORDER BY RANDOM()
-        LIMIT 1000
-    """.format(vars=', '.join(WEIGHT_VARS)), 
-    (json.dumps(selection_polygon),))
-    non_selected = cur.fetchall()
-    
-    # For scoring all parcels later
+    # Get all parcels
     cur.execute(f"""
         SELECT id, {', '.join(WEIGHT_VARS)}
         FROM parcels
@@ -190,161 +174,126 @@ def infer_weights():
     cur.close()
     conn.close()
     
-    if not selected or not non_selected:
-        return jsonify({"error": "Insufficient data for optimization"}), 400
+    if not selected_parcels:
+        return jsonify({"error": "No parcels found in selection"}), 400
     
-    # Try different optimization approaches
-    weights = None
-    max_selected = 0
-    
-    # Approach 1: Try to maximize number of selected parcels
-    prob = LpProblem("WeightInference", LpMaximize)
-    
-    # Weight variables
-    w_vars = {var: LpVariable(f"w_{var}", 0, 1) for var in WEIGHT_VARS}
-    
-    # Binary variables for each selected parcel
-    selected_vars = {i: LpVariable(f"selected_{i}", 0, 1) for i in range(len(selected))}
-    
-    # Objective: maximize number of selected parcels
-    prob += lpSum(selected_vars.values())
-    
-    # Constraint: weights sum to 1
-    prob += lpSum(w_vars.values()) == 1
-    
-    # Constraint: can't select more than max_parcels
-    prob += lpSum(selected_vars.values()) <= max_parcels
-    
-    # Constraints: selected parcels score higher than non-selected
-    epsilon = 0.01
-    for i, sel in enumerate(selected):
-        for non_sel in non_selected[:20]:  # Limit comparisons for performance
-            score_diff = lpSum([
-                w_vars[var] * (float(sel.get(var, 0) or 0) - float(non_sel.get(var, 0) or 0))
-                for var in WEIGHT_VARS
-            ])
-            # If selected_vars[i] is 1, this parcel must score higher
-            prob += score_diff >= epsilon - (1 - selected_vars[i]) * 100
-    
-    # Solve
-    prob.solve()
-    
-    if LpStatus[prob.status] == 'Optimal':
-        # Count how many parcels were selected
-        num_selected = sum(value(selected_vars[i]) for i in range(len(selected)))
-        if num_selected > 0:
-            weights = {var: value(w_vars[var]) for var in WEIGHT_VARS}
-            max_selected = num_selected
-    
-    # If first approach didn't work, try simpler approach
-    if not weights:
-        # Try to find weights that maximize the average score of selected parcels
-        prob = LpProblem("WeightInferenceSimple", LpMaximize)
+    def evaluate_weights(weights):
+        """Score all parcels and count how many selected ones are in top N"""
+        scored = []
+        for p in all_parcels:
+            score = sum(weights[var] * float(p.get(var, 0) or 0) for var in WEIGHT_VARS)
+            scored.append((p['id'], score))
         
-        # Weight variables
-        w_vars = {var: LpVariable(f"w_{var}", 0, 1) for var in WEIGHT_VARS}
+        scored.sort(key=lambda x: -x[1])
+        top_ids = set(s[0] for s in scored[:max_parcels])
         
-        # Objective: maximize average score of selected parcels
-        avg_score = lpSum([
-            lpSum([w_vars[var] * float(sel.get(var, 0) or 0) for var in WEIGHT_VARS])
-            for sel in selected
-        ]) / len(selected)
-        prob += avg_score
-        
-        # Constraint: weights sum to 1
-        prob += lpSum(w_vars.values()) == 1
-        
-        # Solve
-        prob.solve()
-        
-        if LpStatus[prob.status] == 'Optimal':
-            weights = {var: value(w_vars[var]) for var in WEIGHT_VARS}
+        return len(selected_ids & top_ids)
     
-    if weights:
+    # Phase 1: Try pure weights (100% on each variable)
+    best_weights = None
+    best_count = 0
+    
+    for var in WEIGHT_VARS:
+        weights = {v: 1.0 if v == var else 0.0 for v in WEIGHT_VARS}
+        count = evaluate_weights(weights)
+        
+        if count > best_count:
+            best_count = count
+            best_weights = weights.copy()
+    
+    # Phase 2: Try some common combinations
+    common_combinations = [
+        # Equal weights
+        {var: 1.0/len(WEIGHT_VARS) for var in WEIGHT_VARS},
+        # Emphasize distance metrics
+        {'qtrmi_s': 0.3, 'hwui_s': 0.1, 'hagri_s': 0.1, 'hvhsz_s': 0.1, 'uphill_s': 0.1, 'neigh1d_s': 0.3},
+        # Emphasize hazard metrics
+        {'qtrmi_s': 0.1, 'hwui_s': 0.3, 'hagri_s': 0.1, 'hvhsz_s': 0.3, 'uphill_s': 0.2, 'neigh1d_s': 0.1},
+        # Focus on neighbor density
+        {'qtrmi_s': 0.1, 'hwui_s': 0.1, 'hagri_s': 0.1, 'hvhsz_s': 0.1, 'uphill_s': 0.1, 'neigh1d_s': 0.5},
+    ]
+    
+    for weights in common_combinations:
+        count = evaluate_weights(weights)
+        if count > best_count:
+            best_count = count
+            best_weights = weights.copy()
+    
+    # If we haven't found anything yet, try random combinations
+    if best_count == 0:
+        import random
+        for _ in range(20):
+            # Generate random weights
+            raw_weights = [random.random() for _ in WEIGHT_VARS]
+            total = sum(raw_weights)
+            weights = {var: w/total for var, w in zip(WEIGHT_VARS, raw_weights)}
+            
+            count = evaluate_weights(weights)
+            if count > best_count:
+                best_count = count
+                best_weights = weights.copy()
+    
+    # Phase 3: If we found a working solution, try to improve it
+    if best_count > 0:
+        # Hill climbing - make small adjustments
+        improvement_found = True
+        max_iterations = 50
+        iteration = 0
+        
+        while improvement_found and iteration < max_iterations:
+            improvement_found = False
+            iteration += 1
+            
+            # Try adjusting each weight by small amounts
+            for i, var_to_adjust in enumerate(WEIGHT_VARS):
+                for j, var_to_reduce in enumerate(WEIGHT_VARS):
+                    if i == j:
+                        continue
+                    
+                    # Try transferring weight from one variable to another  
+                    for delta in [0.05, 0.1, 0.02]:
+                        if best_weights[var_to_reduce] >= delta:
+                            # Create new weight combination
+                            new_weights = best_weights.copy()
+                            new_weights[var_to_adjust] += delta
+                            new_weights[var_to_reduce] -= delta
+                            
+                            # Evaluate
+                            count = evaluate_weights(new_weights)
+                            
+                            if count > best_count:
+                                best_count = count
+                                best_weights = new_weights.copy()
+                                improvement_found = True
+                                break
+                    
+                    if improvement_found:
+                        break
+                if improvement_found:
+                    break
+    
+    # Return results
+    if best_count > 0:
         # Convert to percentages
-        total = sum(weights.values())
-        if total > 0:
-            weights = {k: round(v/total * 100, 1) for k, v in weights.items()}
-            # --- New logic: check if at least min_selected_included selected parcels are in top N ---
-            # Score all parcels
-            scored = []
-            for row in all_parcels:
-                score = sum((row.get(var, 0) or 0) * (weights[var]/100) for var in WEIGHT_VARS)
-                scored.append((row['id'], score))
-            # Sort by score descending
-            scored.sort(key=lambda x: -x[1])
-            # Get top N ids
-            top_ids = set([row[0] for row in scored[:max_parcels]])
-            # Count how many selected_ids are in top_ids
-            num_selected_in_top = len(selected_ids & top_ids)
-            if num_selected_in_top < min_selected_included:
-                return jsonify({
-                    "error": "No parcels from your selection can be included in the current budget. Please increase your budget or select different parcels.",
-                    "total_selected": len(selected),
-                    "max_parcels": max_parcels
-                }), 400
-            # --- End new logic ---
-            return jsonify({
-                "weights": weights,
-                "num_selected": max_selected,
-                "total_selected": len(selected),
-                "max_parcels": max_parcels,
-                "num_selected_in_top": num_selected_in_top
-            })
+        weights_pct = {k: round(v * 100, 1) for k, v in best_weights.items()}
+        
+        # Verify the result one more time
+        final_count = evaluate_weights(best_weights)
+        
+        return jsonify({
+            "weights": weights_pct,
+            "num_selected_in_top": final_count,
+            "total_selected": len(selected_parcels),
+            "max_parcels": max_parcels,
+            "message": f"Found weights that select {final_count} of your {len(selected_parcels)} parcels"
+        })
     
-    # If no solution found, return error
+    # No solution found
     return jsonify({
-        "error": "No feasible solution found for selected parcels",
-        "total_selected": len(selected),
+        "error": f"No combination of weights can select any parcels from your selection within the top {max_parcels} parcels. Please increase your budget or select different parcels.",
+        "total_selected": len(selected_parcels),
         "max_parcels": max_parcels
     }), 400
-
-@app.route('/api/parcels', methods=['GET'])
-def get_parcels():
-    """Get filtered parcels"""
-    filters = []
-    params = []
-    
-    if request.args.get('built_after_2011') == 'true':
-        filters.append("(yearbuilt > 2011 OR yearbuilt IS NULL)")
-    
-    if request.args.get('neigh1d_max'):
-        filters.append("neigh1d_s <= %s")
-        params.append(float(request.args['neigh1d_max']))
-    
-    where_clause = "WHERE " + " AND ".join(filters) if filters else ""
-    
-    query = f"""
-    SELECT 
-        id,
-        ST_AsGeoJSON(ST_Transform(geom, 4326))::json as geometry,
-        {', '.join(WEIGHT_VARS + ['yearbuilt'])}
-    FROM parcels
-    {where_clause}
-    LIMIT 10000
-    """
-    
-    conn = get_db()
-    cur = conn.cursor()
-    cur.execute(query, params)
-    results = cur.fetchall()
-    cur.close()
-    conn.close()
-    
-    features = []
-    for row in results:
-        feature = {
-            "type": "Feature",
-            "id": row['id'],
-            "geometry": row['geometry'],
-            "properties": {k: row[k] for k in WEIGHT_VARS + ['yearbuilt']}
-        }
-        features.append(feature)
-    
-    return jsonify({
-        "type": "FeatureCollection",
-        "features": features
-    })
 
 @app.route('/api/agricultural', methods=['GET'])
 def get_agricultural():
