@@ -16,25 +16,20 @@ RUN apt-get update && apt-get install -y \
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Install development dependencies
-RUN pip install --no-cache-dir \
-    python-dotenv \
-    flask-debugtoolbar \
-    pytest \
-    pytest-cov
+# Install additional dependencies for data loading
+RUN pip install --no-cache-dir tabulate
 
 # Copy application files
 COPY app.py .
 COPY templates/ templates/
 COPY static/ static/
+COPY scripts/ scripts/
+
+# Make scripts executable
+RUN chmod +x scripts/*.py
 
 # Expose port
 EXPOSE 5000
 
-# Set environment variables for development
-ENV FLASK_APP=app.py
-ENV FLASK_ENV=development
-ENV FLASK_DEBUG=1
-
-# Run the application in development mode
+# Run the application in production mode with gunicorn
 CMD ["gunicorn", "-b", "0.0.0.0:5000", "--workers", "4", "--timeout", "120", "app:app"]
