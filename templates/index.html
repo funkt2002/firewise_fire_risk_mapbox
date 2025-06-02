@@ -1,0 +1,1389 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fire Risk Calculator</title>
+    <script src='https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.js'></script>
+    <link href='https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.css' rel='stylesheet' />
+    <script src='https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-draw/v1.4.0/mapbox-gl-draw.js'></script>
+    <link rel='stylesheet' href='https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-draw/v1.4.0/mapbox-gl-draw.css' type='text/css' />
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+            background: #1a1a1a;
+            color: #e0e0e0;
+        }
+        
+        #map { 
+            position: absolute; 
+            top: 0; 
+            bottom: 0; 
+            width: 100%; 
+        }
+        
+        /* Main control panel */
+        .control-panel {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(26, 26, 26, 0.95);
+            padding: 15px;
+            border-radius: 4px;
+            width: 320px;
+            max-height: calc(100vh - 60px);
+            overflow-y: auto;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+        }
+        
+        .control-panel::-webkit-scrollbar {
+            width: 8px;
+        }
+        
+        .control-panel::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.1);
+        }
+        
+        .control-panel::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.3);
+            border-radius: 4px;
+        }
+        
+        h1 {
+            font-size: 16px;
+            font-weight: 500;
+            margin-bottom: 15px;
+            color: #fff;
+        }
+        
+        h2 {
+            font-size: 13px;
+            font-weight: 600;
+            color: #fff;
+            margin: 15px 0 10px 0;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        /* Section styling */
+        .control-section {
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        
+        .control-section:last-child {
+            border-bottom: none;
+            margin-bottom: 0;
+        }
+        
+        /* Slider styling */
+        .slider-container {
+            margin: 12px 0;
+        }
+        
+        .slider-label {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 5px;
+            font-size: 12px;
+            color: #ccc;
+        }
+        
+        .slider-value {
+            color: #fff;
+            font-weight: 500;
+            min-width: 45px;
+            text-align: right;
+        }
+        
+        .slider {
+            width: 100%;
+            height: 4px;
+            -webkit-appearance: none;
+            appearance: none;
+            outline: none;
+            cursor: pointer;
+            border-radius: 2px;
+            margin: 8px 0;
+        }
+        
+        .slider::-webkit-slider-track {
+            width: 100%;
+            height: 4px;
+            border-radius: 2px;
+        }
+        
+        .slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 12px;
+            height: 12px;
+            background: #fff;
+            cursor: pointer;
+            border-radius: 50%;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+            transition: transform 0.2s;
+        }
+        
+        .slider::-webkit-slider-thumb:hover {
+            transform: scale(1.2);
+        }
+        
+        .slider::-moz-range-track {
+            width: 100%;
+            height: 4px;
+            border-radius: 2px;
+        }
+        
+        .slider::-moz-range-thumb {
+            width: 12px;
+            height: 12px;
+            background: #fff;
+            cursor: pointer;
+            border-radius: 50%;
+            border: none;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+            transition: transform 0.2s;
+        }
+        
+        .slider::-moz-range-thumb:hover {
+            transform: scale(1.2);
+        }
+        
+        .slider::-moz-range-progress {
+            background: #4a90e2;
+            height: 4px;
+            border-radius: 2px;
+        }
+        
+        /* Toggle/Checkbox styling */
+        .toggle-container {
+            margin: 8px 0;
+        }
+        
+        .toggle-label {
+            display: flex;
+            align-items: center;
+            cursor: pointer;
+            font-size: 12px;
+            color: #ccc;
+            padding: 4px 0;
+        }
+        
+        .toggle-label:hover {
+            color: #fff;
+        }
+        
+        .toggle-label input[type="checkbox"] {
+            width: 14px;
+            height: 14px;
+            margin-right: 8px;
+            cursor: pointer;
+            accent-color: #4CAF50;
+        }
+        
+        /* Button styling */
+        .button {
+            background: #333;
+            color: #fff;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            padding: 8px 12px;
+            text-align: center;
+            font-size: 12px;
+            cursor: pointer;
+            border-radius: 3px;
+            width: 100%;
+            transition: all 0.2s;
+            margin: 4px 0;
+        }
+        
+        .button:hover:not(:disabled) {
+            background: #444;
+            border-color: rgba(255, 255, 255, 0.3);
+        }
+        
+        .button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        .button.primary {
+            background: #4CAF50;
+            border-color: #4CAF50;
+        }
+        
+        .button.primary:hover:not(:disabled) {
+            background: #45a049;
+            border-color: #45a049;
+        }
+        
+        /* Input styling */
+        .input-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin: 8px 0;
+        }
+        
+        .input-group label {
+            font-size: 12px;
+            color: #ccc;
+            flex: 1;
+        }
+        
+        .number-input {
+            width: 80px;
+            padding: 4px 8px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 3px;
+            color: #fff;
+            font-size: 12px;
+        }
+        
+        .number-input:focus {
+            outline: none;
+            border-color: rgba(255, 255, 255, 0.4);
+            background: rgba(255, 255, 255, 0.15);
+        }
+        
+        /* Select dropdown styling */
+        select {
+            width: 100%;
+            padding: 6px 10px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 3px;
+            color: #fff;
+            font-size: 12px;
+            cursor: pointer;
+        }
+        
+        select:focus {
+            outline: none;
+            border-color: rgba(255, 255, 255, 0.4);
+        }
+        
+        select option {
+            background: #2a2a2a;
+            color: #fff;
+        }
+        
+        /* Stats display */
+        .stats {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 10px;
+            border-radius: 3px;
+            font-size: 11px;
+            margin-top: 10px;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        
+        .stats-row {
+            display: flex;
+            justify-content: space-between;
+            color: #aaa;
+        }
+        
+        .stats-value {
+            color: #fff;
+            font-weight: 500;
+        }
+        
+        /* Legend styling */
+        .legend {
+            position: absolute;
+            bottom: 20px;
+            right: 10px;
+            background: rgba(26, 26, 26, 0.95);
+            padding: 12px;
+            border-radius: 4px;
+            font-size: 12px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+        }
+        
+        .legend-title {
+            font-weight: 600;
+            margin-bottom: 8px;
+            color: #fff;
+        }
+        
+        .legend-gradient {
+            height: 15px;
+            background: linear-gradient(to right, #ffffff 0%, #ffcccc 25%, #ff6666 50%, #ff0000 75%, #990000 100%);
+            border-radius: 2px;
+            margin: 8px 0;
+        }
+        
+        .legend-labels {
+            display: flex;
+            justify-content: space-between;
+            font-size: 10px;
+            color: #aaa;
+        }
+        
+        .legend-item {
+            display: flex;
+            align-items: center;
+            margin: 5px 0;
+            font-size: 11px;
+            color: #ccc;
+        }
+        
+        .legend-box {
+            width: 16px;
+            height: 3px;
+            margin-right: 8px;
+            border: 2px solid #0066ff;
+            border-radius: 1px;
+        }
+        
+        /* Popup styling */
+        .mapboxgl-popup-content {
+            background: rgba(26, 26, 26, 0.95);
+            color: #e0e0e0;
+            padding: 10px;
+            border-radius: 4px;
+            font-size: 12px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+        }
+        
+        .mapboxgl-popup-content h3 {
+            margin: 0 0 8px 0;
+            font-size: 13px;
+            color: #fff;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+            padding-bottom: 5px;
+        }
+        
+        .mapboxgl-popup-content p {
+            margin: 3px 0;
+            display: flex;
+            justify-content: space-between;
+        }
+        
+        .mapboxgl-popup-content strong {
+            color: #aaa;
+            font-weight: normal;
+        }
+        
+        .mapboxgl-popup-close-button {
+            color: #fff;
+            font-size: 16px;
+            padding: 4px 8px;
+        }
+        
+        .mapboxgl-popup-close-button:hover {
+            background: rgba(255, 255, 255, 0.1);
+        }
+        
+        .mapboxgl-popup-anchor-top .mapboxgl-popup-tip {
+            border-bottom-color: rgba(26, 26, 26, 0.95);
+        }
+        
+        /* Add spinner styles */
+        .spinner-container {
+            display: none;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 1000;
+        }
+        
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 4px solid rgba(255, 255, 255, 0.3);
+            border-top: 4px solid #4a90e2;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        
+        .spinner-text {
+            color: #4a90e2;
+            margin-top: 10px;
+            text-align: center;
+            font-size: 14px;
+            font-weight: 500;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div id="map"></div>
+    
+    <!-- Add spinner HTML -->
+    <div class="spinner-container" id="spinner">
+        <div class="spinner"></div>
+        <div class="spinner-text">Calculating...</div>
+    </div>
+    
+    <div class="control-panel">
+        <h1>Fire Risk Calculator</h1>
+        
+        <div class="control-section">
+            <h2>Risk Factor Weights</h2>
+            <div id="weight-sliders">
+                <div class="slider-container">
+                    <div class="slider-label">
+                        <span>Number of Structures Within Window (1/4 mile)</span>
+                        <span class="slider-value" id="qtrmi_s-value">30%</span>
+                    </div>
+                    <input type="range" class="slider weight-slider" id="qtrmi_s" min="0" max="100" value="30">
+                </div>
+                <div class="slider-container">
+                    <div class="slider-label">
+                        <span>WUI coverage percentage (1/2 mile)</span>
+                        <span class="slider-value" id="hwui_s-value">10%</span>
+                    </div>
+                    <input type="range" class="slider weight-slider" id="hwui_s" min="0" max="100" value="10">
+                </div>
+                <div class="slider-container">
+                    <div class="slider-label">
+                        <span>Agriculture/Firebreak coverage (1/2 mile)</span>
+                        <span class="slider-value" id="hagri_s-value">10%</span>
+                    </div>
+                    <input type="range" class="slider weight-slider" id="hagri_s" min="0" max="100" value="10">
+                </div>
+                <div class="slider-container">
+                    <div class="slider-label">
+                        <span>Very High Fire Hazard Zone coverage (1/2 mile)</span>
+                        <span class="slider-value" id="hvhsz_s-value">30%</span>
+                    </div>
+                    <input type="range" class="slider weight-slider" id="hvhsz_s" min="0" max="100" value="30">
+                </div>
+                <div class="slider-container">
+                    <div class="slider-label">
+                        <span>Mean Parcel Slope</span>
+                        <span class="slider-value" id="uphill_s-value">0%</span>
+                    </div>
+                    <input type="range" class="slider weight-slider" id="uphill_s" min="0" max="100" value="0">
+                </div>
+                <div class="slider-container">
+                    <div class="slider-label">
+                        <span>Distance to Nearest Neighbor</span>
+                        <span class="slider-value" id="neigh1d_s-value">0%</span>
+                    </div>
+                    <input type="range" class="slider weight-slider" id="neigh1d_s" min="0" max="100" value="0">
+                </div>
+                <div style="text-align: right; margin-top: 5px;">
+                    <span style="font-size: 11px; color: #888;">Max Parcels: <span id="max-parcels-value">500</span></span>
+                </div>
+            </div>
+        </div>
+        
+        <div class="control-section">
+            <h2>Budget Settings</h2>
+            <div class="input-group">
+                <label>Budget ($)</label>
+                <input type="number" class="number-input" id="budget" value="500000" min="0" step="10000">
+            </div>
+            <div class="input-group">
+                <label>Cost/Parcel ($)</label>
+                <input type="number" class="number-input" id="cost-per-parcel" value="1000" min="0" step="100">
+            </div>
+            <div class="input-group">
+                <label>Max Parcels</label>
+                <input type="number" class="number-input" id="max-parcels" value="500" min="1" max="5000">
+            </div>
+            <button class="button primary" id="calculate-btn">Calculate</button>
+        </div>
+        
+        <div class="control-section">
+            <h2>Results</h2>
+            <div class="stats">
+                <div class="stats-row">
+                    <span>Total Parcels:</span>
+                    <span class="stats-value" id="total-parcels">56308</span>
+                </div>
+                <div class="stats-row">
+                    <span>Selected:</span>
+                    <span class="stats-value" id="selected-parcels">500</span>
+                </div>
+                <div class="stats-row">
+                    <span>Total Risk:</span>
+                    <span class="stats-value" id="total-risk">408.88</span>
+                </div>
+                <div class="stats-row">
+                    <span>Avg Risk:</span>
+                    <span class="stats-value" id="avg-risk">0.82</span>
+                </div>
+            </div>
+            <button class="button" id="export-shapefile">Export Shapefile</button>
+        </div>
+        
+        <div class="control-section">
+            <h2>Filters</h2>
+            <div class="toggle-container">
+                <label class="toggle-label">
+                    <input type="checkbox" id="filter-built-1996">
+                    Exclude parcels built after 1996
+                </label>
+            </div>
+            <div class="toggle-container">
+                <label class="toggle-label">
+                    <input type="checkbox" id="filter-built-2011">
+                    Exclude parcels built after 2011
+                </label>
+            </div>
+            <div class="toggle-container">
+                <label class="toggle-label">
+                    <input type="checkbox" id="filter-neigh1d">
+                    Only parcels with neighbor distance ≤ 50
+                </label>
+            </div>
+        </div>
+        
+        <div class="control-section">
+            <h2>Map Layers</h2>
+            <div class="toggle-container">
+                <label class="toggle-label">
+                    <input type="checkbox" class="layer-toggle" data-layer="parcels" checked>
+                    Parcels
+                </label>
+            </div>
+            <div class="toggle-container">
+                <label class="toggle-label">
+                    <input type="checkbox" class="layer-toggle" data-layer="agricultural">
+                    Agricultural/Firebreak Areas
+                </label>
+            </div>
+            <div class="toggle-container">
+                <label class="toggle-label">
+                    <input type="checkbox" class="layer-toggle" data-layer="wui">
+                    WUI Zone
+                </label>
+            </div>
+            <div class="toggle-container">
+                <label class="toggle-label">
+                    <input type="checkbox" class="layer-toggle" data-layer="hazard">
+                    Very High Hazard Zone
+                </label>
+            </div>
+            <div class="toggle-container">
+                <label class="toggle-label">
+                    <input type="checkbox" class="layer-toggle" data-layer="structures">
+                    Structures
+                </label>
+            </div>
+            <div class="toggle-container">
+                <label class="toggle-label">
+                    <input type="checkbox" class="layer-toggle" data-layer="firewise">
+                    Firewise Communities
+                </label>
+            </div>
+            <h3 style="font-size: 12px; color: #aaa; margin: 15px 0 5px 0;">Base Layers</h3>
+            <div class="toggle-container">
+                <label class="toggle-label">
+                    <input type="checkbox" class="layer-toggle" data-layer="dark" checked>
+                    Dark
+                </label>
+            </div>
+            <div class="toggle-container">
+                <label class="toggle-label">
+                    <input type="checkbox" class="layer-toggle" data-layer="light">
+                    Light
+                </label>
+            </div>
+            <div class="toggle-container">
+                <label class="toggle-label">
+                    <input type="checkbox" class="layer-toggle" data-layer="satellite">
+                    Satellite
+                </label>
+            </div>
+        </div>
+        
+        <div class="control-section">
+            <h2>Selection Tools</h2>
+            <button class="button" id="draw-rectangle">Draw Rectangle</button>
+            <button class="button" id="clear-selection">Clear Selection</button>
+            <button class="button" id="infer-weights" disabled>Infer Weights from Selection</button>
+        </div>
+    </div>
+    
+    <div class="legend">
+        <div class="legend-title">Fire Risk</div>
+        <div class="legend-gradient"></div>
+        <div class="legend-labels">
+            <span>0.00</span>
+            <span>0.50</span>
+            <span>0.99</span>
+        </div>
+        <div class="legend-item" style="margin-top: 10px;">
+            <div class="legend-box"></div>
+            <span>Selected for Treatment</span>
+        </div>
+    </div>
+
+    <script>
+        // Custom rectangle drawing mode
+        const DrawRectangle = {
+            onSetup(opts) {
+                // Create an empty polygon feature for the rectangle
+                const rectangle = this.newFeature({
+                    type: 'Feature',
+                    properties: {},
+                    geometry: {
+                        type: 'Polygon',
+                        coordinates: [[]]  // empty polygon coordinates array
+                    }
+                });
+                this.addFeature(rectangle);               // add it to the draw canvas
+                this.clearSelectedFeatures();
+                // Disable map zoom on double-click while drawing
+                this.map.doubleClickZoom.disable();
+                this.updateUIClasses({ mouse: 'add' });   // switch cursor to crosshair (add mode)
+                this.setActionableState({ trash: true }); // allow deletion (trash button)
+                return { rectangle, startPoint: null };
+            },
+            onClick(state, e) {
+                // On first click, set start corner coordinate
+                if (!state.startPoint) {
+                    state.startPoint = [e.lngLat.lng, e.lngLat.lat];
+                } else {
+                    // On second click, finish drawing the rectangle
+                    const endPoint = [e.lngLat.lng, e.lngLat.lat];
+                    // Prevent zero-area box: only finish if endPoint is different
+                    if (endPoint[0] !== state.startPoint[0] || endPoint[1] !== state.startPoint[1]) {
+                        this.updateUIClasses({ mouse: 'pointer' });
+                        state.rectangle.updateCoordinate('0.4', ...state.startPoint); // remove temporary close coord
+                        // Switch to simple_select mode to finalize the rectangle
+                        this.changeMode('simple_select', { featuresId: [state.rectangle.id] });
+                    }
+                }
+            },
+            onMouseMove(state, e) {
+                // While moving the mouse, update the opposite corners of the rectangle
+                if (state.startPoint) {
+                    const start = state.startPoint;
+                    const current = [e.lngLat.lng, e.lngLat.lat];
+                    // Update rectangle coordinates: 0.0 = startPoint, 0.1 = top-right, 0.2 = current (opposite corner), 0.3 = bottom-left
+                    state.rectangle.updateCoordinate('0.0', start[0], start[1]);         // start corner
+                    state.rectangle.updateCoordinate('0.1', current[0], start[1]);       // same lat as start, lng from current
+                    state.rectangle.updateCoordinate('0.2', current[0], current[1]);     // opposite corner (current point)
+                    state.rectangle.updateCoordinate('0.3', start[0], current[1]);       // same lng as start, lat from current
+                    state.rectangle.updateCoordinate('0.4', start[0], start[1]);         // close polygon by repeating start
+                }
+            },
+            onStop(state) {
+                // Re-enable double-click zoom once drawing is finished
+                this.map.doubleClickZoom.enable();
+                this.updateUIClasses({ mouse: 'none' });
+                this.activateUIButton();  // reset Draw control UI button states
+                if (!state.rectangle.getCoordinate('0.0')) return;  // no rectangle drawn
+                // If the rectangle has 4 corners (valid polygon), fire the draw.create event
+                if (state.rectangle.isValid()) {
+                    // Remove the redundant closing coordinate before exporting
+                    state.rectangle.removeCoordinate('0.4');
+                    this.map.fire('draw.create', { features: [state.rectangle.toGeoJSON()] });  // trigger event with rectangle
+                } else {
+                    // Invalid rectangle (e.g. zero size) -> delete it
+                    this.deleteFeature([state.rectangle.id], { silent: true });
+                }
+            },
+            toDisplayFeatures(state, geojson, display) {
+                // Only render the rectangle polygon while drawing
+                const isActive = geojson.properties.id === state.rectangle.id;
+                geojson.properties.active = isActive ? 'true' : 'false';
+                if (!isActive) return display(geojson);
+                // Only display the rectangle after the first click (when startPoint exists)
+                if (!state.startPoint) return;
+                return display(geojson);
+            },
+            onTrash(state) {
+                // Handle trash (delete) button – delete the drawn rectangle
+                this.deleteFeature([state.rectangle.id], { silent: true });
+                this.changeMode('simple_select');
+            }
+        };
+
+        // Function to load layer data
+        async function loadLayer(name) {
+            try {
+                const response = await fetch(`/api/${name}`);
+                const geojson = await response.json();
+                if (map.getSource(name)) {
+                    map.getSource(name).setData(geojson);
+                }
+            } catch (error) {
+                console.error(`Error loading ${name} layer:`, error);
+            }
+        }
+
+        // Initialize map
+        mapboxgl.accessToken = '{{ mapbox_token }}' || 'YOUR_MAPBOX_TOKEN';
+        
+        const map = new mapboxgl.Map({
+            container: 'map',
+            style: 'mapbox://styles/mapbox/dark-v11',
+            center: [-119.758714, 34.44195], // Santa Barbara
+            zoom: 11,
+            pitch: 0,
+            bearing: 0
+        });
+        
+        // Initialize drawing with custom rectangle mode
+        const draw = new MapboxDraw({
+            displayControlsDefault: false,
+            modes: {
+                ...MapboxDraw.modes,
+                draw_rectangle: DrawRectangle
+            },
+            controls: {
+                polygon: false,
+                trash: false
+            },
+            styles: [
+                // ACTIVE (being drawn)
+                {
+                    'id': 'gl-draw-polygon-fill-inactive',
+                    'type': 'fill',
+                    'filter': ['all', ['==', 'active', 'false'], ['==', '$type', 'Polygon']],
+                    'paint': {
+                        'fill-color': '#0066ff',
+                        'fill-outline-color': '#0066ff',
+                        'fill-opacity': 1
+                    }
+                },
+                {
+                    'id': 'gl-draw-polygon-stroke-inactive',
+                    'type': 'line',
+                    'filter': ['all', ['==', 'active', 'false'], ['==', '$type', 'Polygon']],
+                    'paint': {
+                        'line-color': '#0066ff',
+                        'line-width': 4
+                    }
+                },
+                // INACTIVE (static, already drawn)
+                {
+                    'id': 'gl-draw-polygon-fill-active',
+                    'type': 'fill',
+                    'filter': ['all', ['==', 'active', 'true'], ['==', '$type', 'Polygon']],
+                    'paint': {
+                        'fill-color': '#0066ff',
+                        'fill-outline-color': '#0066ff',
+                        'fill-opacity': 1
+                    }
+                },
+                {
+                    'id': 'gl-draw-polygon-stroke-active',
+                    'type': 'line',
+                    'filter': ['all', ['==', 'active', 'true'], ['==', '$type', 'Polygon']],
+                    'paint': {
+                        'line-color': '#0066ff',
+                        'line-width': 4
+                    }
+                }
+            ]
+        });
+        map.addControl(draw, 'top-right');  // Add draw control to top-right to ensure it's above other layers
+        
+        // State
+        let currentData = null;
+        let selectedParcels = [];
+        
+        // Weight sliders
+        const weightSliders = document.querySelectorAll('.weight-slider');
+        
+        function updateSliderFill(slider) {
+            const value = slider.value;
+            const max = slider.max;
+            const percentage = (value / max) * 100;
+            slider.style.background = `linear-gradient(to right, #4a90e2 0%, #4a90e2 ${percentage}%, rgba(255, 255, 255, 0.2) ${percentage}%, rgba(255, 255, 255, 0.2) 100%)`;
+        }
+        
+        function normalizeWeights() {
+            const total = Array.from(weightSliders).reduce((sum, slider) => sum + parseFloat(slider.value), 0);
+            
+            weightSliders.forEach(slider => {
+                const normalized = total > 0 ? (parseFloat(slider.value) / total * 100).toFixed(0) : 0;
+                document.getElementById(slider.id + '-value').textContent = normalized + '%';
+            });
+        }
+        
+        weightSliders.forEach(slider => {
+            // Initialize slider fill
+            updateSliderFill(slider);
+            
+            slider.addEventListener('input', () => {
+                updateSliderFill(slider);
+                normalizeWeights();
+            });
+        });
+        
+        // Calculate button
+        document.getElementById('calculate-btn').addEventListener('click', updateScores);
+        
+        // Budget inputs
+        document.getElementById('budget').addEventListener('change', updateMaxParcels);
+        document.getElementById('cost-per-parcel').addEventListener('change', updateMaxParcels);
+        
+        function updateMaxParcels() {
+            const budget = parseFloat(document.getElementById('budget').value) || 0;
+            const costPerParcel = parseFloat(document.getElementById('cost-per-parcel').value) || 1;
+            const maxParcels = Math.floor(budget / costPerParcel);
+            document.getElementById('max-parcels').value = maxParcels;
+            document.getElementById('max-parcels-value').textContent = maxParcels;
+        }
+        
+        // Filters
+        const filters = ['filter-built-1996', 'filter-built-2011', 'filter-neigh1d'];
+        filters.forEach(id => {
+            document.getElementById(id).addEventListener('change', updateScores);
+        });
+        
+        // Update scores function
+        async function updateScores() {
+            const startTime = Date.now();
+            
+            // Show spinner
+            document.getElementById('spinner').style.display = 'block';
+            
+            // Get weights
+            const weights = {};
+            const total = Array.from(weightSliders).reduce((sum, slider) => sum + parseFloat(slider.value), 0);
+            weightSliders.forEach(slider => {
+                weights[slider.id] = total > 0 ? parseFloat(slider.value) / total : 0;
+            });
+            
+            // Get filters
+            const params = {
+                weights: weights,
+                built_after_1996: document.getElementById('filter-built-1996').checked,
+                built_after_2011: document.getElementById('filter-built-2011').checked,
+                neigh1d_max: document.getElementById('filter-neigh1d').checked ? 50 : null,
+                top_n: parseInt(document.getElementById('max-parcels').value)
+            };
+            
+            try {
+                const response = await fetch('/api/score', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(params)
+                });
+                
+                currentData = await response.json();
+                updateMap();
+                
+                // Update stats
+                const totalParcels = currentData.features.length;
+                const selectedCount = currentData.features.filter(f => f.properties.top500).length;
+                const totalRisk = currentData.features
+                    .filter(f => f.properties.top500)
+                    .reduce((sum, f) => sum + f.properties.score, 0);
+                const avgRisk = selectedCount > 0 ? totalRisk / selectedCount : 0;
+                
+                document.getElementById('total-parcels').textContent = totalParcels.toLocaleString();
+                document.getElementById('selected-parcels').textContent = selectedCount.toLocaleString();
+                document.getElementById('total-risk').textContent = totalRisk.toFixed(2);
+                document.getElementById('avg-risk').textContent = avgRisk.toFixed(2);
+                
+            } catch (error) {
+                console.error('Error updating scores:', error);
+            } finally {
+                // Hide spinner
+                document.getElementById('spinner').style.display = 'none';
+            }
+        }
+        
+        // Update map display
+        function updateMap() {
+            if (!currentData) return;
+            
+            // Update source
+            if (map.getSource('parcels')) {
+                map.getSource('parcels').setData(currentData);
+            }
+        }
+        
+        // Rectangle drawing
+        document.getElementById('draw-rectangle').addEventListener('click', () => {
+            // Clear any existing selections
+            draw.deleteAll();
+            // Enter rectangle drawing mode
+            draw.changeMode('draw_rectangle');
+        });
+        
+        document.getElementById('clear-selection').addEventListener('click', () => {
+            draw.deleteAll();
+            selectedParcels = [];
+            document.getElementById('infer-weights').disabled = true;
+        });
+        
+        map.on('draw.create', (e) => {
+            const selection = e.features[0];
+            document.getElementById('infer-weights').disabled = false;
+            
+            // Store selected parcels
+            if (currentData && window.turf) {
+                selectedParcels = currentData.features.filter(feature => {
+                    return turf.booleanIntersects(feature, selection);
+                });
+                
+                // Update stats for selected area
+                const selectedCount = selectedParcels.length;
+                const totalRisk = selectedParcels.reduce((sum, f) => sum + f.properties.score, 0);
+                const avgRisk = selectedCount > 0 ? totalRisk / selectedCount : 0;
+                
+                document.getElementById('selected-parcels').textContent = selectedCount.toLocaleString();
+                document.getElementById('total-risk').textContent = totalRisk.toFixed(2);
+                document.getElementById('avg-risk').textContent = avgRisk.toFixed(2);
+            }
+        });
+        
+        // Add infer weights button handler
+        document.getElementById('infer-weights').addEventListener('click', async () => {
+            // Get the rectangle feature from the draw control
+            const features = draw.getAll().features;
+            if (!features.length) {
+                alert('Draw a rectangle first!');
+                return;
+            }
+
+            const rectangle = features[0].geometry;  // Get the GeoJSON Polygon geometry
+            const maxParcels = parseInt(document.getElementById('max-parcels').value);
+
+            // Show spinner (move this up so it's always visible during the process)
+            document.getElementById('spinner').style.display = 'block';
+
+            try {
+                // Send the rectangle geometry to backend for weight inference
+                const response = await fetch('/api/infer-weights', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        selection: rectangle,
+                        max_parcels: maxParcels
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (!response.ok) {
+                    throw new Error(data.error || response.statusText);
+                }
+                
+                // Update sliders with inferred weights
+                Object.entries(data.weights).forEach(([key, value]) => {
+                    const slider = document.getElementById(key);
+                    if (slider) {
+                        slider.value = value;
+                        updateSliderFill(slider);
+                    }
+                });
+                
+                // Normalize weights and update display
+                normalizeWeights();
+                
+                // No alert for success, just update UI
+                // Recalculate scores with new weights
+                await updateScores();
+                
+            } catch (error) {
+                console.error('Error inferring weights:', error);
+                alert(error.message);
+            } finally {
+                // Hide spinner after all UI updates are done
+                document.getElementById('spinner').style.display = 'none';
+            }
+        });
+        
+        map.on('draw.delete', () => {
+            selectedParcels = [];
+            document.getElementById('infer-weights').disabled = true;
+        });
+        
+        // Export Shapefile
+        document.getElementById('export-shapefile').addEventListener('click', async () => {
+            if (!currentData) return;
+            
+            const selectedFeatures = currentData.features.filter(f => f.properties.top500);
+            const exportData = {
+                type: 'FeatureCollection',
+                features: selectedFeatures
+            };
+            
+            try {
+                const response = await fetch('/api/export-shapefile', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(exportData)
+                });
+                
+                if (!response.ok) {
+                    throw new Error('Export failed');
+                }
+                
+                // Get the blob from the response
+                const blob = await response.blob();
+                
+                // Create a download link
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'fire_risk_selected_parcels.zip';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                window.URL.revokeObjectURL(url);
+                
+            } catch (error) {
+                console.error('Error exporting shapefile:', error);
+                alert('Failed to export shapefile. Please try again.');
+            }
+        });
+        
+        // Layer toggles for basemaps (radio button behavior)
+        document.querySelectorAll('.layer-toggle[data-layer="dark"], .layer-toggle[data-layer="light"], .layer-toggle[data-layer="satellite"]').forEach(toggle => {
+            toggle.addEventListener('change', (e) => {
+                if (e.target.checked) {
+                    // Uncheck other basemap toggles
+                    document.querySelectorAll('.layer-toggle[data-layer="dark"], .layer-toggle[data-layer="light"], .layer-toggle[data-layer="satellite"]').forEach(t => {
+                        if (t !== e.target) t.checked = false;
+                    });
+                    
+                    // Change basemap
+                    const styleMap = {
+                        'dark': 'mapbox://styles/mapbox/dark-v11',
+                        'light': 'mapbox://styles/mapbox/light-v11',
+                        'satellite': 'mapbox://styles/mapbox/satellite-streets-v12'
+                    };
+                    map.setStyle(styleMap[e.target.dataset.layer]);
+                    
+                    // Re-add layers and reload data when style loads
+                    map.once('style.load', () => {
+                        // Re-add parcel source and layers
+                        map.addSource('parcels', {
+                            type: 'geojson',
+                            data: currentData || { type: 'FeatureCollection', features: [] }
+                        });
+                        
+                        map.addLayer({
+                            id: 'parcels-fill',
+                            type: 'fill',
+                            source: 'parcels',
+                            paint: {
+                                'fill-color': [
+                                    'interpolate',
+                                    ['linear'],
+                                    ['get', 'score'],
+                                    0, '#ffffff',
+                                    0.2, '#ffdddd',
+                                    0.4, '#ffaaaa',
+                                    0.6, '#ff6666',
+                                    0.8, '#ff3333',
+                                    1, '#990000'
+                                ],
+                                'fill-opacity': 0.8
+                            }
+                        });
+                        
+                        // Add parcel boundaries layer
+                        map.addLayer({
+                            id: 'parcels-boundary',
+                            type: 'line',
+                            source: 'parcels',
+                            minzoom: 14, // Only show at higher zoom levels
+                            paint: {
+                                'line-color': '#ffffff',
+                                'line-width': 0.5,
+                                'line-opacity': 0.3
+                            }
+                        });
+                        
+                        map.addLayer({
+                            id: 'parcels-top500',
+                            type: 'line',
+                            source: 'parcels',
+                            filter: ['==', ['get', 'top500'], true],
+                            paint: {
+                                'line-color': '#0066ff',
+                                'line-width': 2
+                            }
+                        });
+                        
+                        // Re-add auxiliary layers
+                        const auxiliaryLayers = [
+                            {
+                                id: 'agricultural',
+                                type: 'fill',
+                                paint: {
+                                    'fill-color': '#00ff00',
+                                    'fill-opacity': 0.5
+                                }
+                            },
+                            {
+                                id: 'wui',
+                                type: 'fill',
+                                paint: {
+                                    'fill-color': '#0066ff',
+                                    'fill-opacity': 0.5
+                                }
+                            },
+                            {
+                                id: 'hazard',
+                                type: 'fill',
+                                paint: {
+                                    'fill-color': '#ff9900',
+                                    'fill-opacity': 0.25
+                                }
+                            },
+                            {
+                                id: 'structures',
+                                type: 'circle',
+                                paint: {
+                                    'circle-radius': 2,
+                                    'circle-color': '#000000',
+                                    'circle-opacity': 0.3
+                                }
+                            },
+                            {
+                                id: 'firewise',
+                                type: 'line',
+                                paint: {
+                                    'line-color': '#ff9900',
+                                    'line-width': 2
+                                }
+                            }
+                        ];
+                        
+                        // Add sources and layers for auxiliary data
+                        auxiliaryLayers.forEach(layer => {
+                            map.addSource(layer.id, {
+                                type: 'geojson',
+                                data: { type: 'FeatureCollection', features: [] }
+                            });
+                            
+                            map.addLayer({
+                                id: layer.id,
+                                type: layer.type,
+                                source: layer.id,
+                                layout: { 'visibility': 'none' },
+                                paint: layer.paint
+                            });
+                            
+                            // Load layer data
+                            loadLayer(layer.id);
+                        });
+                        
+                        // Reload parcel data if we have current data
+                        if (currentData) {
+                            updateMap();
+                        } else {
+                            updateScores();
+                        }
+                    });
+                }
+            });
+        });
+        
+        // Other layer toggles
+        document.querySelectorAll('.layer-toggle[data-layer]:not([data-layer="dark"]):not([data-layer="light"]):not([data-layer="satellite"])').forEach(toggle => {
+            toggle.addEventListener('change', (e) => {
+                const layerId = e.target.dataset.layer;
+                const visibility = e.target.checked ? 'visible' : 'none';
+                
+                if (layerId === 'parcels') {
+                    // Toggle both parcel layers
+                    if (map.getLayer('parcels-fill')) {
+                        map.setLayoutProperty('parcels-fill', 'visibility', visibility);
+                    }
+                    if (map.getLayer('parcels-top500')) {
+                        map.setLayoutProperty('parcels-top500', 'visibility', visibility);
+                    }
+                } else if (map.getLayer(layerId)) {
+                    map.setLayoutProperty(layerId, 'visibility', visibility);
+                }
+            });
+        });
+        
+        // Map load
+        map.on('load', () => {
+            // Add sources
+            map.addSource('parcels', {
+                type: 'geojson',
+                data: { type: 'FeatureCollection', features: [] }
+            });
+            
+            // Add parcel fill layer - unclassed choropleth
+            map.addLayer({
+                id: 'parcels-fill',
+                type: 'fill',
+                source: 'parcels',
+                paint: {
+                    'fill-color': [
+                        'interpolate',
+                        ['linear'],
+                        ['get', 'score'],
+                        0, '#ffffff',
+                        0.2, '#ffdddd',
+                        0.4, '#ffaaaa',
+                        0.6, '#ff6666',
+                        0.8, '#ff3333',
+                        1, '#990000'
+                    ],
+                    'fill-opacity': 0.8
+                }
+            });
+
+            // Add parcel boundaries layer
+            map.addLayer({
+                id: 'parcels-boundary',
+                type: 'line',
+                source: 'parcels',
+                minzoom: 14, // Only show at higher zoom levels
+                paint: {
+                    'line-color': '#ffffff',
+                    'line-width': 0.5,
+                    'line-opacity': 0.3
+                }
+            });
+            
+            // Add top parcels outline layer
+            map.addLayer({
+                id: 'parcels-top500',
+                type: 'line',
+                source: 'parcels',
+                filter: ['==', ['get', 'top500'], true],
+                paint: {
+                    'line-color': '#0066ff',
+                    'line-width': 2
+                }
+            });
+            
+            // Add auxiliary layers
+            const auxiliaryLayers = [
+                {
+                    id: 'agricultural',
+                    type: 'fill',
+                    paint: {
+                        'fill-color': '#00ff00',
+                        'fill-opacity': 0.5
+                    }
+                },
+                {
+                    id: 'wui',
+                    type: 'fill',
+                    paint: {
+                        'fill-color': '#0066ff',
+                        'fill-opacity': 0.5
+                    }
+                },
+                {
+                    id: 'hazard',
+                    type: 'fill',
+                    paint: {
+                        'fill-color': '#ff9900',
+                        'fill-opacity': 0.25
+                    }
+                },
+                {
+                    id: 'structures',
+                    type: 'circle',
+                    paint: {
+                        'circle-radius': 2,
+                        'circle-color': '#000000',
+                        'circle-opacity': 0.3
+                    }
+                },
+                {
+                    id: 'firewise',
+                    type: 'line',
+                    paint: {
+                        'line-color': '#ff9900',
+                        'line-width': 2
+                    }
+                }
+            ];
+
+            // Add sources and layers for auxiliary data
+            auxiliaryLayers.forEach(layer => {
+                map.addSource(layer.id, {
+                    type: 'geojson',
+                    data: { type: 'FeatureCollection', features: [] }
+                });
+                
+                map.addLayer({
+                    id: layer.id,
+                    type: layer.type,
+                    source: layer.id,
+                    layout: { 'visibility': 'none' },
+                    paint: layer.paint
+                });
+                
+                // Load layer data
+                loadLayer(layer.id);
+            });
+
+            // Add popup
+            map.on('click', 'parcels-fill', (e) => {
+                // Don't show popup if we're in rectangle drawing mode
+                if (draw.getMode() === 'draw_rectangle') {
+                    return;
+                }
+                
+                const props = e.features[0].properties;
+                const content = `
+                    <h3>Parcel Information</h3>
+                    <p><strong>Year Built:</strong> ${props.yearbuilt || 'Unknown'}</p>
+                    <p><strong>Structures in 1/4 mi window:</strong> ${props.qtrmi_cnt || 'N/A'}</p>
+                    <p><strong>Agricultural % cover in 1/2 mi buffer:</strong> ${props.hlfmi_agri?.toFixed(2) || 'N/A'}</p>
+                    <p><strong>WUI % cover in 1/2 mi buffer:</strong> ${props.hlfmi_wui?.toFixed(2) || 'N/A'}</p>
+                    <p><strong>VHSZ % cover in 1/2 mi buffer:</strong> ${props.hlfmi_vhsz?.toFixed(2) || 'N/A'}</p>
+                    <p><strong>Number of Neighbors:</strong> ${props.num_neighb || 'N/A'}</p>
+                    <p><strong>Score:</strong> ${props.score?.toFixed(3) || 'N/A'}</p>
+                    <p><strong>Rank:</strong> ${props.rank || 'N/A'}</p>
+                `;
+                
+                new mapboxgl.Popup()
+                    .setLngLat(e.lngLat)
+                    .setHTML(content)
+                    .addTo(map);
+            });
+            
+            // Prevent cursor changes when in drawing mode
+            map.on('mouseenter', 'parcels-fill', () => {
+                if (draw.getMode() !== 'draw_rectangle') {
+                    map.getCanvas().style.cursor = 'pointer';
+                }
+            });
+            
+            map.on('mouseleave', 'parcels-fill', () => {
+                if (draw.getMode() !== 'draw_rectangle') {
+                    map.getCanvas().style.cursor = '';
+                }
+            });
+            
+            // Initial calculations
+            normalizeWeights();
+            updateMaxParcels();
+            updateScores();
+            
+            // Initialize all sliders with blue fill
+            document.querySelectorAll('input[type="range"]').forEach(slider => {
+                updateSliderFill(slider);
+            });
+        });
+        
+        // Load Turf.js for spatial operations
+        const script = document.createElement('script');
+        script.src = 'https://unpkg.com/@turf/turf@6/turf.min.js';
+        document.head.appendChild(script);
+    </script>
+</body>
+</html>
