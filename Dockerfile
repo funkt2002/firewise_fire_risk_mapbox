@@ -1,48 +1,48 @@
+# Use the official slim Python image
 FROM python:3.11-slim
 
+# Set working directory
 WORKDIR /app
 
-# Install system dependencies
+# Install OS-level dependencies, including the coinor-cbc solver
 RUN apt-get update && apt-get install -y \
     gcc \
     g++ \
-    postgresql-client \
     libpq-dev \
-    libpq5 \
+    postgresql-client \
     gdal-bin \
     libgdal-dev \
+    coinor-cbc \
+ && rm -rf /var/lib/apt/lists/*
 
-    && rm -rf /var/lib/apt/lists/*
-
-# Copy requirements first for better caching
+# Copy requirements for Python deps
 COPY requirements.txt .
 
 # Install Python dependencies
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt \
+ && pip install --no-cache-dir tabulate gunicorn
 
-# Install additional dependencies
-RUN pip install --no-cache-dir tabulate gunicorn
+# Remove PuLP’s vendored CBC binary so that it will use /usr/bin/cbc instead
+RUN rm -f /usr/local/lib/python3.11/site-packages/pulp/solverdir/cbc/linux/64/cbc || true
 
-# Remove conflicting CBC solver if it exists
-RUN rm -f /usr/local/lib/python3.11/site-packages/pulp/solverdir/cbc/linux/64/cbc
-
-# Copy application files
-COPY app.py .
-COPY railway_debug.py .
+# Copy your application code
+COPY app.py railway_debug.py scripts/ ./scripts/
 COPY templates/ templates/
 COPY static/ static/
-COPY scripts/ scripts/
 
-# Make scripts executable
-RUN chmod +x scripts/*.py scripts/*.sh railway_debug.py
+# Make your scripts executable
+RUN chmod +x scripts/*.py railway_debug.py
 
-# Create a non-root user for security
-RUN useradd --create-home --shell /bin/bash app
-RUN chown -R app:app /app
+# Create a non-root user and give them ownership of /app
+RUN useradd --create-home --shell /bin/bash app \
+ && chown -R app:app /app
+
+# Switch to non-root user
 USER app
 
-# Railway uses PORT environment variable
+# Expose the port Railway will route to
 EXPOSE 5000
 
-# Use gunicorn for production and Railway PORT
-CMD gunicorn --bind 0.0.0.0:${PORT:-5000} --workers 4 --timeout 120 --max-requests 1000 --max-requests-jitter 100 app:app
+# Launch via Gunicorn (Railway sets $PORT)
+CMD ["gunicorn", "--bind", "0.0.0.0:${PORT:-5000}", "--workers", "4", \
+     "--timeout", "120", "--max-requests", "1000", "--max-requests-jitter", "100", "app:app"]

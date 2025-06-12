@@ -15,7 +15,8 @@ import geopandas as gpd
 from shapely.geometry import shape
 import tempfile
 import zipfile
-from pulp import PULP_CBC_CMD, LpProblem, LpMaximize, LpVariable, lpSum, LpStatus, value
+import pulp
+print(pulp.listSolvers(onlyAvailable=True))
 import pandas as pd
 import logging
 import random
