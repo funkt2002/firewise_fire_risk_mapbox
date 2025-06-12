@@ -47,5 +47,4 @@ USER app
 EXPOSE 5000
 
 # Launch via Gunicorn (Railway sets $PORT)
-CMD ["gunicorn", "--bind", "0.0.0.0:${PORT:-5000}", "--workers", "4", \
-     "--timeout", "120", "--max-requests", "1000", "--max-requests-jitter", "100", "app:app"]
+CMD gunicorn --bind 0.0.0.0:$PORT --workers 4 --timeout 120 --max-requests 1000 --max-requests-jitter 100 app:app
