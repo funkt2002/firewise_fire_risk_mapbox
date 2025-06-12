@@ -22,7 +22,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt \
  && pip install --no-cache-dir tabulate gunicorn
 
-# Remove PuLP’s vendored CBC binary so that the system solver is used
+# Remove PuLP's vendored CBC binary so that the system solver is used
 RUN rm -rf /usr/local/lib/python3.11/site-packages/pulp/solverdir/cbc
 
 # Sanity checks: ensure system CBC is available and PuLP can see it
@@ -52,5 +52,4 @@ USER app
 EXPOSE 5000
 
 # Start the application with Gunicorn, using the $PORT environment variable
-CMD ["gunicorn", "--bind", "0.0.0.0:$PORT", "--workers", "4", \
-     "--timeout", "120", "--max-requests", "1000", "--max-requests-jitter", "100", "app:app"]
+CMD gunicorn --bind 0.0.0.0:$PORT --workers 4 --timeout 120 --max-requests 1000 --max-requests-jitter 100 app:app
