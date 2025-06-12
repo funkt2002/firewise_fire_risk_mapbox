@@ -37,6 +37,17 @@ logger.info("🚀 STARTING FIRE RISK CALCULATOR")
 logger.info(f"Python version: {sys.version}")
 logger.info(f"Working directory: {os.getcwd()}")
 
+# Check LP solver availability
+try:
+    available_solvers = pulp.listSolvers(onlyAvailable=True)
+    logger.info(f"Available LP solvers: {available_solvers}")
+    if 'COIN_CMD' not in available_solvers:
+        logger.warning("⚠️ COIN solver not available. LP optimization will not work.")
+    else:
+        logger.info("✅ COIN solver is available")
+except Exception as e:
+    logger.error(f"❌ Error checking LP solvers: {e}")
+
 # Log environment variables
 env_vars = ['DATABASE_URL', 'REDIS_URL', 'MAPBOX_TOKEN', 'PORT']
 logger.info("Environment variables:")
@@ -566,10 +577,10 @@ def infer_weights():
         try:
             import pulp
             from pulp import LpProblem, LpMaximize, LpVariable, lpSum, LpStatus, value
-            current_app.logger.info("pulp and PULP_CBC_CMD imported successfully")
+            current_app.logger.info("pulp and COIN_CMD imported successfully")
         except ImportError as e:
-            current_app.logger.error(f"pulp or PULP_CBC_CMD not available: {e}")
-            return jsonify({"error": f"pulp or PULP_CBC_CMD not available: {e}"}), 500
+            current_app.logger.error(f"pulp or COIN_CMD not available: {e}")
+            return jsonify({"error": f"pulp or COIN_CMD not available: {e}"}), 500
 
         selection = data.get('selection')
         include_vars = data.get('include_vars', [var + '_s' for var in WEIGHT_VARS_BASE])
@@ -770,7 +781,7 @@ def infer_weights():
         prob += lpSum(w_vars[var_base] for var_base in include_vars_base) == 1
 
         # STEP 9: SOLVE THE LINEAR PROGRAMMING PROBLEM
-        solver_result = prob.solve(PULP_CBC_CMD(msg=False))
+        solver_result = prob.solve(COIN_CMD(msg=True))
         
         # Check if solution is optimal
         if LpStatus[prob.status] != 'Optimal':
@@ -918,7 +929,7 @@ def generate_solution_txt(include_vars_base, best_weights, weights_pct, total_sc
     lines.append("")
     
     lines.append("SOLVER DETAILS:")
-    lines.append(f"Solver: PULP_CBC_CMD")
+    lines.append(f"Solver: COIN_CMD")
     lines.append(f"Status: {LpStatus[prob.status]}")
     lines.append(f"Variables: {len(include_vars_base)} (weights)")
     lines.append(f"Constraints: 1 (weight sum = 1)")
