@@ -24,6 +24,7 @@ import random
 
 
 
+
 app = Flask(__name__)
 CORS(app)
 
@@ -1228,6 +1229,214 @@ def health_check():
             "error": str(e),
             "timestamp": time.strftime('%Y-%m-%d %H:%M:%S')
         }), 500
+
+# Add this to your app.py (before the `if __name__ == '__main__':` line)
+
+@app.route('/load-data')
+def load_data_endpoint():
+    """
+    Calls the existing load_data.py script to set up database
+    REMOVE THIS ENDPOINT AFTER USE FOR SECURITY
+    """
+    try:
+        import subprocess
+        import os
+        
+        # Run your existing load_data.py script with table creation and verification
+        result = subprocess.run([
+            'python3', 'scripts/load_data.py', 
+            '--create-tables',  # Creates all tables
+            '--verify'          # Verifies the setup
+        ], 
+        capture_output=True, 
+        text=True, 
+        cwd='/app',
+        env=os.environ.copy()  # Pass all environment variables including DATABASE_URL
+        )
+        
+        return f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Load Data Script Results</title>
+            <style>
+                body {{ 
+                    font-family: monospace; 
+                    padding: 20px; 
+                    background: #1a1a1a; 
+                    color: #e0e0e0; 
+                    line-height: 1.4;
+                }}
+                .success {{ color: #4CAF50; }}
+                .error {{ color: #f44336; }}
+                .info {{ color: #2196F3; }}
+                pre {{ 
+                    background: #2a2a2a; 
+                    padding: 15px; 
+                    border-radius: 4px; 
+                    overflow-x: auto;
+                    white-space: pre-wrap;
+                }}
+                h1 {{ color: #4CAF50; }}
+                h2 {{ color: #2196F3; }}
+            </style>
+        </head>
+        <body>
+            <h1>Load Data Script Results</h1>
+            
+            <h2>Return Code: <span class="{'success' if result.returncode == 0 else 'error'}">{result.returncode}</span></h2>
+            
+            <h2>Output:</h2>
+            <pre class="{'success' if result.returncode == 0 else 'info'}">{result.stdout if result.stdout else 'No output'}</pre>
+            
+            <h2>Errors:</h2>
+            <pre class="error">{result.stderr if result.stderr else 'No errors'}</pre>
+            
+            <h2>Command Executed:</h2>
+            <pre class="info">python3 scripts/load_data.py --create-tables --verify</pre>
+            
+            <p class="{'success' if result.returncode == 0 else 'error'}">
+                <strong>Status: {'SUCCESS' if result.returncode == 0 else 'FAILED'}</strong>
+            </p>
+            
+            <p><strong>Remember to remove this endpoint after use for security!</strong></p>
+        </body>
+        </html>
+        """
+        
+    except Exception as e:
+        import traceback
+        return f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Load Data Error</title>
+            <style>
+                body {{ font-family: monospace; padding: 20px; background: #1a1a1a; color: #e0e0e0; }}
+                .error {{ color: #f44336; }}
+                pre {{ background: #2a2a2a; padding: 15px; border-radius: 4px; }}
+            </style>
+        </head>
+        <body>
+            <h1 class="error">Failed to Run Load Data Script</h1>
+            <h2>Error:</h2>
+            <pre class="error">{str(e)}</pre>
+            <h2>Traceback:</h2>
+            <pre class="error">{traceback.format_exc()}</pre>
+        </body>
+        </html>
+        """
+
+
+@app.route('/load-data-with-options')
+def load_data_with_options():
+    """
+    Calls load_data.py with different options based on URL parameters
+    Examples:
+    /load-data-with-options?action=create-tables
+    /load-data-with-options?action=drop-and-create
+    /load-data-with-options?action=verify-only
+    
+    REMOVE THIS ENDPOINT AFTER USE FOR SECURITY
+    """
+    try:
+        import subprocess
+        import os
+        from flask import request
+        
+        action = request.args.get('action', 'create-tables')
+        
+        # Build command based on action
+        cmd = ['python3', 'scripts/load_data.py']
+        
+        if action == 'create-tables':
+            cmd.extend(['--create-tables', '--verify'])
+            description = "Create tables and verify"
+        elif action == 'drop-and-create':
+            cmd.extend(['--drop-tables', '--create-tables', '--verify'])
+            description = "Drop existing tables, create new ones, and verify"
+        elif action == 'verify-only':
+            cmd.extend(['--verify'])
+            description = "Verify existing database structure"
+        else:
+            return f"<h1>Invalid action: {action}</h1><p>Valid actions: create-tables, drop-and-create, verify-only</p>"
+        
+        # Run the command
+        result = subprocess.run(
+            cmd,
+            capture_output=True, 
+            text=True, 
+            cwd='/app',
+            env=os.environ.copy()
+        )
+        
+        return f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Load Data Results - {action}</title>
+            <style>
+                body {{ 
+                    font-family: monospace; 
+                    padding: 20px; 
+                    background: #1a1a1a; 
+                    color: #e0e0e0; 
+                }}
+                .success {{ color: #4CAF50; }}
+                .error {{ color: #f44336; }}
+                .info {{ color: #2196F3; }}
+                pre {{ 
+                    background: #2a2a2a; 
+                    padding: 15px; 
+                    border-radius: 4px; 
+                    overflow-x: auto;
+                    white-space: pre-wrap;
+                }}
+                h1 {{ color: #4CAF50; }}
+                .nav {{ margin: 20px 0; }}
+                .nav a {{ 
+                    color: #2196F3; 
+                    margin-right: 20px; 
+                    text-decoration: none;
+                    padding: 5px 10px;
+                    border: 1px solid #2196F3;
+                    border-radius: 3px;
+                }}
+                .nav a:hover {{ background: #2196F3; color: #fff; }}
+            </style>
+        </head>
+        <body>
+            <h1>Load Data Results</h1>
+            
+            <div class="nav">
+                <a href="/load-data-with-options?action=create-tables">Create Tables</a>
+                <a href="/load-data-with-options?action=drop-and-create">Drop & Create</a>
+                <a href="/load-data-with-options?action=verify-only">Verify Only</a>
+            </div>
+            
+            <h2>Action: {description}</h2>
+            <h2>Return Code: <span class="{'success' if result.returncode == 0 else 'error'}">{result.returncode}</span></h2>
+            
+            <h3>Output:</h3>
+            <pre class="{'success' if result.returncode == 0 else 'info'}">{result.stdout if result.stdout else 'No output'}</pre>
+            
+            <h3>Errors:</h3>
+            <pre class="error">{result.stderr if result.stderr else 'No errors'}</pre>
+            
+            <h3>Command:</h3>
+            <pre class="info">{' '.join(cmd)}</pre>
+            
+        </body>
+        </html>
+        """
+        
+    except Exception as e:
+        import traceback
+        return f"""
+        <h1>Error</h1>
+        <pre>{str(e)}</pre>
+        <pre>{traceback.format_exc()}</pre>
+        """
 
 
 
