@@ -20,31 +20,67 @@ import pandas as pd
 from pulp import GLPK_CMD
 import logging
 import random
+import sys
 
+# Configure logging for Railway to capture startup issues
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    stream=sys.stdout
+)
+logger = logging.getLogger(__name__)
 
+# Log startup information
+logger.info("🚀 STARTING FIRE RISK CALCULATOR")
+logger.info(f"Python version: {sys.version}")
+logger.info(f"Working directory: {os.getcwd()}")
 
-
+# Log environment variables
+env_vars = ['DATABASE_URL', 'REDIS_URL', 'MAPBOX_TOKEN', 'PORT']
+logger.info("Environment variables:")
+for var in env_vars:
+    value = os.environ.get(var)
+    if var == 'DATABASE_URL' and value:
+        logger.info(f"  {var}: {value[:20]}...")
+    elif value:
+        logger.info(f"  {var}: SET")
+    else:
+        logger.info(f"  {var}: NOT SET")
 
 app = Flask(__name__)
 CORS(app)
+
+logger.info("✅ Flask app and CORS configured")
 
 # Configuration
 app.config['DATABASE_URL'] = os.environ.get('DATABASE_URL', 'postgresql://postgres:postgres@db:5432/firedb')
 app.config['REDIS_URL'] = os.environ.get('REDIS_URL', 'redis://redis:6379')
 app.config['MAPBOX_TOKEN'] = os.environ.get('MAPBOX_TOKEN', '')
 
+logger.info("✅ App configuration loaded")
+
 # Redis setup - make connection lazy to avoid startup issues
 def get_redis():
     """Get Redis connection, with fallback if Redis is not available"""
     try:
-        return redis.from_url(app.config['REDIS_URL'])
+        logger.info("Attempting Redis connection...")
+        conn = redis.from_url(app.config['REDIS_URL'])
+        logger.info("✅ Redis connection successful")
+        return conn
     except Exception as e:
-        print(f"Redis connection failed: {e}")
+        logger.warning(f"⚠️ Redis connection failed: {e}")
         return None
 
 # Database connection
 def get_db():
-   return psycopg2.connect(app.config['DATABASE_URL'], cursor_factory=RealDictCursor)
+    try:
+        logger.info("Attempting database connection...")
+        conn = psycopg2.connect(app.config['DATABASE_URL'], cursor_factory=RealDictCursor)
+        logger.info("✅ Database connection successful")
+        return conn
+    except Exception as e:
+        logger.error(f"❌ Database connection failed: {e}")
+        raise
 
 # Cache decorator with Redis fallback
 def cache_result(expiration=300):
@@ -158,6 +194,8 @@ def get_allowed_distribution_vars(use_quantiled_scores=False, use_quantile=False
         score_vars = get_score_vars(use_quantiled_scores, use_quantile)
         raw_vars = set(RAW_VAR_MAP.values())
         return set(score_vars) | raw_vars | {'num_brns', 'hlfmi_brn'}
+
+logger.info("📋 Defining Flask routes...")
 
 @app.route('/')
 def index():
@@ -1592,104 +1630,6 @@ def load_data_with_options():
         <pre>{traceback.format_exc()}</pre>
         """
 
-# Add this to your app.py (before the `if __name__ == '__main__':` line)
-
-@app.route('/load-data')
-def load_data_endpoint():
-    """
-    Calls the existing load_data.py script to set up database
-    REMOVE THIS ENDPOINT AFTER USE FOR SECURITY
-    """
-    try:
-        import subprocess
-        import os
-        
-        # Run your existing load_data.py script with table creation and verification
-        result = subprocess.run([
-            'python3', 'scripts/load_data.py', 
-            '--create-tables',  # Creates all tables
-            '--verify'          # Verifies the setup
-        ], 
-        capture_output=True, 
-        text=True, 
-        cwd='/app',
-        env=os.environ.copy()  # Pass all environment variables including DATABASE_URL
-        )
-        
-        return f"""
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <title>Load Data Script Results</title>
-            <style>
-                body {{ 
-                    font-family: monospace; 
-                    padding: 20px; 
-                    background: #1a1a1a; 
-                    color: #e0e0e0; 
-                    line-height: 1.4;
-                }}
-                .success {{ color: #4CAF50; }}
-                .error {{ color: #f44336; }}
-                .info {{ color: #2196F3; }}
-                pre {{ 
-                    background: #2a2a2a; 
-                    padding: 15px; 
-                    border-radius: 4px; 
-                    overflow-x: auto;
-                    white-space: pre-wrap;
-                }}
-                h1 {{ color: #4CAF50; }}
-                h2 {{ color: #2196F3; }}
-            </style>
-        </head>
-        <body>
-            <h1>Load Data Script Results</h1>
-            
-            <h2>Return Code: <span class="{'success' if result.returncode == 0 else 'error'}">{result.returncode}</span></h2>
-            
-            <h2>Output:</h2>
-            <pre class="{'success' if result.returncode == 0 else 'info'}">{result.stdout if result.stdout else 'No output'}</pre>
-            
-            <h2>Errors:</h2>
-            <pre class="error">{result.stderr if result.stderr else 'No errors'}</pre>
-            
-            <h2>Command Executed:</h2>
-            <pre class="info">python3 scripts/load_data.py --create-tables --verify</pre>
-            
-            <p class="{'success' if result.returncode == 0 else 'error'}">
-                <strong>Status: {'SUCCESS' if result.returncode == 0 else 'FAILED'}</strong>
-            </p>
-            
-            <p><strong>Remember to remove this endpoint after use for security!</strong></p>
-        </body>
-        </html>
-        """
-        
-    except Exception as e:
-        import traceback
-        return f"""
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <title>Load Data Error</title>
-            <style>
-                body {{ font-family: monospace; padding: 20px; background: #1a1a1a; color: #e0e0e0; }}
-                .error {{ color: #f44336; }}
-                pre {{ background: #2a2a2a; padding: 15px; border-radius: 4px; }}
-            </style>
-        </head>
-        <body>
-            <h1 class="error">Failed to Run Load Data Script</h1>
-            <h2>Error:</h2>
-            <pre class="error">{str(e)}</pre>
-            <h2>Traceback:</h2>
-            <pre class="error">{traceback.format_exc()}</pre>
-        </body>
-        </html>
-        """
-
-
 @app.route('/load-data-with-options')
 def load_data_with_options():
     """
@@ -1802,5 +1742,9 @@ def load_data_with_options():
 
 
 
+logger.info("🎯 All routes defined successfully!")
+logger.info("🚀 Fire Risk Calculator ready to start")
+
 if __name__ == '__main__':
+   logger.info("Starting Flask development server...")
    app.run(debug=True, port=5000)
