@@ -17,7 +17,8 @@ RUN apt-get update && apt-get install -y \
 # Copy requirements and install Python dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-
+RUN rm -f /usr/local/lib/python3.11/site-packages/pulp/solverdir/cbc/linux/64/cbc
+RUN apt-get update && apt-get install -y glpk-utils && rm -rf /var/lib/apt/lists/*
 # Install additional dependencies for data loading
 RUN pip install --no-cache-dir tabulate
 

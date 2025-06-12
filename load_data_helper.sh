@@ -21,13 +21,17 @@ show_usage() {
     echo "  --hazard PATH         Load hazard zones"
     echo "  --structures PATH     Load structures"
     echo "  --firewise PATH       Load Firewise communities"
+    echo "  --fuelbreaks PATH     Load fuel breaks"
+    echo "  --burnscars PATH      Load burn scars"
     echo "  --create-tables       Create database tables"
     echo "  --verify              Verify loaded data"
     echo "  --all PATH_PREFIX     Load all layers (expects files like PATH_PREFIX_parcels.shp)"
+    echo "  --reset               Drop all tables and reload data"
     echo ""
     echo "Examples:"
     echo "  $0 --create-tables --parcels /app/data/parcels.shp --verify"
     echo "  $0 --all /app/data/ventura"
+    echo "  $0 --reset            # Drop all tables and reload data"
     echo ""
 }
 
@@ -35,6 +39,7 @@ show_usage() {
 ARGS=""
 LOAD_ALL=""
 PATH_PREFIX=""
+RESET=""
 
 while [[ $# -gt 0 ]]; do
     case $1 in
@@ -42,6 +47,10 @@ while [[ $# -gt 0 ]]; do
             LOAD_ALL="yes"
             PATH_PREFIX="$2"
             shift 2
+            ;;
+        --reset)
+            RESET="yes"
+            shift
             ;;
         --help|-h)
             show_usage
@@ -54,6 +63,23 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+# If reset is requested, drop all tables first
+if [ "$RESET" = "yes" ]; then
+    echo -e "${YELLOW}Dropping all tables...${NC}"
+    docker-compose exec db psql -U postgres -d firedb -h localhost -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"
+    if [ $? -ne 0 ]; then
+        echo -e "${RED}Failed to drop tables!${NC}"
+        exit 1
+    fi
+    echo -e "${GREEN}Tables dropped successfully${NC}"
+    
+    # If no other arguments provided, use default data path
+    if [ -z "$ARGS" ] && [ -z "$LOAD_ALL" ]; then
+        LOAD_ALL="yes"
+        PATH_PREFIX="./data"
+    fi
+fi
+
 # If loading all, construct the full command
 if [ "$LOAD_ALL" = "yes" ]; then
     echo -e "${YELLOW}Loading all layers with prefix: $PATH_PREFIX${NC}"
@@ -63,12 +89,14 @@ if [ "$LOAD_ALL" = "yes" ]; then
     
     # Check for each file type
     for ext in shp geojson json; do
-        [ -f "${PATH_PREFIX}_parcels.$ext" ] && CMD="$CMD --parcels ${PATH_PREFIX}_parcels.$ext"
-        [ -f "${PATH_PREFIX}_agricultural.$ext" ] && CMD="$CMD --agricultural ${PATH_PREFIX}_agricultural.$ext"
-        [ -f "${PATH_PREFIX}_wui.$ext" ] && CMD="$CMD --wui ${PATH_PREFIX}_wui.$ext"
-        [ -f "${PATH_PREFIX}_hazard.$ext" ] && CMD="$CMD --hazard ${PATH_PREFIX}_hazard.$ext"
-        [ -f "${PATH_PREFIX}_structures.$ext" ] && CMD="$CMD --structures ${PATH_PREFIX}_structures.$ext"
-        [ -f "${PATH_PREFIX}_firewise.$ext" ] && CMD="$CMD --firewise ${PATH_PREFIX}_firewise.$ext"
+        [ -f "${PATH_PREFIX}/parcels.$ext" ] && CMD="$CMD --parcels ${PATH_PREFIX}/parcels.$ext"
+        [ -f "${PATH_PREFIX}/agricultural.$ext" ] && CMD="$CMD --agricultural ${PATH_PREFIX}/agricultural.$ext"
+        [ -f "${PATH_PREFIX}/wui.$ext" ] && CMD="$CMD --wui ${PATH_PREFIX}/wui.$ext"
+        [ -f "${PATH_PREFIX}/hazard.$ext" ] && CMD="$CMD --hazard ${PATH_PREFIX}/hazard.$ext"
+        [ -f "${PATH_PREFIX}/structures.$ext" ] && CMD="$CMD --structures ${PATH_PREFIX}/structures.$ext"
+        [ -f "${PATH_PREFIX}/firewise.$ext" ] && CMD="$CMD --firewise ${PATH_PREFIX}/firewise.$ext"
+        [ -f "${PATH_PREFIX}/fuelbreaks.$ext" ] && CMD="$CMD --fuelbreaks ${PATH_PREFIX}/fuelbreaks.$ext"
+        [ -f "${PATH_PREFIX}/burnscars.$ext" ] && CMD="$CMD --burnscars ${PATH_PREFIX}/burnscars.$ext"
     done
     
     CMD="$CMD --verify"

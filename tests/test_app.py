@@ -41,6 +41,7 @@ class TestScoreCalculation:
                 'hwui_s': 0.7,
                 'hagri_s': 0.6,
                 'hvhsz_s': 0.9,
+                'hfb_s': 0.5,
                 'uphill_s': 0.5,
                 'neigh1d_s': 0.4,
                 'yearbuilt': 1990,
@@ -48,6 +49,7 @@ class TestScoreCalculation:
                 'hlfmi_agri': 0.3,
                 'hlfmi_wui': 0.4,
                 'hlfmi_vhsz': 0.5,
+                'hlfmi_fb': 0.6,
                 'num_neighb': 3
             }
         ]
@@ -60,8 +62,9 @@ class TestScoreCalculation:
                     'hwui_s': 0.2,
                     'hagri_s': 0.15,
                     'hvhsz_s': 0.15,
-                    'uphill_s': 0.15,
-                    'neigh1d_s': 0.15
+                    'hfb_s': 0.1,
+                    'uphill_s': 0.1,
+                    'neigh1d_s': 0.1
                 },
                 'top_n': 500
             })
@@ -100,6 +103,7 @@ class TestScoreCalculation:
                     'hwui_s': 30,
                     'hagri_s': 20,
                     'hvhsz_s': 0,
+                    'hfb_s': 0,
                     'uphill_s': 0,
                     'neigh1d_s': 0
                 }
@@ -118,16 +122,16 @@ class TestWeightInference:
             # Selected parcels
             [
                 {'id': 1, 'qtrmi_s': 0.9, 'hwui_s': 0.3, 'hagri_s': 0.2, 
-                 'hvhsz_s': 0.4, 'uphill_s': 0.1, 'neigh1d_s': 0.2},
+                 'hvhsz_s': 0.4, 'hfb_s': 0.5, 'uphill_s': 0.1, 'neigh1d_s': 0.2},
                 {'id': 2, 'qtrmi_s': 0.8, 'hwui_s': 0.2, 'hagri_s': 0.3,
-                 'hvhsz_s': 0.5, 'uphill_s': 0.2, 'neigh1d_s': 0.1}
+                 'hvhsz_s': 0.5, 'hfb_s': 0.4, 'uphill_s': 0.2, 'neigh1d_s': 0.1}
             ],
             # Non-selected parcels
             [
                 {'id': 3, 'qtrmi_s': 0.2, 'hwui_s': 0.8, 'hagri_s': 0.7,
-                 'hvhsz_s': 0.1, 'uphill_s': 0.9, 'neigh1d_s': 0.8},
+                 'hvhsz_s': 0.1, 'hfb_s': 0.2, 'uphill_s': 0.9, 'neigh1d_s': 0.8},
                 {'id': 4, 'qtrmi_s': 0.1, 'hwui_s': 0.9, 'hagri_s': 0.8,
-                 'hvhsz_s': 0.2, 'uphill_s': 0.8, 'neigh1d_s': 0.9}
+                 'hvhsz_s': 0.2, 'hfb_s': 0.3, 'uphill_s': 0.8, 'neigh1d_s': 0.9}
             ]
         ]
         
@@ -156,10 +160,10 @@ class TestWeightInference:
         # Mock parcels with no clear pattern
         mock_db.fetchall.side_effect = [
             [{'id': i, **{var: np.random.random() for var in 
-              ['qtrmi_s', 'hwui_s', 'hagri_s', 'hvhsz_s', 'uphill_s', 'neigh1d_s']}}
+              ['qtrmi_s', 'hwui_s', 'hagri_s', 'hvhsz_s', 'hfb_s', 'uphill_s', 'neigh1d_s']}}
              for i in range(5)],
             [{'id': i+5, **{var: np.random.random() for var in 
-              ['qtrmi_s', 'hwui_s', 'hagri_s', 'hvhsz_s', 'uphill_s', 'neigh1d_s']}}
+              ['qtrmi_s', 'hwui_s', 'hagri_s', 'hvhsz_s', 'hfb_s', 'uphill_s', 'neigh1d_s']}}
              for i in range(5)]
         ]
         
@@ -210,12 +214,13 @@ class TestPerformance:
                 'score': 0.5,
                 'rank': i,
                 **{var: 0.5 for var in ['qtrmi_s', 'hwui_s', 'hagri_s', 
-                                        'hvhsz_s', 'uphill_s', 'neigh1d_s']},
+                                        'hvhsz_s', 'hfb_s', 'uphill_s', 'neigh1d_s']},
                 'yearbuilt': 2000,
                 'qtrmi_cnt': 1,
                 'hlfmi_agri': 0.1,
                 'hlfmi_wui': 0.1,
                 'hlfmi_vhsz': 0.1,
+                'hlfmi_fb': 0.1,
                 'num_neighb': 1
             }
             for i in range(70000)
@@ -243,6 +248,7 @@ class TestIntegration:
                 'hwui_s': 0.5,
                 'hagri_s': 0.5,
                 'hvhsz_s': 0.5,
+                'hfb_s': 0.4,
                 'uphill_s': 0.5,
                 'neigh1d_s': 0.5,
                 'yearbuilt': 1990,
@@ -250,6 +256,7 @@ class TestIntegration:
                 'hlfmi_agri': 0.1,
                 'hlfmi_wui': 0.1,
                 'hlfmi_vhsz': 0.1,
+                'hlfmi_fb': 0.2,
                 'num_neighb': 1
             }
             for i in range(20)
@@ -257,17 +264,17 @@ class TestIntegration:
         
         response = client.post('/api/score',
             json={'weights': {var: 1/6 for var in 
-                  ['qtrmi_s', 'hwui_s', 'hagri_s', 'hvhsz_s', 'uphill_s', 'neigh1d_s']}})
+                  ['qtrmi_s', 'hwui_s', 'hagri_s', 'hvhsz_s', 'hfb_s', 'uphill_s', 'neigh1d_s']}})
         assert response.status_code == 200
         
         # Step 2: Draw selection and infer weights
         mock_db.fetchall.side_effect = [
             # Selected (high qtrmi_s)
             [{'id': i, 'qtrmi_s': 0.8, 'hwui_s': 0.5, 'hagri_s': 0.5,
-              'hvhsz_s': 0.5, 'uphill_s': 0.5, 'neigh1d_s': 0.5} for i in range(5)],
+              'hvhsz_s': 0.5, 'hfb_s': 0.4, 'uphill_s': 0.5, 'neigh1d_s': 0.5} for i in range(5)],
             # Non-selected (low qtrmi_s)
             [{'id': i, 'qtrmi_s': 0.2, 'hwui_s': 0.5, 'hagri_s': 0.5,
-              'hvhsz_s': 0.5, 'uphill_s': 0.5, 'neigh1d_s': 0.5} for i in range(5)]
+              'hvhsz_s': 0.5, 'hfb_s': 0.2, 'uphill_s': 0.5, 'neigh1d_s': 0.5} for i in range(5)]
         ]
         
         response = client.post('/api/infer-weights',

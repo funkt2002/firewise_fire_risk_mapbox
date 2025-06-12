@@ -6,7 +6,7 @@ from tabulate import tabulate
 DB_NAME = os.getenv('POSTGRES_DB', 'firedb')
 DB_USER = os.getenv('POSTGRES_USER', 'postgres')
 DB_PASSWORD = os.getenv('POSTGRES_PASSWORD', 'postgres')
-DB_HOST = os.getenv('POSTGRES_HOST', 'localhost')
+DB_HOST = os.getenv('POSTGRES_HOST', 'db')
 DB_PORT = os.getenv('POSTGRES_PORT', '5432')
 
 # Connect to the database

@@ -8,6 +8,8 @@
     <link href='https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.css' rel='stylesheet' />
     <script src='https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-draw/v1.4.0/mapbox-gl-draw.js'></script>
     <link rel='stylesheet' href='https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-draw/v1.4.0/mapbox-gl-draw.css' type='text/css' />
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <script src="{{ url_for('static', filename='welcome-popup.js') }}"></script>
     <style>
         * {
             box-sizing: border-box;
@@ -60,6 +62,29 @@
             font-weight: 500;
             margin-bottom: 15px;
             color: #fff;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        
+        .help-btn {
+            background: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            font-size: 14px;
+            font-weight: bold;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background-color 0.3s;
+        }
+        
+        .help-btn:hover {
+            background: #45a049;
         }
         
         h2 {
@@ -95,6 +120,11 @@
             margin-bottom: 5px;
             font-size: 12px;
             color: #ccc;
+        }
+
+        .exclude-weight {
+            margin-left: 8px;
+            accent-color: #ff6666;
         }
         
         .slider-value {
@@ -182,7 +212,8 @@
             color: #fff;
         }
         
-        .toggle-label input[type="checkbox"] {
+        .toggle-label input[type="checkbox"],
+        .toggle-label input[type="radio"] {
             width: 14px;
             height: 14px;
             margin-right: 8px;
@@ -225,6 +256,8 @@
             border-color: #45a049;
         }
         
+
+        
         /* Input styling */
         .input-group {
             display: flex;
@@ -253,28 +286,6 @@
             outline: none;
             border-color: rgba(255, 255, 255, 0.4);
             background: rgba(255, 255, 255, 0.15);
-        }
-        
-        /* Select dropdown styling */
-        select {
-            width: 100%;
-            padding: 6px 10px;
-            background: rgba(255, 255, 255, 0.1);
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            border-radius: 3px;
-            color: #fff;
-            font-size: 12px;
-            cursor: pointer;
-        }
-        
-        select:focus {
-            outline: none;
-            border-color: rgba(255, 255, 255, 0.4);
-        }
-        
-        select option {
-            background: #2a2a2a;
-            color: #fff;
         }
         
         /* Stats display */
@@ -347,6 +358,8 @@
             border: 2px solid #0066ff;
             border-radius: 1px;
         }
+        
+
         
         /* Popup styling */
         .mapboxgl-popup-content {
@@ -422,6 +435,117 @@
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
         }
+        
+        /* Distribution plot button styling */
+        .dist-button {
+            background: #444;
+            color: #fff;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            padding: 4px 8px;
+            font-size: 11px;
+            cursor: pointer;
+            border-radius: 3px;
+            margin: 2px;
+            transition: all 0.2s;
+        }
+        
+        .dist-button:hover {
+            background: #555;
+            border-color: rgba(255, 255, 255, 0.3);
+        }
+        
+        .dist-buttons {
+            display: flex;
+            justify-content: flex-end;
+            margin-top: 4px;
+        }
+        
+        /* Modal styling */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.7);
+        }
+        
+        .modal-content {
+            background-color: #1a1a1a;
+            margin: 5% auto;
+            padding: 20px;
+            border: 1px solid rgba(255,255,255,0.2);
+            width: 80%;
+            max-width: 800px;
+            border-radius: 4px;
+        }
+        
+        .close-modal {
+            color: #aaa;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        
+        .close-modal:hover {
+            color: #fff;
+        }
+        
+        /* Measure tool styling */
+        .measure-container {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            z-index: 1;
+            background: rgba(26, 26, 26, 0.95);
+            padding: 10px;
+            border-radius: 4px;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+        }
+
+        .distance-container {
+            color: #fff;
+            font-size: 12px;
+            line-height: 18px;
+            margin: 0;
+            padding: 5px 10px;
+            border-radius: 3px;
+        }
+
+        .filter-group {
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .filter-group label {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            min-width: 150px;
+        }
+
+        .filter-group select {
+            padding: 5px;
+            border-radius: 4px;
+            border: 1px solid #ccc;
+            background-color: #fff;
+            color: #333;
+        }
+
+        .filter-group select:disabled {
+            background-color: #f5f5f5;
+            color: #999;
+        }
+
+        .slider.disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
     </style>
 </head>
 <body>
@@ -434,7 +558,7 @@
     </div>
     
     <div class="control-panel">
-        <h1>Fire Risk Calculator</h1>
+        <h1>Fire Risk Calculator <button class="help-btn" onclick="WelcomePopup.showWelcome()" title="Show Tutorial">?</button></h1>
         
         <div class="control-section">
             <h2>Risk Factor Weights</h2>
@@ -448,17 +572,18 @@
                 </div>
                 <div class="slider-container">
                     <div class="slider-label">
+                        <span>Distance to Nearest Neighbor</span>
+                        <span class="slider-value" id="neigh1d_s-value">0%</span>
+                    </div>
+                    <div style="font-size: 10px; color: #888; margin-bottom: 3px;">Only Includes Parcels with Structure Data</div>
+                    <input type="range" class="slider weight-slider" id="neigh1d_s" min="0" max="100" value="0">
+                </div>
+                <div class="slider-container">
+                    <div class="slider-label">
                         <span>WUI coverage percentage (1/2 mile)</span>
                         <span class="slider-value" id="hwui_s-value">10%</span>
                     </div>
                     <input type="range" class="slider weight-slider" id="hwui_s" min="0" max="100" value="10">
-                </div>
-                <div class="slider-container">
-                    <div class="slider-label">
-                        <span>Agriculture/Firebreak coverage (1/2 mile)</span>
-                        <span class="slider-value" id="hagri_s-value">10%</span>
-                    </div>
-                    <input type="range" class="slider weight-slider" id="hagri_s" min="0" max="100" value="10">
                 </div>
                 <div class="slider-container">
                     <div class="slider-label">
@@ -469,17 +594,31 @@
                 </div>
                 <div class="slider-container">
                     <div class="slider-label">
-                        <span>Mean Parcel Slope</span>
-                        <span class="slider-value" id="uphill_s-value">0%</span>
+                        <span>Agricultural Coverage (1/2 Mile)</span>
+                        <span class="slider-value" id="hagri_s-value">11%</span>
                     </div>
-                    <input type="range" class="slider weight-slider" id="uphill_s" min="0" max="100" value="0">
+                    <input type="range" class="slider weight-slider" id="hagri_s" min="0" max="100" value="11">
                 </div>
                 <div class="slider-container">
                     <div class="slider-label">
-                        <span>Distance to Nearest Neighbor</span>
-                        <span class="slider-value" id="neigh1d_s-value">0%</span>
+                        <span>Fuel Break coverage (1/2 mile)</span>
+                        <span class="slider-value" id="hfb_s-value">10%</span>
                     </div>
-                    <input type="range" class="slider weight-slider" id="neigh1d_s" min="0" max="100" value="0">
+                    <input type="range" class="slider weight-slider" id="hfb_s" min="0" max="100" value="10">
+                </div>
+                <div class="slider-container">
+                    <div class="slider-label">
+                        <span>Mean Parcel Slope</span>
+                        <span class="slider-value" id="slope_s-value">0%</span>
+                    </div>
+                    <input type="range" class="slider weight-slider" id="slope_s" min="0" max="100" value="0">
+                </div>
+                <div class="slider-container">
+                    <div class="slider-label">
+                        <span>Burn Scar Coverage (1/2 mile)</span>
+                        <span class="slider-value" id="hbrn_s-value">9%</span>
+                    </div>
+                    <input type="range" class="slider weight-slider" id="hbrn_s" min="0" max="100" value="9">
                 </div>
                 <div style="text-align: right; margin-top: 5px;">
                     <span style="font-size: 11px; color: #888;">Max Parcels: <span id="max-parcels-value">500</span></span>
@@ -502,6 +641,73 @@
                 <input type="number" class="number-input" id="max-parcels" value="500" min="1" max="5000">
             </div>
             <button class="button primary" id="calculate-btn">Calculate</button>
+            <button class="button" id="score-distribution-btn" style="margin-top: 8px;">Calculated Risk Score Distribution</button>
+        </div>
+
+        <div class="control-section">
+            <h2>Weight Inference</h2>
+            <p style="font-size: 11px; color: #aaa; margin-bottom: 10px;">Draw an area to optimize weights for selected parcels</p>
+            <button class="button" id="draw-rectangle">Draw Rectangle</button>
+            <button class="button" id="draw-lasso">Draw Lasso</button>
+            <button class="button" id="clear-selection">Clear Selection</button>
+            <button class="button" id="infer-weights" disabled>Infer Weights from Selection</button>
+            <button class="button" id="download-lp-btn" disabled>Download .LP File</button>
+            <button class="button" id="view-solution-btn" disabled>View Solution Report</button>
+            <p style="font-size: 10px; color: #888; margin: 5px 0;">↑ Maximizes total risk score within selection</p>
+            
+            <div style="margin-top: 15px; border-top: 1px solid #444; padding-top: 10px;">
+                <h3 style="font-size: 12px; color: #aaa; margin-bottom: 8px;">Exclude Variables from Scoring & Weight Inference:</h3>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 5px; font-size: 11px;">
+                    <div class="toggle-container">
+                        <label class="toggle-label">
+                            <input type="checkbox" class="exclude-weight" id="exclude-qtrmi_s" title="Exclude from calculation">
+                            Quarter Mile Incidents
+                        </label>
+                    </div>
+                    <div class="toggle-container">
+                        <label class="toggle-label">
+                            <input type="checkbox" class="exclude-weight" id="exclude-neigh1d_s" title="Exclude from calculation">
+                            Nearest Neighbor Distance
+                        </label>
+                    </div>
+                    <div class="toggle-container">
+                        <label class="toggle-label">
+                            <input type="checkbox" class="exclude-weight" id="exclude-hwui_s" title="Exclude from calculation">
+                            WUI Coverage
+                        </label>
+                    </div>
+                    <div class="toggle-container">
+                        <label class="toggle-label">
+                            <input type="checkbox" class="exclude-weight" id="exclude-hvhsz_s" title="Exclude from calculation">
+                            Fire Hazard Zone Coverage
+                        </label>
+                    </div>
+                    <div class="toggle-container">
+                        <label class="toggle-label">
+                            <input type="checkbox" class="exclude-weight" id="exclude-hagri_s" title="Exclude from calculation">
+                            Agricultural Coverage
+                        </label>
+                    </div>
+                    <div class="toggle-container">
+                        <label class="toggle-label">
+                            <input type="checkbox" class="exclude-weight" id="exclude-hfb_s" title="Exclude from calculation">
+                            Fuel Break Coverage
+                        </label>
+                    </div>
+                    <div class="toggle-container">
+                        <label class="toggle-label">
+                            <input type="checkbox" class="exclude-weight" id="exclude-slope_s" title="Exclude from calculation">
+                            Mean Parcel Slope
+                        </label>
+                    </div>
+                    <div class="toggle-container">
+                        <label class="toggle-label">
+                            <input type="checkbox" class="exclude-weight" id="exclude-hbrn_s" title="Exclude from calculation">
+                            Burn Scar Coverage
+                        </label>
+                    </div>
+                </div>
+            </div>
         </div>
         
         <div class="control-section">
@@ -523,29 +729,148 @@
                     <span>Avg Risk:</span>
                     <span class="stats-value" id="avg-risk">0.82</span>
                 </div>
+                <div class="stats-row" id="normalization-row" style="display: none;">
+                    <span>Normalization:</span>
+                    <span class="stats-value" id="normalization-mode">Global</span>
+                </div>
             </div>
             <button class="button" id="export-shapefile">Export Shapefile</button>
         </div>
         
         <div class="control-section">
             <h2>Filters</h2>
-            <div class="toggle-container">
-                <label class="toggle-label">
-                    <input type="checkbox" id="filter-built-1996">
-                    Exclude parcels built after 1996
-                </label>
+            <div style="margin-bottom: 15px;">
+                <h3 style="font-size: 12px; color: #aaa; margin-bottom: 8px;">Score Type:</h3>
+                <div class="toggle-container">
+                    <label class="toggle-label">
+                        <input type="radio" name="score-type" id="use-basic-scores" value="basic">
+                        Basic Min-Max Scores
+                    </label>
+                </div>
+                <div class="toggle-container">
+                    <label class="toggle-label">
+                        <input type="radio" name="score-type" id="use-quantiled-scores" value="quantiled" checked>
+                        Robust Min-Max Scores
+                    </label>
+                </div>
+                <div class="toggle-container">
+                    <label class="toggle-label">
+                        <input type="radio" name="score-type" id="use-quantile" value="quantile">
+                        Quantile Scores
+                    </label>
+                </div>
             </div>
-            <div class="toggle-container">
-                <label class="toggle-label">
-                    <input type="checkbox" id="filter-built-2011">
-                    Exclude parcels built after 2011
-                </label>
+            
+            <div style="margin-bottom: 15px;">
+                <h3 style="font-size: 12px; color: #aaa; margin-bottom: 8px;">Normalization:</h3>
+                <div class="toggle-container">
+                    <label class="toggle-label">
+                        <input type="checkbox" id="use-local-normalization">
+                        Renormalize scores for filtered data
+                    </label>
+                </div>
+                <div id="local-norm-info" style="font-size: 11px; color: #888; margin-top: 4px; display: none;">
+                    <div id="local-norm-status"></div>
+                </div>
             </div>
-            <div class="toggle-container">
-                <label class="toggle-label">
-                    <input type="checkbox" id="filter-neigh1d">
-                    Only parcels with neighbor distance ≤ 50
-                </label>
+            
+            <div style="margin-bottom: 15px;">
+                <h3 style="font-size: 12px; color: #aaa; margin-bottom: 8px;">Exclude parcels without:</h3>
+                <div class="toggle-container">
+                    <label class="toggle-label">
+                        <input type="checkbox" id="filter-wui-min30-enabled">
+                        WUI Coverage
+                    </label>
+                </div>
+                <div class="toggle-container">
+                    <label class="toggle-label">
+                        <input type="checkbox" id="filter-vhsz-min10-enabled">
+                        Fire Hazards Coverage
+                    </label>
+                </div>
+                <div class="toggle-container">
+                    <label class="toggle-label">
+                        <input type="checkbox" id="filter-brns-enabled">
+                        No Burn Scars
+                    </label>
+                </div>
+
+
+            </div>
+
+            <div>
+                <h3 style="font-size: 12px; color: #aaa; margin-bottom: 8px;">Filter Parcels out based on:</h3>
+                <div class="input-group" style="display: flex; align-items: center; margin-bottom: 8px; font-size: 12px;">
+                    <input type="checkbox" id="filter-yearbuilt-enabled" style="margin-right: 8px; vertical-align: middle;">
+                    <span style="white-space: nowrap; vertical-align: middle;">Built after year:</span>
+                    <input type="number" class="number-input" id="filter-yearbuilt" min="1800" max="2024" value="1996" style="margin-left: 8px; width: 80px; vertical-align: middle;">
+                </div>
+                <div class="toggle-container" style="margin-left: 20px; margin-bottom: 8px;">
+                    <label class="toggle-label">
+                        <input type="checkbox" id="filter-yearbuilt-exclude-unknown">
+                        Exclude Unknown Year Built
+                    </label>
+                </div>
+                <div class="input-group" style="display: flex; align-items: center; margin-bottom: 8px; font-size: 12px;">
+                    <input type="checkbox" id="filter-strcnt-enabled" style="margin-right: 8px; vertical-align: middle;">
+                    <span style="white-space: nowrap; vertical-align: middle;">Minimum Number of Structures</span>
+                    <input type="number" class="number-input" id="filter-strcnt" value="1" min="0" style="margin-left: 8px; width: 80px; vertical-align: middle;">
+                </div>
+                <div class="input-group" style="display: flex; align-items: center; margin-bottom: 8px; font-size: 12px;">
+                    <input type="checkbox" id="filter-neigh1d-enabled" style="margin-right: 8px; vertical-align: middle;">
+                    <span style="white-space: nowrap; vertical-align: middle;">Nearest neighboring structure distance</span>
+                    <input type="number" class="number-input" id="filter-neigh1d" min="0" max="1000" value="50" style="margin-left: 8px; width: 80px; vertical-align: middle;">
+                </div>
+            </div>
+
+            <div class="input-group" id="aspect-exclude-list" style="display: flex; flex-direction: column; align-items: flex-start; margin-top: 8px; font-size: 12px;">
+                <label style="font-weight: bold; margin-bottom: 4px;">Exclude Aspect Directions</label>
+                <div style="display: flex; flex-direction: row; gap: 18px; justify-content: flex-start; width: 100%;">
+                    <div style="display: flex; flex-direction: column; align-items: center;">
+                        <input type="checkbox" class="aspect-exclude" id="aspect-N" value="N" style="vertical-align: middle;">
+                        <label for="aspect-N" style="font-size: 11px; color: #ccc; margin-top: 2px;">N</label>
+                    </div>
+                    <div style="display: flex; flex-direction: column; align-items: center;">
+                        <input type="checkbox" class="aspect-exclude" id="aspect-NE" value="NE" style="vertical-align: middle;">
+                        <label for="aspect-NE" style="font-size: 11px; color: #ccc; margin-top: 2px;">NE</label>
+                    </div>
+                    <div style="display: flex; flex-direction: column; align-items: center;">
+                        <input type="checkbox" class="aspect-exclude" id="aspect-E" value="E" style="vertical-align: middle;">
+                        <label for="aspect-E" style="font-size: 11px; color: #ccc; margin-top: 2px;">E</label>
+                    </div>
+                    <div style="display: flex; flex-direction: column; align-items: center;">
+                        <input type="checkbox" class="aspect-exclude" id="aspect-SE" value="SE" style="vertical-align: middle;">
+                        <label for="aspect-SE" style="font-size: 11px; color: #ccc; margin-top: 2px;">SE</label>
+                    </div>
+                    <div style="display: flex; flex-direction: column; align-items: center;">
+                        <input type="checkbox" class="aspect-exclude" id="aspect-S" value="S" style="vertical-align: middle;">
+                        <label for="aspect-S" style="font-size: 11px; color: #ccc; margin-top: 2px;">S</label>
+                    </div>
+                    <div style="display: flex; flex-direction: column; align-items: center;">
+                        <input type="checkbox" class="aspect-exclude" id="aspect-SW" value="SW" style="vertical-align: middle;">
+                        <label for="aspect-SW" style="font-size: 11px; color: #ccc; margin-top: 2px;">SW</label>
+                    </div>
+                    <div style="display: flex; flex-direction: column; align-items: center;">
+                        <input type="checkbox" class="aspect-exclude" id="aspect-W" value="W" style="vertical-align: middle;">
+                        <label for="aspect-W" style="font-size: 11px; color: #ccc; margin-top: 2px;">W</label>
+                    </div>
+                    <div style="display: flex; flex-direction: column; align-items: center;">
+                        <input type="checkbox" class="aspect-exclude" id="aspect-NW" value="NW" style="vertical-align: middle;">
+                        <label for="aspect-NW" style="font-size: 11px; color: #ccc; margin-top: 2px;">NW</label>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="control-section">
+            <h2>Spatial Filter</h2>
+            <p style="font-size: 11px; color: #aaa; margin-bottom: 10px;">Draw an area to only show parcels within that boundary</p>
+            <button class="button" id="subset-rectangle">Draw Rectangle</button>
+            <button class="button" id="subset-lasso">Draw Lasso</button>
+            <button class="button" id="clear-subset">Clear Filter</button>
+            <button class="button primary" id="filter-parcels" disabled>Filter Parcels</button>
+            <div id="subset-indicator" style="font-size: 11px; color: #4CAF50; margin-top: 8px; display: none;">
+                ✓ Spatial filter active
             </div>
         </div>
         
@@ -557,10 +882,22 @@
                     Parcels
                 </label>
             </div>
+            <div class="toggle-container" style="margin-left: 20px; margin-bottom: 10px;">
+                <label class="toggle-label" style="font-size: 12px; color: #ccc;">
+                    Opacity:
+                    <input type="range" id="parcels-opacity" min="0" max="100" value="80" style="width: 100px; margin-left: 8px;">
+                </label>
+            </div>
             <div class="toggle-container">
                 <label class="toggle-label">
                     <input type="checkbox" class="layer-toggle" data-layer="agricultural">
-                    Agricultural/Firebreak Areas
+                    Agriculture
+                </label>
+            </div>
+            <div class="toggle-container">
+                <label class="toggle-label">
+                    <input type="checkbox" class="layer-toggle" data-layer="fuelbreaks">
+                    Fuel Breaks
                 </label>
             </div>
             <div class="toggle-container">
@@ -573,7 +910,7 @@
                 <label class="toggle-label">
                     <input type="checkbox" class="layer-toggle" data-layer="hazard">
                     Very High Hazard Zone
-                </label>
+                </label> 
             </div>
             <div class="toggle-container">
                 <label class="toggle-label">
@@ -585,6 +922,12 @@
                 <label class="toggle-label">
                     <input type="checkbox" class="layer-toggle" data-layer="firewise">
                     Firewise Communities
+                </label>
+            </div>
+            <div class="toggle-container">
+                <label class="toggle-label">
+                    <input type="checkbox" class="layer-toggle" data-layer="burnscars">
+                    Burn Scars
                 </label>
             </div>
             <h3 style="font-size: 12px; color: #aaa; margin: 15px 0 5px 0;">Base Layers</h3>
@@ -599,7 +942,7 @@
                     <input type="checkbox" class="layer-toggle" data-layer="light">
                     Light
                 </label>
-            </div>
+            </div> 
             <div class="toggle-container">
                 <label class="toggle-label">
                     <input type="checkbox" class="layer-toggle" data-layer="satellite">
@@ -607,22 +950,19 @@
                 </label>
             </div>
         </div>
-        
-        <div class="control-section">
-            <h2>Selection Tools</h2>
-            <button class="button" id="draw-rectangle">Draw Rectangle</button>
-            <button class="button" id="clear-selection">Clear Selection</button>
-            <button class="button" id="infer-weights" disabled>Infer Weights from Selection</button>
-        </div>
     </div>
     
+    <!-- Add measure tool container -->
+    <div id="measure-container" class="measure-container">
+        <div id="distance" class="distance-container"></div>
+    </div>
+
     <div class="legend">
         <div class="legend-title">Fire Risk</div>
         <div class="legend-gradient"></div>
         <div class="legend-labels">
             <span>0.00</span>
-            <span>0.50</span>
-            <span>0.99</span>
+            <span>1.00</span>
         </div>
         <div class="legend-item" style="margin-top: 10px;">
             <div class="legend-box"></div>
@@ -630,89 +970,240 @@
         </div>
     </div>
 
+    <!-- Add modal for distribution plots -->
+    <div id="dist-modal" class="modal">
+        <div class="modal-content">
+            <span class="close-modal">&times;</span>
+            <div id="dist-plot"></div>
+        </div>
+    </div>
+
+    <!-- Solution Report Modal -->
+    <div id="solution-modal" class="modal">
+        <div class="modal-content" style="max-width: 95%; width: 1200px; max-height: 90vh;">
+            <span class="close-modal" id="close-solution-modal">&times;</span>
+            <h2 style="margin: 0 0 15px 0; color: #fff; font-size: 18px;">Infer Weights Solution</h2>
+            <pre id="solution-text" style="
+                white-space: pre-wrap; 
+                font-family: 'Courier New', monospace; 
+                font-size: 11px; 
+                line-height: 1.4; 
+                max-height: 70vh; 
+                overflow-y: auto; 
+                background: #2a2a2a; 
+                padding: 15px; 
+                border-radius: 4px; 
+                color: #e0e0e0;
+                margin: 0;
+                border: 1px solid rgba(255,255,255,0.2);
+            "></pre>
+        </div>
+    </div>
+
     <script>
         // Custom rectangle drawing mode
         const DrawRectangle = {
             onSetup(opts) {
-                // Create an empty polygon feature for the rectangle
                 const rectangle = this.newFeature({
                     type: 'Feature',
                     properties: {},
                     geometry: {
                         type: 'Polygon',
-                        coordinates: [[]]  // empty polygon coordinates array
+                        coordinates: [[]]
                     }
                 });
-                this.addFeature(rectangle);               // add it to the draw canvas
+                this.addFeature(rectangle);
                 this.clearSelectedFeatures();
-                // Disable map zoom on double-click while drawing
                 this.map.doubleClickZoom.disable();
-                this.updateUIClasses({ mouse: 'add' });   // switch cursor to crosshair (add mode)
-                this.setActionableState({ trash: true }); // allow deletion (trash button)
+                this.updateUIClasses({ mouse: 'add' });
+                this.setActionableState({ trash: true });
                 return { rectangle, startPoint: null };
             },
             onClick(state, e) {
-                // On first click, set start corner coordinate
                 if (!state.startPoint) {
                     state.startPoint = [e.lngLat.lng, e.lngLat.lat];
                 } else {
-                    // On second click, finish drawing the rectangle
                     const endPoint = [e.lngLat.lng, e.lngLat.lat];
-                    // Prevent zero-area box: only finish if endPoint is different
                     if (endPoint[0] !== state.startPoint[0] || endPoint[1] !== state.startPoint[1]) {
                         this.updateUIClasses({ mouse: 'pointer' });
-                        state.rectangle.updateCoordinate('0.4', ...state.startPoint); // remove temporary close coord
-                        // Switch to simple_select mode to finalize the rectangle
+                        state.rectangle.updateCoordinate('0.4', ...state.startPoint);
                         this.changeMode('simple_select', { featuresId: [state.rectangle.id] });
                     }
                 }
             },
             onMouseMove(state, e) {
-                // While moving the mouse, update the opposite corners of the rectangle
                 if (state.startPoint) {
                     const start = state.startPoint;
                     const current = [e.lngLat.lng, e.lngLat.lat];
-                    // Update rectangle coordinates: 0.0 = startPoint, 0.1 = top-right, 0.2 = current (opposite corner), 0.3 = bottom-left
-                    state.rectangle.updateCoordinate('0.0', start[0], start[1]);         // start corner
-                    state.rectangle.updateCoordinate('0.1', current[0], start[1]);       // same lat as start, lng from current
-                    state.rectangle.updateCoordinate('0.2', current[0], current[1]);     // opposite corner (current point)
-                    state.rectangle.updateCoordinate('0.3', start[0], current[1]);       // same lng as start, lat from current
-                    state.rectangle.updateCoordinate('0.4', start[0], start[1]);         // close polygon by repeating start
+                    state.rectangle.updateCoordinate('0.0', start[0], start[1]);
+                    state.rectangle.updateCoordinate('0.1', current[0], start[1]);
+                    state.rectangle.updateCoordinate('0.2', current[0], current[1]);
+                    state.rectangle.updateCoordinate('0.3', start[0], current[1]);
+                    state.rectangle.updateCoordinate('0.4', start[0], start[1]);
                 }
             },
             onStop(state) {
-                // Re-enable double-click zoom once drawing is finished
                 this.map.doubleClickZoom.enable();
                 this.updateUIClasses({ mouse: 'none' });
-                this.activateUIButton();  // reset Draw control UI button states
-                if (!state.rectangle.getCoordinate('0.0')) return;  // no rectangle drawn
-                // If the rectangle has 4 corners (valid polygon), fire the draw.create event
+                this.activateUIButton();
+                if (!state.rectangle.getCoordinate('0.0')) return;
                 if (state.rectangle.isValid()) {
-                    // Remove the redundant closing coordinate before exporting
                     state.rectangle.removeCoordinate('0.4');
-                    this.map.fire('draw.create', { features: [state.rectangle.toGeoJSON()] });  // trigger event with rectangle
+                    this.map.fire('draw.create', { features: [state.rectangle.toGeoJSON()] });
                 } else {
-                    // Invalid rectangle (e.g. zero size) -> delete it
                     this.deleteFeature([state.rectangle.id], { silent: true });
                 }
             },
             toDisplayFeatures(state, geojson, display) {
-                // Only render the rectangle polygon while drawing
                 const isActive = geojson.properties.id === state.rectangle.id;
                 geojson.properties.active = isActive ? 'true' : 'false';
                 if (!isActive) return display(geojson);
-                // Only display the rectangle after the first click (when startPoint exists)
                 if (!state.startPoint) return;
                 return display(geojson);
             },
             onTrash(state) {
-                // Handle trash (delete) button – delete the drawn rectangle
                 this.deleteFeature([state.rectangle.id], { silent: true });
                 this.changeMode('simple_select');
             }
         };
 
-        // Function to load layer data
+        // Custom lasso drawing mode with fixed keyboard handling
+        const DrawLasso = {
+            onSetup(opts) {
+                const lasso = this.newFeature({
+                    type: 'Feature',
+                    properties: {},
+                    geometry: {
+                        type: 'Polygon',
+                        coordinates: [[]]
+                    }
+                });
+                this.addFeature(lasso);
+                this.clearSelectedFeatures();
+                this.map.doubleClickZoom.disable();
+                this.updateUIClasses({ mouse: 'crosshair' });
+                this.setActionableState({ trash: true });
+
+                const state = { 
+                    lasso, 
+                    points: [], 
+                    startPoint: null,
+                    mode: 'draw_lasso'
+                };
+
+                const keydownHandler = (e) => {
+                    if (e.key === 'Escape' || e.key === 'Enter') {
+                        if (state.points && state.points.length >= 3) {
+                            const coordinates = [...state.points];
+                            coordinates.push(coordinates[0]);
+                            
+                            for (let i = 0; i < coordinates.length; i++) {
+                                state.lasso.updateCoordinate(`0.${i}`, ...coordinates[i]);
+                            }
+                            
+                            if (state.lasso.isValid()) {
+                                this.map.fire('draw.create', { features: [state.lasso.toGeoJSON()] });
+                            }
+                        }
+                        this.changeMode('simple_select');
+                    }
+                };
+
+                document.addEventListener('keydown', keydownHandler);
+                state.keydownHandler = keydownHandler;
+
+                return state;
+            },
+            onClick(state, e) {
+                const point = [e.lngLat.lng, e.lngLat.lat];
+                
+                if (!state.startPoint) {
+                    state.startPoint = point;
+                    state.points.push(point);
+                } else {
+                    const startPixel = this.map.project(state.startPoint);
+                    const currentPixel = this.map.project(point);
+                    const distance = Math.sqrt(
+                        Math.pow(startPixel.x - currentPixel.x, 2) + 
+                        Math.pow(startPixel.y - currentPixel.y, 2)
+                    );
+                    
+                    if (distance < 10 && state.points.length >= 3) {
+                        state.points.push(state.startPoint);
+                        this.updateLasso(state);
+                        
+                        if (state.lasso.isValid()) {
+                            this.map.fire('draw.create', { features: [state.lasso.toGeoJSON()] });
+                        }
+                        this.changeMode('simple_select');
+                    } else {
+                        state.points.push(point);
+                        this.updateLasso(state);
+                    }
+                }
+            },
+            onMouseMove(state, e) {
+                if (state.points.length > 0) {
+                    const currentPoints = [...state.points, [e.lngLat.lng, e.lngLat.lat]];
+                    this.updateLasso(state, currentPoints);
+                }
+            },
+            updateLasso(state, points = state.points) {
+                if (points.length < 3) return;
+                
+                const coordinates = [...points];
+                if (coordinates[0] !== coordinates[coordinates.length - 1]) {
+                    coordinates.push(coordinates[0]);
+                }
+                
+                for (let i = 0; i < coordinates.length; i++) {
+                    state.lasso.updateCoordinate(`0.${i}`, ...coordinates[i]);
+                }
+            },
+            onStop(state) {
+                this.map.doubleClickZoom.enable();
+                this.updateUIClasses({ mouse: 'none' });
+                this.activateUIButton();
+                
+                if (state.keydownHandler) {
+                    document.removeEventListener('keydown', state.keydownHandler);
+                }
+                
+                if (state.points.length < 3) {
+                    this.deleteFeature([state.lasso.id], { silent: true });
+                    return;
+                }
+                
+                const coordinates = [...state.points];
+                coordinates.push(coordinates[0]);
+                
+                for (let i = 0; i < coordinates.length; i++) {
+                    state.lasso.updateCoordinate(`0.${i}`, ...coordinates[i]);
+                }
+                
+                if (state.lasso.isValid()) {
+                    this.map.fire('draw.create', { features: [state.lasso.toGeoJSON()] });
+                } else {
+                    this.deleteFeature([state.lasso.id], { silent: true });
+                }
+            },
+            toDisplayFeatures(state, geojson, display) {
+                const isActive = geojson.properties.id === state.lasso.id;
+                geojson.properties.active = isActive ? 'true' : 'false';
+                if (!isActive) return display(geojson);
+                if (state.points.length < 2) return;
+                return display(geojson);
+            },
+            onTrash(state) {
+                if (state.keydownHandler) {
+                    document.removeEventListener('keydown', state.keydownHandler);
+                }
+                this.deleteFeature([state.lasso.id], { silent: true });
+                this.changeMode('simple_select');
+            }
+        };
+
+        // Helper functions
         async function loadLayer(name) {
             try {
                 const response = await fetch(`/api/${name}`);
@@ -725,114 +1216,26 @@
             }
         }
 
-        // Initialize map
-        mapboxgl.accessToken = '{{ mapbox_token }}' || 'YOUR_MAPBOX_TOKEN';
-        
-        const map = new mapboxgl.Map({
-            container: 'map',
-            style: 'mapbox://styles/mapbox/dark-v11',
-            center: [-119.758714, 34.44195], // Santa Barbara
-            zoom: 11,
-            pitch: 0,
-            bearing: 0
-        });
-        
-        // Initialize drawing with custom rectangle mode
-        const draw = new MapboxDraw({
-            displayControlsDefault: false,
-            modes: {
-                ...MapboxDraw.modes,
-                draw_rectangle: DrawRectangle
-            },
-            controls: {
-                polygon: false,
-                trash: false
-            },
-            styles: [
-                // ACTIVE (being drawn)
-                {
-                    'id': 'gl-draw-polygon-fill-inactive',
-                    'type': 'fill',
-                    'filter': ['all', ['==', 'active', 'false'], ['==', '$type', 'Polygon']],
-                    'paint': {
-                        'fill-color': '#0066ff',
-                        'fill-outline-color': '#0066ff',
-                        'fill-opacity': 1
-                    }
-                },
-                {
-                    'id': 'gl-draw-polygon-stroke-inactive',
-                    'type': 'line',
-                    'filter': ['all', ['==', 'active', 'false'], ['==', '$type', 'Polygon']],
-                    'paint': {
-                        'line-color': '#0066ff',
-                        'line-width': 4
-                    }
-                },
-                // INACTIVE (static, already drawn)
-                {
-                    'id': 'gl-draw-polygon-fill-active',
-                    'type': 'fill',
-                    'filter': ['all', ['==', 'active', 'true'], ['==', '$type', 'Polygon']],
-                    'paint': {
-                        'fill-color': '#0066ff',
-                        'fill-outline-color': '#0066ff',
-                        'fill-opacity': 1
-                    }
-                },
-                {
-                    'id': 'gl-draw-polygon-stroke-active',
-                    'type': 'line',
-                    'filter': ['all', ['==', 'active', 'true'], ['==', '$type', 'Polygon']],
-                    'paint': {
-                        'line-color': '#0066ff',
-                        'line-width': 4
-                    }
-                }
-            ]
-        });
-        map.addControl(draw, 'top-right');  // Add draw control to top-right to ensure it's above other layers
-        
-        // State
-        let currentData = null;
-        let selectedParcels = [];
-        
-        // Weight sliders
-        const weightSliders = document.querySelectorAll('.weight-slider');
-        
         function updateSliderFill(slider) {
             const value = slider.value;
             const max = slider.max;
             const percentage = (value / max) * 100;
             slider.style.background = `linear-gradient(to right, #4a90e2 0%, #4a90e2 ${percentage}%, rgba(255, 255, 255, 0.2) ${percentage}%, rgba(255, 255, 255, 0.2) 100%)`;
         }
-        
+
         function normalizeWeights() {
-            const total = Array.from(weightSliders).reduce((sum, slider) => sum + parseFloat(slider.value), 0);
+            const total = Array.from(weightSliders).reduce((sum, slider) => {
+                const isExcluded = document.getElementById(`exclude-${slider.id}`).checked;
+                return sum + (isExcluded ? 0 : parseFloat(slider.value));
+            }, 0);
             
             weightSliders.forEach(slider => {
-                const normalized = total > 0 ? (parseFloat(slider.value) / total * 100).toFixed(0) : 0;
+                const isExcluded = document.getElementById(`exclude-${slider.id}`).checked;
+                const normalized = total > 0 && !isExcluded ? (parseFloat(slider.value) / total * 100).toFixed(0) : 0;
                 document.getElementById(slider.id + '-value').textContent = normalized + '%';
             });
         }
-        
-        weightSliders.forEach(slider => {
-            // Initialize slider fill
-            updateSliderFill(slider);
-            
-            slider.addEventListener('input', () => {
-                updateSliderFill(slider);
-                normalizeWeights();
-            });
-        });
-        
-        // Calculate button
-        document.getElementById('calculate-btn').addEventListener('click', updateScores);
-        
-        // Budget inputs
-        document.getElementById('budget').addEventListener('change', updateMaxParcels);
-        document.getElementById('cost-per-parcel').addEventListener('change', updateMaxParcels);
-        
+
         function updateMaxParcels() {
             const budget = parseFloat(document.getElementById('budget').value) || 0;
             const costPerParcel = parseFloat(document.getElementById('cost-per-parcel').value) || 1;
@@ -840,47 +1243,300 @@
             document.getElementById('max-parcels').value = maxParcels;
             document.getElementById('max-parcels-value').textContent = maxParcels;
         }
-        
-        // Filters
-        const filters = ['filter-built-1996', 'filter-built-2011', 'filter-neigh1d'];
-        filters.forEach(id => {
-            document.getElementById(id).addEventListener('change', updateScores);
-        });
-        
-        // Update scores function
-        async function updateScores() {
-            const startTime = Date.now();
+
+        function getSelectedAspectDirections() {
+            return Array.from(aspectExcludeCheckboxes)
+                .filter(cb => cb.checked)
+                .map(cb => cb.value);
+        }
+
+        function getCurrentFilters() {
+            return {
+                yearbuilt_max: document.getElementById('filter-yearbuilt-enabled').checked ? 
+                    parseInt(document.getElementById('filter-yearbuilt').value) : null,
+                exclude_yearbuilt_unknown: document.getElementById('filter-yearbuilt-exclude-unknown').checked,
+                neigh1d_max: document.getElementById('filter-neigh1d-enabled').checked ? 
+                    parseInt(document.getElementById('filter-neigh1d').value) : null,
+                strcnt_min: document.getElementById('filter-strcnt-enabled').checked ? 
+                    parseInt(document.getElementById('filter-strcnt').value) : null,
+                exclude_wui_min30: document.getElementById('filter-wui-min30-enabled').checked,
+                exclude_vhsz_min10: document.getElementById('filter-vhsz-min10-enabled').checked,
+                exclude_no_brns: document.getElementById('filter-brns-enabled').checked,
+
+                use_quantiled_scores: document.getElementById('use-quantiled-scores').checked,
+                use_quantile: document.getElementById('use-quantile').checked,
+                use_local_normalization: document.getElementById('use-local-normalization').checked,
+                subset_area: subsetArea
+            };
+        }
+
+        function getActiveScoreVariable(baseVar) {
+            const useQuantile = document.getElementById('use-quantile').checked;
+            const useQuantiled = document.getElementById('use-quantiled-scores').checked;
+            if (useQuantile) {
+                return baseVar + '_z';
+            } else if (useQuantiled) {
+                return baseVar + '_q';
+            } else {
+                return baseVar + '_s';
+            }
+        }
+
+        function createPopupContent(props) {
+            const useQuantile = document.getElementById('use-quantile').checked;
+            const useQuantiled = document.getElementById('use-quantiled-scores').checked;
+            const suffix = useQuantile ? '_z' : (useQuantiled ? '_q' : '_s');
+            const scoreType = useQuantile ? 'Quantile' : (useQuantiled ? 'Robust Min-Max' : 'Basic Min-Max');
             
-            // Show spinner
+            return `
+                <div style="max-height: 300px; overflow-y: auto; padding-right: 10px;">
+                    <h3>${props.apn || 'Parcel Information'}</h3>
+                    
+                    <div style="margin: 10px 0; padding: 8px; background: rgba(255,255,255,0.1); border-radius: 4px;">
+                        <p style="margin: 0;"><strong>Total Score:</strong> ${props.score?.toFixed(3) || 'N/A'}</p>
+                        <p style="margin: 5px 0 0 0;"><strong>Rank:</strong> ${props.rank || 'N/A'}</p>
+                    </div>
+
+                    <div style="margin: 10px 0;">
+                        <h4 style="margin: 0 0 5px 0; font-size: 12px; color: #aaa;">Risk Factor Scores (${scoreType})</h4>
+                        <p><strong>Structures (1/4 mi):</strong> ${props['qtrmi' + suffix]?.toFixed(3) || 'N/A'}</p>
+                        <p><strong>WUI Coverage (1/2 mi):</strong> ${props['hwui' + suffix]?.toFixed(3) || 'N/A'}</p>
+                        <p><strong>Agriculture Coverage (1/2 mi):</strong> ${props['hagri' + suffix]?.toFixed(3) || 'N/A'}</p>
+                        <p><strong>Fire Hazard Coverage (1/2 mi):</strong> ${props['hvhsz' + suffix]?.toFixed(3) || 'N/A'}</p>
+                        <p><strong>Firebreak Coverage (1/2 mi):</strong> ${props['hfb' + suffix]?.toFixed(3) || 'N/A'}</p>
+                        <p><strong>Slope Score:</strong> ${props['slope' + suffix]?.toFixed(3) || 'N/A'}</p>
+                        <p><strong>Neighbor Distance Score:</strong> ${props['neigh1d' + suffix]?.toFixed(3) || 'N/A'}</p>
+                        <p><strong>Burn Scar Coverage (1/2 mi):</strong> ${props['hbrn' + suffix]?.toFixed(3) || 'N/A'}</p>
+                    </div>
+
+                    <div style="margin: 10px 0;">
+                        <h4 style="margin: 0 0 5px 0; font-size: 12px; color: #aaa;">Raw Values</h4>
+                        <p><strong>Nearest Neighbor Distance:</strong> ${props.neigh1_d?.toFixed(2) || 'N/A'} ft</p>
+                        <p><strong>Structures in 1/4 mi:</strong> ${props.qtrmi_cnt || 'N/A'}</p>
+                        <p><strong>Number of Burn Scars:</strong> ${props.num_brns || 'N/A'}</p>
+                        <p><strong>Parcel Slope:</strong> ${props.avg_slope?.toFixed(2) || 'N/A'}°</p>
+                        <p><strong>WUI % (1/2 mi):</strong> ${props.hlfmi_wui?.toFixed(2) || 'N/A'}%</p>
+                        <p><strong>Fire VHSZ % (1/2 mi):</strong> ${props.hlfmi_vhsz?.toFixed(2) || 'N/A'}%</p>
+                        <p><strong>Year Built:</strong> ${props.yearbuilt || 'Unknown'}</p>
+                        <p><strong>Max Slope:</strong> ${props.max_slope?.toFixed(2) || 'N/A'}°</p>
+                        <p><strong>Agricultural % (1/2 mi):</strong> ${props.hlfmi_agri?.toFixed(2) || 'N/A'}%</p>
+                        <p><strong>Firebreak % (1/2 mi):</strong> ${props.hlfmi_fb?.toFixed(2) || 'N/A'}%</p>
+                        <p><strong>Burn Scar % (1/2 mi, Raw):</strong> ${props.hlfmi_brn?.toFixed(2) || 'N/A'}%</p>
+                        <p><strong>Number of Neighbors:</strong> ${props.num_neighb || 'N/A'}</p>
+                        <p><strong>Structure Count:</strong> ${props.strcnt || 'N/A'}</p>
+                        <p><strong>Burn Scar % (1/2 mi):</strong> ${props.hbrn_s?.toFixed(2) || 'N/A'}%</p>
+                        <p><strong>Perimeter:</strong> ${props.perimeter?.toFixed(2) || 'N/A'} ft</p>
+                        <p><strong>Elevation:</strong> ${props.par_elev?.toFixed(2) || 'N/A'} ft</p>
+                        <p><strong>Aspect:</strong> ${props.par_aspe_1 || 'N/A'}</p>
+                    </div>
+                </div>
+            `;
+        }
+
+        function createBurnscarPopupContent(props) {
+            return `
+                <div style="color: #ffffff; font-family: Arial, sans-serif; max-width: 300px;">
+                    <h3 style="margin: 0 0 10px 0; color: #cc7722; border-bottom: 2px solid #cc7722; padding-bottom: 5px;">
+                        ${props.incidentna || 'Unknown Fire'} Fire
+                    </h3>
+                    <div style="margin: 10px 0;">
+                        <p><strong>Fire Year:</strong> ${props.fireyear ? Math.round(props.fireyear) : 'Unknown'}</p>
+                        <p><strong>Acres Burned:</strong> ${props.gisacres ? props.gisacres.toLocaleString() + ' acres' : 'Unknown'}</p>
+                        <p><strong>Fire ID:</strong> ${props.id || 'N/A'}</p>
+                    </div>
+                </div>
+            `;
+        }
+
+        // Initialize map
+        mapboxgl.accessToken = '{{ mapbox_token }}' || 'YOUR_MAPBOX_TOKEN';
+        
+        const map = new mapboxgl.Map({
+            container: 'map',
+            style: 'mapbox://styles/mapbox/dark-v11',
+            center: [-119.758714, 34.44195],
+            zoom: 11,
+            pitch: 0,
+            bearing: 0
+        });
+
+        // Initialize drawing
+        const draw = new MapboxDraw({
+            displayControlsDefault: false,
+            modes: {
+                ...MapboxDraw.modes,
+                draw_rectangle: DrawRectangle,
+                draw_lasso: DrawLasso
+            },
+            controls: {
+                polygon: false,
+                trash: false
+            },
+            styles: [
+                {
+                    'id': 'gl-draw-polygon-fill-inactive',
+                    'type': 'fill',
+                    'filter': ['all', ['==', 'active', 'false'], ['==', '$type', 'Polygon']],
+                    'paint': {
+                        'fill-color': '#ffcc00',
+                        'fill-outline-color': '#ffcc00',
+                        'fill-opacity': 0.3
+                    }
+                },
+                {
+                    'id': 'gl-draw-polygon-stroke-inactive',
+                    'type': 'line',
+                    'filter': ['all', ['==', 'active', 'false'], ['==', '$type', 'Polygon']],
+                    'paint': {
+                        'line-color': '#ffcc00',
+                        'line-width': 2
+                    }
+                },
+                {
+                    'id': 'gl-draw-polygon-fill-active',
+                    'type': 'fill',
+                    'filter': ['all', ['==', 'active', 'true'], ['==', '$type', 'Polygon']],
+                    'paint': {
+                        'fill-color': '#ffcc00',
+                        'fill-outline-color': '#ffcc00',
+                        'fill-opacity': 0.3
+                    }
+                },
+                {
+                    'id': 'gl-draw-polygon-stroke-active',
+                    'type': 'line',
+                    'filter': ['all', ['==', 'active', 'true'], ['==', '$type', 'Polygon']],
+                    'paint': {
+                        'line-color': '#ffcc00',
+                        'line-width': 2
+                    }
+                }
+            ]
+        });
+        map.addControl(draw, 'top-right');
+
+        // State variables
+        let currentData = null;
+        let selectedParcels = [];
+        let measureMode = false;
+        let measurePoints = [];
+        let measureLine = null;
+        let subsetArea = null;
+        
+        // Variables to store solution files content
+        let currentLpContent = null;
+        let currentTxtContent = null;
+
+        // Get DOM elements
+        const weightSliders = document.querySelectorAll('.weight-slider');
+        const aspectExcludeCheckboxes = document.querySelectorAll('.aspect-exclude');
+        const modal = document.getElementById('dist-modal');
+        const closeModal = document.getElementsByClassName('close-modal')[0];
+        const measureButton = document.createElement('button');
+        measureButton.className = 'button';
+        measureButton.textContent = 'Measure Distance';
+        measureButton.style.marginBottom = '10px';
+        document.getElementById('measure-container').insertBefore(measureButton, document.getElementById('distance'));
+
+        // Raw variable mapping for distribution plots
+        const rawVarMap = {
+            'qtrmi': 'qtrmi_cnt',
+            'hwui': 'hlfmi_wui',
+            'hagri': 'hlfmi_agri',
+            'hvhsz': 'hlfmi_vhsz',
+            'hfb': 'hlfmi_fb',
+            'slope': 'slope_s',
+            'neigh1d': 'neigh1_d',
+            'hbrn': 'hlfmi_brn'
+        };
+
+        // Variable name mapping for readable titles
+        const varNameMap = {
+            'qtrmi_cnt': 'Quarter Mile Count',
+            'hlfmi_wui': 'WUI Score',
+            'hlfmi_agri': 'Agriculture Score',
+            'hlfmi_vhsz': 'Very High Fire Hazard',
+            'hlfmi_fb': 'Fuel Break Score',
+            'slope_s': 'Slope Score',
+            'neigh1_d': 'Neighbor Distance',
+            'hlfmi_brn': 'Burn Score',
+            'qtrmi_s': 'Quarter Mile Score',
+            'qtrmi_q': 'Quarter Mile Score (Robust Min-Max)',
+            'qtrmi_z': 'Quarter Mile Score (Quantile)',
+            'hwui_s': 'WUI Score',
+            'hwui_q': 'WUI Score (Robust Min-Max)',
+            'hwui_z': 'WUI Score (Quantile)',
+            'hagri_s': 'Agriculture Score',
+            'hagri_q': 'Agriculture Score (Robust Min-Max)',
+            'hagri_z': 'Agriculture Score (Quantile)',
+            'hvhsz_s': 'Very High Fire Hazard Score',
+            'hvhsz_q': 'Very High Fire Hazard Score (Robust Min-Max)',
+            'hvhsz_z': 'Very High Fire Hazard Score (Quantile)',
+            'hfb_s': 'Fuel Break Score',
+            'hfb_q': 'Fuel Break Score (Robust Min-Max)',
+            'hfb_z': 'Fuel Break Score (Quantile)',
+            'slope_s': 'Slope Score',
+            'slope_q': 'Slope Score (Robust Min-Max)',
+            'slope_z': 'Slope Score (Quantile)',
+            'neigh1d_s': 'Neighbor Distance Score',
+            'neigh1d_q': 'Neighbor Distance Score (Robust Min-Max)',
+            'neigh1d_z': 'Neighbor Distance Score (Quantile)',
+            'hbrn_s': 'Burn Score',
+            'hbrn_q': 'Burn Score (Robust Min-Max)',
+            'hbrn_z': 'Burn Score (Quantile)'
+        };
+
+        // Update scores function with quantiled scores support
+        async function updateScores() {
             document.getElementById('spinner').style.display = 'block';
             
-            // Get weights
             const weights = {};
-            const total = Array.from(weightSliders).reduce((sum, slider) => sum + parseFloat(slider.value), 0);
+            const total = Array.from(weightSliders).reduce((sum, slider) => {
+                const isExcluded = document.getElementById(`exclude-${slider.id}`).checked;
+                return sum + (isExcluded ? 0 : parseFloat(slider.value));
+            }, 0);
+            
             weightSliders.forEach(slider => {
-                weights[slider.id] = total > 0 ? parseFloat(slider.value) / total : 0;
+                const isExcluded = document.getElementById(`exclude-${slider.id}`).checked;
+                weights[slider.id] = total > 0 && !isExcluded ? parseFloat(slider.value) / total : 0;
             });
             
-            // Get filters
-            const params = {
-                weights: weights,
-                built_after_1996: document.getElementById('filter-built-1996').checked,
-                built_after_2011: document.getElementById('filter-built-2011').checked,
-                neigh1d_max: document.getElementById('filter-neigh1d').checked ? 50 : null,
-                top_n: parseInt(document.getElementById('max-parcels').value)
-            };
+            // Get all current filters including quantiled scores setting
+            const filters = getCurrentFilters();
             
             try {
                 const response = await fetch('/api/score', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(params)
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        weights,
+
+                        use_quantiled_scores: filters.use_quantiled_scores,
+                        use_quantile: filters.use_quantile,
+                        max_parcels: parseInt(document.getElementById('max-parcels').value),
+                        subset_area: filters.subset_area,
+                        // Include all other filters
+                        ...filters
+                    })
                 });
                 
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({}));
+                    console.error('Backend error:', errorData);
+                    throw new Error(`HTTP error! status: ${response.status}, details: ${JSON.stringify(errorData)}`);
+                }
+                
                 currentData = await response.json();
+                
+                // Execute the console log statements from the backend
+                if (currentData.console_log) {
+                    eval(currentData.console_log);
+                }
+                
                 updateMap();
                 
-                // Update stats
                 const totalParcels = currentData.features.length;
                 const selectedCount = currentData.features.filter(f => f.properties.top500).length;
                 const totalRisk = currentData.features
@@ -893,92 +1549,365 @@
                 document.getElementById('total-risk').textContent = totalRisk.toFixed(2);
                 document.getElementById('avg-risk').textContent = avgRisk.toFixed(2);
                 
+                // Update normalization mode display
+                if (currentData.normalization) {
+                    document.getElementById('normalization-row').style.display = 'flex';
+                    const normMode = currentData.normalization.mode;
+                    if (normMode === 'local') {
+                        document.getElementById('normalization-mode').textContent = 
+                            `Local (${currentData.normalization.total_parcels_after_filter} parcels)`;
+                        document.getElementById('local-norm-info').style.display = 'block';
+                        document.getElementById('local-norm-status').textContent = 
+                            `✓ Scores renormalized on ${currentData.normalization.total_parcels_after_filter} filtered parcels`;
+                    } else {
+                        document.getElementById('normalization-mode').textContent = 
+                            `Global (${currentData.normalization.total_parcels_after_filter} of ${currentData.normalization.total_parcels_before_filter} parcels)`;
+                        document.getElementById('local-norm-info').style.display = 'none';
+                    }
+                }
+                
+                // Auto-refresh score distribution plot if the modal is open
+                if (modal.style.display === 'block') {
+                    refreshScoreDistributionPlot();
+                }
+                
             } catch (error) {
                 console.error('Error updating scores:', error);
             } finally {
-                // Hide spinner
                 document.getElementById('spinner').style.display = 'none';
             }
         }
         
-        // Update map display
         function updateMap() {
             if (!currentData) return;
             
-            // Update source
             if (map.getSource('parcels')) {
                 map.getSource('parcels').setData(currentData);
             }
         }
-        
-        // Rectangle drawing
+
+        function exitMeasureMode() {
+            measureMode = false;
+            measureButton.textContent = 'Measure Distance';
+            if (measureLine) {
+                map.removeLayer('measure-line');
+                map.removeSource('measure-line');
+            }
+            measurePoints = [];
+            document.getElementById('distance').textContent = '';
+        }
+
+        async function showDistribution(variable) {
+            // Always fetch distribution with current filters
+            const filters = getCurrentFilters();
+            
+            // If this is a score variable (ends with _s, _q, or _z), use the correct suffix based on settings
+            if (variable.endsWith('_s') || variable.endsWith('_q') || variable.endsWith('_z')) {
+                const baseVar = variable.slice(0, -2); // Remove _s, _q, or _z
+                if (filters.use_quantile) {
+                    variable = baseVar + '_z';
+                } else if (filters.use_quantiled_scores) {
+                    variable = baseVar + '_q';
+                } else {
+                    variable = baseVar + '_s';
+                }
+            } else {
+                // For raw variables, use the mapped name
+                variable = rawVarMap[variable] || variable;
+            }
+            
+            try {
+                const response = await fetch(`/api/distribution/${variable}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(filters)
+                });
+                const data = await response.json();
+                if (!response.ok) {
+                    throw new Error(data.error || response.statusText);
+                }
+                
+                // Calculate mean
+                const mean = data.values.reduce((a, b) => a + b, 0) / data.values.length;
+                
+                const trace = {
+                    x: data.values,
+                    type: 'histogram',
+                    marker: {
+                        color: '#4a90e2',
+                        line: {
+                            color: 'rgba(200,200,200,0.3)',
+                            width: 1
+                        }
+                    },
+                    nbinsx: 30
+                };
+                
+                // Create annotation for statistics
+                const statsText = `Min: ${data.min.toFixed(2)}<br>Max: ${data.max.toFixed(2)}<br>Mean: ${mean.toFixed(2)}<br>Count: ${data.count}`;
+                
+                const layout = {
+                    title: `${varNameMap[variable] || variable} Distribution`,
+                    paper_bgcolor: '#1a1a1a',
+                    plot_bgcolor: '#1a1a1a',
+                    font: {
+                        color: '#fff'
+                    },
+                    xaxis: {
+                        title: `${varNameMap[variable] || variable}`,
+                        gridcolor: 'rgba(255,255,255,0.1)'
+                    },
+                    yaxis: {
+                        title: 'Count',
+                        gridcolor: 'rgba(255,255,255,0.1)'
+                    },
+                    showlegend: false,
+                    bargap: 0,
+                    displayModeBar: false,
+                    annotations: [{
+                        x: 0.98,
+                        y: 0.98,
+                        xref: 'paper',
+                        yref: 'paper',
+                        text: statsText,
+                        showarrow: false,
+                        font: {
+                            color: '#fff',
+                            size: 12
+                        },
+                        bgcolor: 'rgba(0,0,0,0.5)',
+                        bordercolor: 'rgba(255,255,255,0.3)',
+                        borderwidth: 1,
+                        borderpad: 4,
+                        xanchor: 'right',
+                        yanchor: 'top'
+                    }]
+                };
+                Plotly.newPlot('dist-plot', [trace], layout);
+                modal.style.display = "block";
+            } catch (error) {
+                console.error('Error fetching distribution:', error);
+                alert('Error loading distribution data');
+            }
+        }
+
+        // Event listeners
+        document.getElementById('parcels-opacity').addEventListener('input', (e) => {
+            const opacity = parseInt(e.target.value) / 100;
+            if (map.getLayer('parcels-fill')) {
+                map.setPaintProperty('parcels-fill', 'fill-opacity', opacity);
+            }
+        });
+
+        weightSliders.forEach(slider => {
+            updateSliderFill(slider);
+            slider.addEventListener('input', () => {
+                updateSliderFill(slider);
+                normalizeWeights();
+            });
+        });
+
+        document.getElementById('calculate-btn').addEventListener('click', updateScores);
+        document.getElementById('budget').addEventListener('change', () => {
+            updateMaxParcels();
+            updateScores();
+        });
+        document.getElementById('cost-per-parcel').addEventListener('change', () => {
+            updateMaxParcels();
+            updateScores();
+        });
+        document.getElementById('max-parcels').addEventListener('change', updateScores);
+
+        // Add score type toggles to filters that trigger recalculation
+        const filters = ['filter-yearbuilt-enabled', 'filter-neigh1d-enabled', 'filter-yearbuilt-exclude-unknown', 
+                        'filter-strcnt-enabled', 'filter-wui-min30-enabled', 'filter-vhsz-min10-enabled', 
+                        'filter-brns-enabled', 'use-basic-scores', 'use-quantiled-scores', 'use-quantile',
+                        'use-local-normalization'];
+        filters.forEach(id => {
+            document.getElementById(id).addEventListener('change', updateScores);
+        });
+
+        ['filter-yearbuilt', 'filter-neigh1d', 'filter-strcnt'].forEach(id => {
+            const element = document.getElementById(id);
+            element.addEventListener('change', updateScores);
+            element.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    updateScores();
+                }
+            });
+        });
+
+        aspectExcludeCheckboxes.forEach(cb => {
+            cb.addEventListener('change', updateScores);
+        });
+
+        // Download .LP file (client-side)
+        document.getElementById('download-lp-btn').addEventListener('click', () => {
+            if (!currentLpContent) {
+                alert('No LP file available. Run weight inference first.');
+                return;
+            }
+            
+            try {
+                // Create and download file entirely on client-side (no backend needed)
+                const blob = new Blob([currentLpContent], { type: 'text/plain' });
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'fire_risk_optimization.lp';
+                a.style.display = 'none';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                window.URL.revokeObjectURL(url);
+            } catch (error) {
+                console.error('Error downloading LP file:', error);
+                alert('Failed to download LP file. Please try again.');
+            }
+        });
+
+        // View solution report in modal
+        document.getElementById('view-solution-btn').addEventListener('click', () => {
+            if (!currentTxtContent) {
+                alert('No solution report available. Run weight inference first.');
+                return;
+            }
+            
+            document.getElementById('solution-text').textContent = currentTxtContent;
+            document.getElementById('solution-modal').style.display = 'block';
+        });
+
         document.getElementById('draw-rectangle').addEventListener('click', () => {
-            // Clear any existing selections
             draw.deleteAll();
-            // Enter rectangle drawing mode
             draw.changeMode('draw_rectangle');
+        });
+
+        document.getElementById('draw-lasso').addEventListener('click', () => {
+            draw.deleteAll();
+            draw.changeMode('draw_lasso');
+        });
+        
+        // Subset selection event handlers
+        document.getElementById('subset-rectangle').addEventListener('click', () => {
+            draw.deleteAll();
+            draw.changeMode('draw_rectangle');
+            document.getElementById('subset-rectangle').dataset.mode = 'subset';
+        });
+
+        document.getElementById('subset-lasso').addEventListener('click', () => {
+            draw.deleteAll();
+            draw.changeMode('draw_lasso');
+            document.getElementById('subset-lasso').dataset.mode = 'subset';
+        });
+
+        document.getElementById('clear-subset').addEventListener('click', () => {
+            subsetArea = null;
+            document.getElementById('subset-indicator').style.display = 'none';
+            document.getElementById('filter-parcels').disabled = true;
+            
+            // Clear any drawn shapes
+            draw.deleteAll();
+            
+            // Automatically recalculate to show all parcels again
+            updateScores();
+        });
+
+        document.getElementById('filter-parcels').addEventListener('click', () => {
+            const features = draw.getAll().features;
+            if (features.length && subsetArea) {
+                console.log('Applying spatial filter with subsetArea:', subsetArea);
+                document.getElementById('subset-indicator').style.display = 'block';
+                
+                // Clear the drawn shape from the map after filtering
+                draw.deleteAll();
+                
+                updateScores();
+            } else {
+                console.log('No features or subsetArea to filter with. Features:', features.length, 'subsetArea:', subsetArea);
+            }
         });
         
         document.getElementById('clear-selection').addEventListener('click', () => {
             draw.deleteAll();
             selectedParcels = [];
-            document.getElementById('infer-weights').disabled = true;
-        });
-        
-        map.on('draw.create', (e) => {
-            const selection = e.features[0];
-            document.getElementById('infer-weights').disabled = false;
             
-            // Store selected parcels
-            if (currentData && window.turf) {
-                selectedParcels = currentData.features.filter(feature => {
-                    return turf.booleanIntersects(feature, selection);
-                });
-                
-                // Update stats for selected area
-                const selectedCount = selectedParcels.length;
-                const totalRisk = selectedParcels.reduce((sum, f) => sum + f.properties.score, 0);
-                const avgRisk = selectedCount > 0 ? totalRisk / selectedCount : 0;
-                
-                document.getElementById('selected-parcels').textContent = selectedCount.toLocaleString();
-                document.getElementById('total-risk').textContent = totalRisk.toFixed(2);
-                document.getElementById('avg-risk').textContent = avgRisk.toFixed(2);
-            }
+            // Reset infer weights UI
+            document.getElementById('infer-weights').disabled = true;
+            document.getElementById('download-lp-btn').disabled = true;
+            document.getElementById('view-solution-btn').disabled = true;
+            
+            // Clear stored solution content
+            currentLpContent = null;
+            currentTxtContent = null;
         });
-        
-        // Add infer weights button handler
+
         document.getElementById('infer-weights').addEventListener('click', async () => {
-            // Get the rectangle feature from the draw control
             const features = draw.getAll().features;
             if (!features.length) {
                 alert('Draw a rectangle first!');
                 return;
             }
 
-            const rectangle = features[0].geometry;  // Get the GeoJSON Polygon geometry
+            const rectangle = features[0].geometry;
             const maxParcels = parseInt(document.getElementById('max-parcels').value);
 
-            // Show spinner (move this up so it's always visible during the process)
+            const includeVars = Array.from(weightSliders)
+                .map(slider => slider.id)
+                .filter(varName => {
+                    const cb = document.getElementById(`exclude-${varName}`);
+                    return cb && !cb.checked;
+                });
+
             document.getElementById('spinner').style.display = 'block';
 
             try {
-                // Send the rectangle geometry to backend for weight inference
                 const response = await fetch('/api/infer-weights', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ 
+                    body: JSON.stringify({
                         selection: rectangle,
-                        max_parcels: maxParcels
+                        max_parcels: maxParcels,
+                        include_vars: includeVars,
+                        use_quantiled_scores: document.getElementById('use-quantiled-scores').checked,
+                        use_quantile: document.getElementById('use-quantile').checked,
+                        ...getCurrentFilters()
                     })
                 });
-                
+
                 const data = await response.json();
-                
                 if (!response.ok) {
                     throw new Error(data.error || response.statusText);
                 }
-                
-                // Update sliders with inferred weights
+
+                // Store the solution files content for client-side download
+                currentLpContent = data.lp_file_content;
+                currentTxtContent = data.txt_file_content;
+
+                // Store the optimization parcel data for correct plot display
+                if (data.optimization_parcel_data) {
+                    // Update selectedParcels with the actual optimization scores
+                    selectedParcels = data.optimization_parcel_data.map(parcel => {
+                        // Calculate weighted score using the optimal weights
+                        let weightedScore = 0;
+                        for (const varName in parcel.scores) {
+                            const weight = data.weights[varName + '_s'] / 100; // Convert percentage to decimal
+                            weightedScore += weight * parcel.scores[varName];
+                        }
+                        return {
+                            id: parcel.id,
+                            properties: {
+                                score: weightedScore
+                            }
+                        };
+                    });
+                }
+
+                // Enable the download and view buttons
+                document.getElementById('download-lp-btn').disabled = false;
+                document.getElementById('view-solution-btn').disabled = false;
+
+                // Update the weight sliders with optimized values
                 Object.entries(data.weights).forEach(([key, value]) => {
                     const slider = document.getElementById(key);
                     if (slider) {
@@ -986,29 +1915,19 @@
                         updateSliderFill(slider);
                     }
                 });
-                
-                // Normalize weights and update display
+
                 normalizeWeights();
-                
-                // No alert for success, just update UI
-                // Recalculate scores with new weights
                 await updateScores();
                 
             } catch (error) {
                 console.error('Error inferring weights:', error);
                 alert(error.message);
             } finally {
-                // Hide spinner after all UI updates are done
                 document.getElementById('spinner').style.display = 'none';
             }
         });
-        
-        map.on('draw.delete', () => {
-            selectedParcels = [];
-            document.getElementById('infer-weights').disabled = true;
-        });
-        
-        // Export Shapefile
+
+
         document.getElementById('export-shapefile').addEventListener('click', async () => {
             if (!currentData) return;
             
@@ -1029,10 +1948,7 @@
                     throw new Error('Export failed');
                 }
                 
-                // Get the blob from the response
                 const blob = await response.blob();
-                
-                // Create a download link
                 const url = window.URL.createObjectURL(blob);
                 const a = document.createElement('a');
                 a.href = url;
@@ -1047,17 +1963,532 @@
                 alert('Failed to export shapefile. Please try again.');
             }
         });
-        
-        // Layer toggles for basemaps (radio button behavior)
+
+        document.getElementById('score-distribution-btn').addEventListener('click', () => {
+            if (!currentData) {
+                alert('Please calculate scores first');
+                return;
+            }
+
+            const scores = currentData.features.map(f => f.properties.score);
+            const selectedScores = currentData.features
+                .filter(f => f.properties.top500)
+                .map(f => f.properties.score);
+
+            // Get selected area scores if available
+            let selectedAreaScores = [];
+            if (selectedParcels && selectedParcels.length > 0) {
+                selectedAreaScores = selectedParcels.map(f => f.properties.score);
+            }
+
+            // Calculate statistics for all scores
+            const allScoresMean = scores.reduce((a, b) => a + b, 0) / scores.length;
+            const allScoresMin = Math.min(...scores);
+            const allScoresMax = Math.max(...scores);
+            const allScoresStd = Math.sqrt(scores.reduce((a, b) => a + Math.pow(b - allScoresMean, 2), 0) / scores.length);
+
+            // Calculate statistics for selected scores
+            const selectedScoresMean = selectedScores.reduce((a, b) => a + b, 0) / selectedScores.length;
+            const selectedScoresMin = Math.min(...selectedScores);
+            const selectedScoresMax = Math.max(...selectedScores);
+            const selectedScoresStd = Math.sqrt(selectedScores.reduce((a, b) => a + Math.pow(b - selectedScoresMean, 2), 0) / selectedScores.length);
+
+            // Create main histogram for all scores to get the max height
+            const allScoresTrace = {
+                x: scores,
+                type: 'histogram',
+                name: 'All Parcels',
+                marker: {
+                    color: '#ff6666',
+                    line: {
+                        color: 'rgba(200,200,200,0.3)',
+                        width: 1
+                    }
+                },
+                nbinsx: 50,
+                opacity: 0.7
+            };
+
+            const traces = [allScoresTrace];
+
+            // Calculate the expected maximum height for reference bars (1/4 of plot height)
+            // We'll estimate this based on the data distribution
+            const binCount = Math.ceil(scores.length / 50); // Rough estimate of max bin height
+            const referenceBarHeight = binCount * 0.25; // 1/4 of expected max height
+
+            // Add selected area bars and arrows if available
+            if (selectedAreaScores.length > 0) {
+                const selectedAreaMean = selectedAreaScores.reduce((a, b) => a + b, 0) / selectedAreaScores.length;
+                const selectedAreaMin = Math.min(...selectedAreaScores);
+                const selectedAreaMax = Math.max(...selectedAreaScores);
+                
+                // Add dotted bars at min and max (1/4 height)
+                traces.push({
+                    x: [selectedAreaMin, selectedAreaMin],
+                    y: [0, referenceBarHeight],
+                    type: 'scatter',
+                    mode: 'lines',
+                    line: {
+                        color: '#ffff00',
+                        width: 3,
+                        dash: 'dot'
+                    },
+                    name: `Selected Area Min: ${selectedAreaMin.toFixed(3)}`,
+                    showlegend: true
+                });
+
+                traces.push({
+                    x: [selectedAreaMax, selectedAreaMax],
+                    y: [0, referenceBarHeight],
+                    type: 'scatter',
+                    mode: 'lines',
+                    line: {
+                        color: '#ffff00',
+                        width: 3,
+                        dash: 'dot'
+                    },
+                    name: `Selected Area Max: ${selectedAreaMax.toFixed(3)}`,
+                    showlegend: true
+                });
+
+                // Add solid bar at mean (1/4 height)
+                traces.push({
+                    x: [selectedAreaMean, selectedAreaMean],
+                    y: [0, referenceBarHeight],
+                    type: 'scatter',
+                    mode: 'lines',
+                    line: {
+                        color: '#ffff00',
+                        width: 3
+                    },
+                    name: `Selected Area Mean: ${selectedAreaMean.toFixed(3)}`,
+                    showlegend: true
+                });
+            }
+
+            const layout = {
+                title: 'Calculated Risk Score Distribution',
+                paper_bgcolor: '#1a1a1a',
+                plot_bgcolor: '#1a1a1a',
+                font: {
+                    color: '#fff'
+                },
+                xaxis: {
+                    title: 'Score',
+                    gridcolor: 'rgba(255,255,255,0.1)',
+                    zerolinecolor: 'rgba(255,255,255,0.1)'
+                },
+                yaxis: {
+                    title: 'Count',
+                    gridcolor: 'rgba(255,255,255,0.1)',
+                    zerolinecolor: 'rgba(255,255,255,0.1)'
+                },
+                showlegend: true,
+                legend: {
+                    font: {
+                        color: '#fff'
+                    },
+                    y: 0.95,
+                    x: 0.02
+                },
+                bargap: 0,
+                displayModeBar: false,
+                margin: {
+                    l: 50,
+                    r: 20,
+                    t: 50,
+                    b: 50
+                },
+                height: 600,
+                annotations: []
+            };
+
+            // Add statistics annotation
+            let statsText = `All Parcels:<br>Min: ${allScoresMin.toFixed(3)}<br>Max: ${allScoresMax.toFixed(3)}<br>Mean: ${allScoresMean.toFixed(3)}<br>Std: ${allScoresStd.toFixed(3)}<br>Count: ${scores.length}<br><br>Top N Parcels:<br>Min: ${selectedScoresMin.toFixed(3)}<br>Max: ${selectedScoresMax.toFixed(3)}<br>Mean: ${selectedScoresMean.toFixed(3)}<br>Std: ${selectedScoresStd.toFixed(3)}<br>Count: ${selectedScores.length}`;
+            
+            if (selectedAreaScores.length > 0) {
+                const selectedAreaMean = selectedAreaScores.reduce((a, b) => a + b, 0) / selectedAreaScores.length;
+                const selectedAreaMin = Math.min(...selectedAreaScores);
+                const selectedAreaMax = Math.max(...selectedAreaScores);
+                const selectedAreaStd = Math.sqrt(selectedAreaScores.reduce((a, b) => a + Math.pow(b - selectedAreaMean, 2), 0) / selectedAreaScores.length);
+                statsText += `<br><br>Selected Area:<br>Min: ${selectedAreaMin.toFixed(3)}<br>Max: ${selectedAreaMax.toFixed(3)}<br>Mean: ${selectedAreaMean.toFixed(3)}<br>Std: ${selectedAreaStd.toFixed(3)}<br>Count: ${selectedAreaScores.length}`;
+            }
+
+            layout.annotations.push({
+                x: 0.02,
+                y: 0.02,
+                xref: 'paper',
+                yref: 'paper',
+                text: statsText,
+                showarrow: false,
+                font: {
+                    color: '#fff',
+                    size: 12
+                },
+                bgcolor: 'rgba(0,0,0,0.5)',
+                bordercolor: 'rgba(255,255,255,0.3)',
+                borderwidth: 1,
+                borderpad: 4,
+                xanchor: 'left',
+                yanchor: 'bottom'
+            });
+
+            // Add single arrow for top parcels (blue arrow)
+            const maxY = referenceBarHeight * 4; // Estimate max plot height
+            const arrowY = maxY * 0.9; // Position arrows near top
+            
+            // Add single arrow for Top Parcels at the midpoint of selected scores
+            if (selectedScores.length > 0) {
+                const topParcelsScore = selectedScores[Math.floor(selectedScores.length / 2)];
+                layout.annotations.push({
+                    x: topParcelsScore,
+                    y: arrowY,
+                    text: 'Top Parcels',
+                    showarrow: true,
+                    arrowhead: 2,
+                    arrowsize: 1,
+                    arrowwidth: 2,
+                    arrowcolor: '#0066ff',
+                    font: {
+                        color: '#0066ff',
+                        size: 12
+                    },
+                    xanchor: 'center',
+                    yanchor: 'bottom'
+                });
+            }
+
+            // Add arrows for selected area scores (yellow arrows for min, mean, max)
+            if (selectedAreaScores.length > 0) {
+                const selectedAreaMean = selectedAreaScores.reduce((a, b) => a + b, 0) / selectedAreaScores.length;
+                const selectedAreaMin = Math.min(...selectedAreaScores);
+                const selectedAreaMax = Math.max(...selectedAreaScores);
+                
+                const yellowArrowY = arrowY * 0.7;
+                
+                // Min arrow
+                layout.annotations.push({
+                    x: selectedAreaMin,
+                    y: yellowArrowY,
+                    text: 'Min',
+                    showarrow: true,
+                    arrowhead: 2,
+                    arrowsize: 1,
+                    arrowwidth: 2,
+                    arrowcolor: '#ffff00',
+                    font: {
+                        color: '#ffff00',
+                        size: 12
+                    },
+                    xanchor: 'center',
+                    yanchor: 'bottom'
+                });
+                
+                // Mean arrow
+                layout.annotations.push({
+                    x: selectedAreaMean,
+                    y: yellowArrowY,
+                    text: 'Mean',
+                    showarrow: true,
+                    arrowhead: 2,
+                    arrowsize: 1,
+                    arrowwidth: 2,
+                    arrowcolor: '#ffff00',
+                    font: {
+                        color: '#ffff00',
+                        size: 12
+                    },
+                    xanchor: 'center',
+                    yanchor: 'bottom'
+                });
+                
+                // Max arrow
+                layout.annotations.push({
+                    x: selectedAreaMax,
+                    y: yellowArrowY,
+                    text: 'Max',
+                    showarrow: true,
+                    arrowhead: 2,
+                    arrowsize: 1,
+                    arrowwidth: 2,
+                    arrowcolor: '#ffff00',
+                    font: {
+                        color: '#ffff00',
+                        size: 12
+                    },
+                    xanchor: 'center',
+                    yanchor: 'bottom'
+                });
+            }
+
+            Plotly.newPlot('dist-plot', traces, layout);
+            modal.style.display = "block";
+        });
+
+        function refreshScoreDistributionPlot() {
+            if (!currentData) return;
+
+            const scores = currentData.features.map(f => f.properties.score);
+            const selectedScores = currentData.features
+                .filter(f => f.properties.top500)
+                .map(f => f.properties.score);
+
+            // Get selected area scores if available
+            let selectedAreaScores = [];
+            if (selectedParcels && selectedParcels.length > 0) {
+                selectedAreaScores = selectedParcels.map(f => f.properties.score);
+            }
+
+            // Calculate statistics for all scores
+            const allScoresMean = scores.reduce((a, b) => a + b, 0) / scores.length;
+            const allScoresMin = Math.min(...scores);
+            const allScoresMax = Math.max(...scores);
+            const allScoresStd = Math.sqrt(scores.reduce((a, b) => a + Math.pow(b - allScoresMean, 2), 0) / scores.length);
+
+            // Calculate statistics for selected scores
+            const selectedScoresMean = selectedScores.reduce((a, b) => a + b, 0) / selectedScores.length;
+            const selectedScoresMin = Math.min(...selectedScores);
+            const selectedScoresMax = Math.max(...selectedScores);
+            const selectedScoresStd = Math.sqrt(selectedScores.reduce((a, b) => a + Math.pow(b - selectedScoresMean, 2), 0) / selectedScores.length);
+
+            // Create main histogram for all scores to get the max height
+            const allScoresTrace = {
+                x: scores,
+                type: 'histogram',
+                name: 'All Parcels',
+                marker: {
+                    color: '#ff6666',
+                    line: {
+                        color: 'rgba(200,200,200,0.3)',
+                        width: 1
+                    }
+                },
+                nbinsx: 50,
+                opacity: 0.7
+            };
+
+            const traces = [allScoresTrace];
+
+            // Calculate the expected maximum height for reference bars (1/4 of plot height)
+            const binCount = Math.ceil(scores.length / 50);
+            const referenceBarHeight = binCount * 0.25;
+
+            // Add selected area bars and arrows if available
+            if (selectedAreaScores.length > 0) {
+                const selectedAreaMean = selectedAreaScores.reduce((a, b) => a + b, 0) / selectedAreaScores.length;
+                const selectedAreaMin = Math.min(...selectedAreaScores);
+                const selectedAreaMax = Math.max(...selectedAreaScores);
+                
+                // Add dotted bars at min and max (1/4 height)
+                traces.push({
+                    x: [selectedAreaMin, selectedAreaMin],
+                    y: [0, referenceBarHeight],
+                    type: 'scatter',
+                    mode: 'lines',
+                    line: {
+                        color: '#ffff00',
+                        width: 3,
+                        dash: 'dot'
+                    },
+                    name: `Selected Area Min: ${selectedAreaMin.toFixed(3)}`,
+                    showlegend: true
+                });
+
+                traces.push({
+                    x: [selectedAreaMax, selectedAreaMax],
+                    y: [0, referenceBarHeight],
+                    type: 'scatter',
+                    mode: 'lines',
+                    line: {
+                        color: '#ffff00',
+                        width: 3,
+                        dash: 'dot'
+                    },
+                    name: `Selected Area Max: ${selectedAreaMax.toFixed(3)}`,
+                    showlegend: true
+                });
+
+                // Add solid bar at mean (1/4 height)
+                traces.push({
+                    x: [selectedAreaMean, selectedAreaMean],
+                    y: [0, referenceBarHeight],
+                    type: 'scatter',
+                    mode: 'lines',
+                    line: {
+                        color: '#ffff00',
+                        width: 3
+                    },
+                    name: `Selected Area Mean: ${selectedAreaMean.toFixed(3)}`,
+                    showlegend: true
+                });
+            }
+
+            const layout = {
+                title: 'Calculated Risk Score Distribution (Auto-Updated)',
+                paper_bgcolor: '#1a1a1a',
+                plot_bgcolor: '#1a1a1a',
+                font: {
+                    color: '#fff'
+                },
+                xaxis: {
+                    title: 'Score',
+                    gridcolor: 'rgba(255,255,255,0.1)',
+                    zerolinecolor: 'rgba(255,255,255,0.1)'
+                },
+                yaxis: {
+                    title: 'Count',
+                    gridcolor: 'rgba(255,255,255,0.1)',
+                    zerolinecolor: 'rgba(255,255,255,0.1)'
+                },
+                showlegend: true,
+                legend: {
+                    font: {
+                        color: '#fff'
+                    },
+                    y: 0.95,
+                    x: 0.02
+                },
+                bargap: 0,
+                displayModeBar: false,
+                margin: {
+                    l: 50,
+                    r: 20,
+                    t: 50,
+                    b: 50
+                },
+                height: 600,
+                annotations: []
+            };
+
+            // Add statistics annotation
+            let statsText = `All Parcels:<br>Min: ${allScoresMin.toFixed(3)}<br>Max: ${allScoresMax.toFixed(3)}<br>Mean: ${allScoresMean.toFixed(3)}<br>Std: ${allScoresStd.toFixed(3)}<br>Count: ${scores.length}<br><br>Top N Parcels:<br>Min: ${selectedScoresMin.toFixed(3)}<br>Max: ${selectedScoresMax.toFixed(3)}<br>Mean: ${selectedScoresMean.toFixed(3)}<br>Std: ${selectedScoresStd.toFixed(3)}<br>Count: ${selectedScores.length}`;
+            
+            if (selectedAreaScores.length > 0) {
+                const selectedAreaMean = selectedAreaScores.reduce((a, b) => a + b, 0) / selectedAreaScores.length;
+                const selectedAreaMin = Math.min(...selectedAreaScores);
+                const selectedAreaMax = Math.max(...selectedAreaScores);
+                const selectedAreaStd = Math.sqrt(selectedAreaScores.reduce((a, b) => a + Math.pow(b - selectedAreaMean, 2), 0) / selectedAreaScores.length);
+                statsText += `<br><br>Selected Area:<br>Min: ${selectedAreaMin.toFixed(3)}<br>Max: ${selectedAreaMax.toFixed(3)}<br>Mean: ${selectedAreaMean.toFixed(3)}<br>Std: ${selectedAreaStd.toFixed(3)}<br>Count: ${selectedAreaScores.length}`;
+            }
+
+            layout.annotations.push({
+                x: 0.02,
+                y: 0.02,
+                xref: 'paper',
+                yref: 'paper',
+                text: statsText,
+                showarrow: false,
+                font: {
+                    color: '#fff',
+                    size: 12
+                },
+                bgcolor: 'rgba(0,0,0,0.5)',
+                bordercolor: 'rgba(255,255,255,0.3)',
+                borderwidth: 1,
+                borderpad: 4,
+                xanchor: 'left',
+                yanchor: 'bottom'
+            });
+
+            // Add single arrow for top parcels (blue arrow)
+            const maxY = referenceBarHeight * 4;
+            const arrowY = maxY * 0.9;
+            
+            // Add single arrow for Top Parcels at the midpoint of selected scores
+            if (selectedScores.length > 0) {
+                const topParcelsScore = selectedScores[Math.floor(selectedScores.length / 2)];
+                layout.annotations.push({
+                    x: topParcelsScore,
+                    y: arrowY,
+                    text: 'Top Parcels',
+                    showarrow: true,
+                    arrowhead: 2,
+                    arrowsize: 1,
+                    arrowwidth: 2,
+                    arrowcolor: '#0066ff',
+                    font: {
+                        color: '#0066ff',
+                        size: 12
+                    },
+                    xanchor: 'center',
+                    yanchor: 'bottom'
+                });
+            }
+
+            // Add arrows for selected area scores (yellow arrows for min, mean, max)
+            if (selectedAreaScores.length > 0) {
+                const selectedAreaMean = selectedAreaScores.reduce((a, b) => a + b, 0) / selectedAreaScores.length;
+                const selectedAreaMin = Math.min(...selectedAreaScores);
+                const selectedAreaMax = Math.max(...selectedAreaScores);
+                
+                const yellowArrowY = arrowY * 0.7;
+                
+                // Min arrow
+                layout.annotations.push({
+                    x: selectedAreaMin,
+                    y: yellowArrowY,
+                    text: 'Min',
+                    showarrow: true,
+                    arrowhead: 2,
+                    arrowsize: 1,
+                    arrowwidth: 2,
+                    arrowcolor: '#ffff00',
+                    font: {
+                        color: '#ffff00',
+                        size: 12
+                    },
+                    xanchor: 'center',
+                    yanchor: 'bottom'
+                });
+                
+                // Mean arrow
+                layout.annotations.push({
+                    x: selectedAreaMean,
+                    y: yellowArrowY,
+                    text: 'Mean',
+                    showarrow: true,
+                    arrowhead: 2,
+                    arrowsize: 1,
+                    arrowwidth: 2,
+                    arrowcolor: '#ffff00',
+                    font: {
+                        color: '#ffff00',
+                        size: 12
+                    },
+                    xanchor: 'center',
+                    yanchor: 'bottom'
+                });
+                
+                // Max arrow
+                layout.annotations.push({
+                    x: selectedAreaMax,
+                    y: yellowArrowY,
+                    text: 'Max',
+                    showarrow: true,
+                    arrowhead: 2,
+                    arrowsize: 1,
+                    arrowwidth: 2,
+                    arrowcolor: '#ffff00',
+                    font: {
+                        color: '#ffff00',
+                        size: 12
+                    },
+                    xanchor: 'center',
+                    yanchor: 'bottom'
+                });
+            }
+
+            Plotly.newPlot('dist-plot', traces, layout);
+        }
+
+        // Layer toggles
         document.querySelectorAll('.layer-toggle[data-layer="dark"], .layer-toggle[data-layer="light"], .layer-toggle[data-layer="satellite"]').forEach(toggle => {
             toggle.addEventListener('change', (e) => {
                 if (e.target.checked) {
-                    // Uncheck other basemap toggles
                     document.querySelectorAll('.layer-toggle[data-layer="dark"], .layer-toggle[data-layer="light"], .layer-toggle[data-layer="satellite"]').forEach(t => {
                         if (t !== e.target) t.checked = false;
                     });
                     
-                    // Change basemap
                     const styleMap = {
                         'dark': 'mapbox://styles/mapbox/dark-v11',
                         'light': 'mapbox://styles/mapbox/light-v11',
@@ -1065,162 +2496,255 @@
                     };
                     map.setStyle(styleMap[e.target.dataset.layer]);
                     
-                    // Re-add layers and reload data when style loads
                     map.once('style.load', () => {
-                        // Re-add parcel source and layers
-                        map.addSource('parcels', {
-                            type: 'geojson',
-                            data: currentData || { type: 'FeatureCollection', features: [] }
-                        });
-                        
-                        map.addLayer({
-                            id: 'parcels-fill',
-                            type: 'fill',
-                            source: 'parcels',
-                            paint: {
-                                'fill-color': [
-                                    'interpolate',
-                                    ['linear'],
-                                    ['get', 'score'],
-                                    0, '#ffffff',
-                                    0.2, '#ffdddd',
-                                    0.4, '#ffaaaa',
-                                    0.6, '#ff6666',
-                                    0.8, '#ff3333',
-                                    1, '#990000'
-                                ],
-                                'fill-opacity': 0.8
-                            }
-                        });
-                        
-                        // Add parcel boundaries layer
-                        map.addLayer({
-                            id: 'parcels-boundary',
-                            type: 'line',
-                            source: 'parcels',
-                            minzoom: 14, // Only show at higher zoom levels
-                            paint: {
-                                'line-color': '#ffffff',
-                                'line-width': 0.5,
-                                'line-opacity': 0.3
-                            }
-                        });
-                        
-                        map.addLayer({
-                            id: 'parcels-top500',
-                            type: 'line',
-                            source: 'parcels',
-                            filter: ['==', ['get', 'top500'], true],
-                            paint: {
-                                'line-color': '#0066ff',
-                                'line-width': 2
-                            }
-                        });
-                        
-                        // Re-add auxiliary layers
-                        const auxiliaryLayers = [
-                            {
-                                id: 'agricultural',
-                                type: 'fill',
-                                paint: {
-                                    'fill-color': '#00ff00',
-                                    'fill-opacity': 0.5
-                                }
-                            },
-                            {
-                                id: 'wui',
-                                type: 'fill',
-                                paint: {
-                                    'fill-color': '#0066ff',
-                                    'fill-opacity': 0.5
-                                }
-                            },
-                            {
-                                id: 'hazard',
-                                type: 'fill',
-                                paint: {
-                                    'fill-color': '#ff9900',
-                                    'fill-opacity': 0.25
-                                }
-                            },
-                            {
-                                id: 'structures',
-                                type: 'circle',
-                                paint: {
-                                    'circle-radius': 2,
-                                    'circle-color': '#000000',
-                                    'circle-opacity': 0.3
-                                }
-                            },
-                            {
-                                id: 'firewise',
-                                type: 'line',
-                                paint: {
-                                    'line-color': '#ff9900',
-                                    'line-width': 2
-                                }
-                            }
-                        ];
-                        
-                        // Add sources and layers for auxiliary data
-                        auxiliaryLayers.forEach(layer => {
-                            map.addSource(layer.id, {
-                                type: 'geojson',
-                                data: { type: 'FeatureCollection', features: [] }
-                            });
-                            
-                            map.addLayer({
-                                id: layer.id,
-                                type: layer.type,
-                                source: layer.id,
-                                layout: { 'visibility': 'none' },
-                                paint: layer.paint
-                            });
-                            
-                            // Load layer data
-                            loadLayer(layer.id);
-                        });
-                        
-                        // Reload parcel data if we have current data
-                        if (currentData) {
-                            updateMap();
-                        } else {
-                            updateScores();
-                        }
+                        initializeLayers();
                     });
                 }
             });
         });
         
-        // Other layer toggles
         document.querySelectorAll('.layer-toggle[data-layer]:not([data-layer="dark"]):not([data-layer="light"]):not([data-layer="satellite"])').forEach(toggle => {
             toggle.addEventListener('change', (e) => {
                 const layerId = e.target.dataset.layer;
                 const visibility = e.target.checked ? 'visible' : 'none';
                 
                 if (layerId === 'parcels') {
-                    // Toggle both parcel layers
                     if (map.getLayer('parcels-fill')) {
                         map.setLayoutProperty('parcels-fill', 'visibility', visibility);
                     }
                     if (map.getLayer('parcels-top500')) {
                         map.setLayoutProperty('parcels-top500', 'visibility', visibility);
                     }
+                } else if (layerId === 'burnscars') {
+                    if (map.getLayer('burnscars')) {
+                        map.setLayoutProperty('burnscars', 'visibility', visibility);
+                    }
+                    if (map.getLayer('burnscars-outline')) {
+                        map.setLayoutProperty('burnscars-outline', 'visibility', visibility);
+                    }
                 } else if (map.getLayer(layerId)) {
                     map.setLayoutProperty(layerId, 'visibility', visibility);
                 }
             });
         });
+
+        // Modal controls
+        closeModal.onclick = function() {
+            modal.style.display = "none";
+        }
         
-        // Map load
-        map.on('load', () => {
-            // Add sources
+        // Close solution modal
+        document.getElementById('close-solution-modal').addEventListener('click', () => {
+            document.getElementById('solution-modal').style.display = 'none';
+        });
+        
+        window.onclick = function(event) {
+            if (event.target == modal) {
+                modal.style.display = "none";
+            }
+            // Close solution modal when clicking outside of it
+            const solutionModal = document.getElementById('solution-modal');
+            if (event.target === solutionModal) {
+                solutionModal.style.display = 'none';
+            }
+        }
+
+        // Measure tool
+        measureButton.addEventListener('click', () => {
+            measureMode = !measureMode;
+            measureButton.textContent = measureMode ? 'Cancel Measurement' : 'Measure Distance';
+            
+            if (!measureMode) {
+                exitMeasureMode();
+            }
+        });
+
+        // Map event handlers
+        map.on('draw.create', (e) => {
+            const selection = e.features[0];
+            
+            // Check if this is a subset area selection
+            if (document.getElementById('subset-rectangle').dataset.mode === 'subset' || 
+                document.getElementById('subset-lasso').dataset.mode === 'subset') {
+                subsetArea = selection.geometry;
+                document.getElementById('filter-parcels').disabled = false;
+                
+                // Reset modes
+                document.getElementById('subset-rectangle').dataset.mode = '';
+                document.getElementById('subset-lasso').dataset.mode = '';
+            } else {
+                // Regular selection for weight inference
+                document.getElementById('infer-weights').disabled = false;
+                
+                if (currentData && window.turf) {
+                    selectedParcels = currentData.features.filter(feature => {
+                        return turf.booleanIntersects(feature, selection);
+                    });
+                    
+                    const selectedCount = selectedParcels.length;
+                    const totalRisk = selectedParcels.reduce((sum, f) => sum + f.properties.score, 0);
+                    const avgRisk = selectedCount > 0 ? totalRisk / selectedCount : 0;
+                    
+                    document.getElementById('selected-parcels').textContent = selectedCount.toLocaleString();
+                    document.getElementById('total-risk').textContent = totalRisk.toFixed(2);
+                    document.getElementById('avg-risk').textContent = avgRisk.toFixed(2);
+                }
+            }
+        });
+
+        function resetInferWeightsUI() {
+            document.getElementById('infer-weights').disabled = true;
+            document.getElementById('download-lp-btn').disabled = true;
+            document.getElementById('view-solution-btn').disabled = true;
+            currentLpContent = null;
+            currentTxtContent = null;
+        }
+
+        map.on('draw.delete', () => {
+            selectedParcels = [];
+            resetInferWeightsUI();
+            
+            // If no shapes remain, disable filter button and clear subset area
+            const features = draw.getAll().features;
+            if (features.length === 0) {
+                document.getElementById('filter-parcels').disabled = true;
+                subsetArea = null;
+                document.getElementById('subset-indicator').style.display = 'none';
+            }
+        });
+
+        map.on('click', (e) => {
+            if (measureMode) {
+                measurePoints.push([e.lngLat.lng, e.lngLat.lat]);
+
+                if (measurePoints.length === 1) {
+                    if (map.getSource('measure-line')) {
+                        map.removeLayer('measure-line');
+                        map.removeSource('measure-line');
+                    }
+                    map.addSource('measure-line', {
+                        type: 'geojson',
+                        data: {
+                            type: 'Feature',
+                            properties: {},
+                            geometry: {
+                                type: 'LineString',
+                                coordinates: measurePoints
+                            }
+                        }
+                    });
+                    map.addLayer({
+                        id: 'measure-line',
+                        type: 'line',
+                        source: 'measure-line',
+                        layout: {
+                            'line-cap': 'round',
+                            'line-join': 'round'
+                        },
+                        paint: {
+                            'line-color': '#fff',
+                            'line-width': 2,
+                            'line-dasharray': [2, 2]
+                        }
+                    });
+                } else {
+                    const line = {
+                        type: 'Feature',
+                        properties: {},
+                        geometry: {
+                            type: 'LineString',
+                            coordinates: measurePoints
+                        }
+                    };
+                    map.getSource('measure-line').setData(line);
+
+                    const distance = turf.length(line) * 3280.84;
+                    document.getElementById('distance').textContent = `Total distance: ${distance.toFixed(0)} ft`;
+                }
+            }
+        });
+
+        map.on('mousemove', (e) => {
+            if (!measureMode || measurePoints.length === 0) return;
+
+            const line = {
+                type: 'Feature',
+                properties: {},
+                geometry: {
+                    type: 'LineString',
+                    coordinates: [...measurePoints, [e.lngLat.lng, e.lngLat.lat]]
+                }
+            };
+            map.getSource('measure-line').setData(line);
+
+            if (measurePoints.length > 0) {
+                const distance = turf.length(line) * 3280.84;
+                document.getElementById('distance').textContent = `Total distance: ${distance.toFixed(0)} ft`;
+            }
+        });
+
+        map.on('contextmenu', (e) => {
+            if (!measureMode) return;
+            e.preventDefault();
+            exitMeasureMode();
+        });
+
+        map.on('click', 'parcels-fill', (e) => {
+            if (measureMode || draw.getMode() === 'draw_rectangle' || draw.getMode() === 'draw_lasso') {
+                return;
+            }
+            
+            const props = e.features[0].properties;
+            new mapboxgl.Popup()
+                .setLngLat(e.lngLat)
+                .setHTML(createPopupContent(props))
+                .addTo(map);
+        });
+        
+        map.on('mouseenter', 'parcels-fill', () => {
+            if (draw.getMode() !== 'draw_rectangle' && draw.getMode() !== 'draw_lasso' && !measureMode) {
+                map.getCanvas().style.cursor = 'pointer';
+            }
+        });
+        
+        map.on('mouseleave', 'parcels-fill', () => {
+            if (draw.getMode() !== 'draw_rectangle' && draw.getMode() !== 'draw_lasso' && !measureMode) {
+                map.getCanvas().style.cursor = '';
+            }
+        });
+
+        // Burnscars click handler
+        map.on('click', 'burnscars', (e) => {
+            if (measureMode || draw.getMode() === 'draw_rectangle' || draw.getMode() === 'draw_lasso') {
+                return;
+            }
+            
+            const props = e.features[0].properties;
+            new mapboxgl.Popup()
+                .setLngLat(e.lngLat)
+                .setHTML(createBurnscarPopupContent(props))
+                .addTo(map);
+        });
+        
+        map.on('mouseenter', 'burnscars', () => {
+            if (draw.getMode() !== 'draw_rectangle' && draw.getMode() !== 'draw_lasso' && !measureMode) {
+                map.getCanvas().style.cursor = 'pointer';
+            }
+        });
+        
+        map.on('mouseleave', 'burnscars', () => {
+            if (draw.getMode() !== 'draw_rectangle' && draw.getMode() !== 'draw_lasso' && !measureMode) {
+                map.getCanvas().style.cursor = '';
+            }
+        });
+
+        // Initialize layers function
+        function initializeLayers() {
             map.addSource('parcels', {
                 type: 'geojson',
-                data: { type: 'FeatureCollection', features: [] }
+                data: currentData || { type: 'FeatureCollection', features: [] }
             });
             
-            // Add parcel fill layer - unclassed choropleth
             map.addLayer({
                 id: 'parcels-fill',
                 type: 'fill',
@@ -1240,13 +2764,12 @@
                     'fill-opacity': 0.8
                 }
             });
-
-            // Add parcel boundaries layer
+            
             map.addLayer({
                 id: 'parcels-boundary',
                 type: 'line',
                 source: 'parcels',
-                minzoom: 14, // Only show at higher zoom levels
+                minzoom: 14,
                 paint: {
                     'line-color': '#ffffff',
                     'line-width': 0.5,
@@ -1254,7 +2777,6 @@
                 }
             });
             
-            // Add top parcels outline layer
             map.addLayer({
                 id: 'parcels-top500',
                 type: 'line',
@@ -1266,10 +2788,17 @@
                 }
             });
             
-            // Add auxiliary layers
             const auxiliaryLayers = [
                 {
                     id: 'agricultural',
+                    type: 'fill',
+                    paint: {
+                        'fill-color': '#00ff00',
+                        'fill-opacity': 0.5
+                    }
+                },
+                {
+                    id: 'fuelbreaks',
                     type: 'fill',
                     paint: {
                         'fill-color': '#00ff00',
@@ -1294,11 +2823,10 @@
                 },
                 {
                     id: 'structures',
-                    type: 'circle',
+                    type: 'fill',
                     paint: {
-                        'circle-radius': 2,
-                        'circle-color': '#000000',
-                        'circle-opacity': 0.3
+                        'fill-color': '#000000',
+                        'fill-opacity': 0.5
                     }
                 },
                 {
@@ -1308,10 +2836,18 @@
                         'line-color': '#ff9900',
                         'line-width': 2
                     }
+                },
+                {
+                    id: 'burnscars',
+                    type: 'fill',
+                    paint: {
+                        'fill-color': '#ffcc99',
+                        'fill-opacity': 0.3,
+                        'fill-outline-color': '#cc7722'
+                    }
                 }
             ];
 
-            // Add sources and layers for auxiliary data
             auxiliaryLayers.forEach(layer => {
                 map.addSource(layer.id, {
                     type: 'geojson',
@@ -1326,61 +2862,121 @@
                     paint: layer.paint
                 });
                 
-                // Load layer data
+                // Add outline layer for burn scars
+                if (layer.id === 'burnscars') {
+                    map.addLayer({
+                        id: 'burnscars-outline',
+                        type: 'line',
+                        source: layer.id,
+                        layout: { 'visibility': 'none' },
+                        paint: {
+                            'line-color': '#cc7722',
+                            'line-width': 1.0
+                        }
+                    });
+                }
+                
                 loadLayer(layer.id);
             });
 
-            // Add popup
-            map.on('click', 'parcels-fill', (e) => {
-                // Don't show popup if we're in rectangle drawing mode
-                if (draw.getMode() === 'draw_rectangle') {
-                    return;
-                }
-                
-                const props = e.features[0].properties;
-                const content = `
-                    <h3>Parcel Information</h3>
-                    <p><strong>Year Built:</strong> ${props.yearbuilt || 'Unknown'}</p>
-                    <p><strong>Structures in 1/4 mi window:</strong> ${props.qtrmi_cnt || 'N/A'}</p>
-                    <p><strong>Agricultural % cover in 1/2 mi buffer:</strong> ${props.hlfmi_agri?.toFixed(2) || 'N/A'}</p>
-                    <p><strong>WUI % cover in 1/2 mi buffer:</strong> ${props.hlfmi_wui?.toFixed(2) || 'N/A'}</p>
-                    <p><strong>VHSZ % cover in 1/2 mi buffer:</strong> ${props.hlfmi_vhsz?.toFixed(2) || 'N/A'}</p>
-                    <p><strong>Number of Neighbors:</strong> ${props.num_neighb || 'N/A'}</p>
-                    <p><strong>Score:</strong> ${props.score?.toFixed(3) || 'N/A'}</p>
-                    <p><strong>Rank:</strong> ${props.rank || 'N/A'}</p>
-                `;
-                
-                new mapboxgl.Popup()
-                    .setLngLat(e.lngLat)
-                    .setHTML(content)
-                    .addTo(map);
-            });
-            
-            // Prevent cursor changes when in drawing mode
-            map.on('mouseenter', 'parcels-fill', () => {
-                if (draw.getMode() !== 'draw_rectangle') {
-                    map.getCanvas().style.cursor = 'pointer';
-                }
-            });
-            
-            map.on('mouseleave', 'parcels-fill', () => {
-                if (draw.getMode() !== 'draw_rectangle') {
-                    map.getCanvas().style.cursor = '';
-                }
-            });
-            
-            // Initial calculations
+            if (currentData) {
+                updateMap();
+            } else {
+                updateScores();
+            }
+        }
+
+        // Map load
+        map.on('load', () => {
+            initializeLayers();
             normalizeWeights();
             updateMaxParcels();
             updateScores();
             
-            // Initialize all sliders with blue fill
             document.querySelectorAll('input[type="range"]').forEach(slider => {
                 updateSliderFill(slider);
             });
         });
-        
-        // Load Turf.js for spatial operations
+
+        // Add distribution buttons to sliders
+        document.querySelectorAll('.slider-container').forEach(container => {
+            const slider = container.querySelector('.slider');
+            const variable = slider.id;
+            const rawVariable = rawVarMap[variable] || variable.replace('_s', '');
+            
+            const buttonContainer = document.createElement('div');
+            buttonContainer.className = 'dist-buttons';
+            
+            const rawButton = document.createElement('button');
+            rawButton.className = 'dist-button';
+            rawButton.textContent = 'Raw Distribution';
+            rawButton.onclick = () => showDistribution(rawVariable);
+            
+            const scoreButton = document.createElement('button');
+            scoreButton.className = 'dist-button';
+            scoreButton.textContent = 'Score Distribution';
+            scoreButton.onclick = () => showDistribution(variable);
+            
+            buttonContainer.appendChild(rawButton);
+            buttonContainer.appendChild(scoreButton);
+            container.appendChild(buttonContainer);
+        });
+
+        // Global keyboard handler
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                if (measureMode) {
+                    exitMeasureMode();
+                }
+                // Close solution modal if open
+                const solutionModal = document.getElementById('solution-modal');
+                if (solutionModal.style.display === 'block') {
+                    solutionModal.style.display = 'none';
+                }
+            }
+        });
+
+        // Add event listeners for exclude checkboxes
+        document.querySelectorAll('.exclude-weight').forEach(checkbox => {
+            checkbox.addEventListener('change', (e) => {
+                const sliderId = e.target.id.replace('exclude-', '');
+                const slider = document.getElementById(sliderId);
+                const valueDisplay = document.getElementById(`${sliderId}-value`);
+                
+                if (e.target.checked) {
+                    // Store the current value before setting to 0
+                    slider.dataset.previousValue = slider.value;
+                    slider.value = 0;
+                    slider.classList.add('disabled');
+                    valueDisplay.textContent = '0%';
+                } else {
+                    // Restore the previous value
+                    const previousValue = slider.dataset.previousValue || 0;
+                    slider.value = previousValue;
+                    slider.classList.remove('disabled');
+                    // Update the slider fill visual
+                    updateSliderFill(slider);
+                }
+                
+                // Always renormalize weights
+                normalizeWeights();
+                
+                // Check if there's an active weight inference selection
+                const inferWeightsBtn = document.getElementById('infer-weights');
+                const hasActiveSelection = !inferWeightsBtn.disabled;
+                
+                if (hasActiveSelection && draw.getAll().features.length > 0) {
+                    // Automatically rerun weight inference with updated exclude settings
+                    console.log('Rerunning weight inference due to exclude variable change');
+                    inferWeightsBtn.click();
+                } else {
+                    // No active weight inference selection, just update scores normally
+                    updateScores();
+                }
+            });
+        });
+
+        // Load Turf.js
         const script = document.createElement('script');
         script.src = 'https://unpkg.com/@turf/turf@6/turf.min.js';
         document.head.appendChild(script);

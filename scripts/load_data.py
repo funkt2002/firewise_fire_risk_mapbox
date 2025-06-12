@@ -40,30 +40,128 @@ class ParcelDataLoader:
             self.conn.close()
         logger.info("Disconnected from database")
     
+    def drop_tables(self):
+        """Drop all existing tables""" 
+        try:
+            tables = [
+                'parcels',
+                'agricultural_areas',
+                'wui_areas',
+                'hazard_zones',
+                'structures',
+                'firewise_communities',
+                'fuelbreaks',
+                'burn_scars'
+            ]
+             
+            for table in tables:
+                self.cur.execute(f"DROP TABLE IF EXISTS {table} CASCADE;")
+            
+            self.conn.commit()
+            logger.info("Successfully dropped all tables")
+            
+        except Exception as e:
+            logger.error(f"Failed to drop tables: {e}")
+            self.conn.rollback()
+            raise
+    
     def create_tables(self):
         """Create necessary tables if they don't exist"""
         try:
             # Enable PostGIS
             self.cur.execute("CREATE EXTENSION IF NOT EXISTS postgis;")
             
-            # Create parcels table - changed from GEOMETRY(Polygon, 3857) to GEOMETRY(GEOMETRY, 3857)
-            # to handle both Polygon and MultiPolygon geometries
+            # Create parcels table
             self.cur.execute("""
                 CREATE TABLE IF NOT EXISTS parcels (
                     id SERIAL PRIMARY KEY,
                     geom GEOMETRY(GEOMETRY, 3857),
+                    
+                    -- Score-related columns
                     qtrmi_s FLOAT,
                     hwui_s FLOAT,
                     hagri_s FLOAT,
                     hvhsz_s FLOAT,
-                    uphill_s FLOAT,
+                    hfb_s FLOAT,
+                    slope_s FLOAT,
                     neigh1d_s FLOAT,
+                    uphill_s FLOAT,
+                    strdens_s FLOAT,
+                    neigh2d_s FLOAT,
+                    qtrpct_s FLOAT,
+                    maxslp_s FLOAT,
+                    hbrn_s FLOAT,
+                    
+                    -- Quantile score columns
+                    qtrmi_q FLOAT,
+                    hwui_q FLOAT,
+                    hagri_q FLOAT,
+                    hvhsz_q FLOAT,
+                    hfb_q FLOAT,
+                    slope_q FLOAT,
+                    neigh1d_q FLOAT,
+                    uphill_q FLOAT,
+                    strdens_q FLOAT,
+                    neigh2d_q FLOAT,
+                    qtrpct_q FLOAT,
+                    maxslp_q FLOAT,
+                    hbrn_q FLOAT,
+                    
+                    -- Z-score columns
+                    qtrmi_z FLOAT,
+                    hwui_z FLOAT,
+                    hagri_z FLOAT,
+                    hvhsz_z FLOAT,
+                    hfb_z FLOAT,
+                    slope_z FLOAT,
+                    neigh1d_z FLOAT,
+                    uphill_z FLOAT,
+                    strdens_z FLOAT,
+                    neigh2d_z FLOAT,
+                    qtrpct_z FLOAT,
+                    maxslp_z FLOAT,
+                    hbrn_z FLOAT,
+                    
+                    -- Raw data columns
                     yearbuilt INTEGER,
                     qtrmi_cnt INTEGER,
                     hlfmi_agri FLOAT,
                     hlfmi_wui FLOAT,
                     hlfmi_vhsz FLOAT,
+                    hlfmi_fb FLOAT,
+                    hlfmi_brn FLOAT,
                     num_neighb INTEGER,
+                    strcnt INTEGER,
+                    neigh1_d FLOAT,
+                    neigh2_d FLOAT,
+                    perimeter FLOAT,
+                    par_elev FLOAT,
+                    par_elev_m FLOAT,
+                    avg_slope FLOAT,
+                    max_slope FLOAT,
+                    par_aspe_1 TEXT,
+                    str_slope FLOAT,
+                    pixel_coun INTEGER,
+                    num_brns INTEGER,
+                    
+                    -- Identification columns
+                    parcel_id TEXT,
+                    apn TEXT,
+                    all_ids TEXT,
+                    direct_ids TEXT,
+                    across_ids TEXT,
+                    
+                    -- Additional data
+                    area_sqft FLOAT,
+                    str_dens FLOAT,
+                    landval FLOAT,
+                    bedrooms INTEGER,
+                    baths FLOAT,
+                    landuse TEXT,
+                    direct_cou INTEGER,
+                    across_cou INTEGER,
+                    all_count INTEGER,
+                    
                     geom_type TEXT
                 );
             """)
@@ -77,8 +175,30 @@ class ParcelDataLoader:
                 "CREATE INDEX IF NOT EXISTS parcels_hwui_s_idx ON parcels (hwui_s);",
                 "CREATE INDEX IF NOT EXISTS parcels_hagri_s_idx ON parcels (hagri_s);",
                 "CREATE INDEX IF NOT EXISTS parcels_hvhsz_s_idx ON parcels (hvhsz_s);",
+                "CREATE INDEX IF NOT EXISTS parcels_hfb_s_idx ON parcels (hfb_s);",
                 "CREATE INDEX IF NOT EXISTS parcels_uphill_s_idx ON parcels (uphill_s);",
-                "CREATE INDEX IF NOT EXISTS parcels_geom_type_idx ON parcels (geom_type);"
+                "CREATE INDEX IF NOT EXISTS parcels_hbrn_s_idx ON parcels (hbrn_s);",
+                # Add indices for quantile columns
+                "CREATE INDEX IF NOT EXISTS parcels_neigh1d_q_idx ON parcels (neigh1d_q);",
+                "CREATE INDEX IF NOT EXISTS parcels_qtrmi_q_idx ON parcels (qtrmi_q);",
+                "CREATE INDEX IF NOT EXISTS parcels_hwui_q_idx ON parcels (hwui_q);",
+                "CREATE INDEX IF NOT EXISTS parcels_hagri_q_idx ON parcels (hagri_q);",
+                "CREATE INDEX IF NOT EXISTS parcels_hvhsz_q_idx ON parcels (hvhsz_q);",
+                "CREATE INDEX IF NOT EXISTS parcels_hfb_q_idx ON parcels (hfb_q);",
+                "CREATE INDEX IF NOT EXISTS parcels_uphill_q_idx ON parcels (uphill_q);",
+                "CREATE INDEX IF NOT EXISTS parcels_hbrn_q_idx ON parcels (hbrn_q);",
+                # Add indices for z-score columns
+                "CREATE INDEX IF NOT EXISTS parcels_neigh1d_z_idx ON parcels (neigh1d_z);",
+                "CREATE INDEX IF NOT EXISTS parcels_qtrmi_z_idx ON parcels (qtrmi_z);",
+                "CREATE INDEX IF NOT EXISTS parcels_hwui_z_idx ON parcels (hwui_z);",
+                "CREATE INDEX IF NOT EXISTS parcels_hagri_z_idx ON parcels (hagri_z);",
+                "CREATE INDEX IF NOT EXISTS parcels_hvhsz_z_idx ON parcels (hvhsz_z);",
+                "CREATE INDEX IF NOT EXISTS parcels_hfb_z_idx ON parcels (hfb_z);",
+                "CREATE INDEX IF NOT EXISTS parcels_uphill_z_idx ON parcels (uphill_z);",
+                "CREATE INDEX IF NOT EXISTS parcels_hbrn_z_idx ON parcels (hbrn_z);",
+                "CREATE INDEX IF NOT EXISTS parcels_num_brns_idx ON parcels (num_brns);",
+                "CREATE INDEX IF NOT EXISTS parcels_geom_type_idx ON parcels (geom_type);",
+                "CREATE INDEX IF NOT EXISTS parcels_par_aspe_1_idx ON parcels (par_aspe_1);"
             ]
             
             for idx in indices:
@@ -114,10 +234,33 @@ class ParcelDataLoader:
             
             # Prepare data for insertion
             values = []
-            columns = ['qtrmi_s', 'hwui_s', 'hagri_s', 'hvhsz_s', 'uphill_s', 
-                      'neigh1d_s', 'yearbuilt', 'qtrmi_cnt', 'hlfmi_agri', 
-                      'hlfmi_wui', 'hlfmi_vhsz', 'num_neighb']
-            
+            columns = [
+                # Score-related columns
+                'qtrmi_s', 'hwui_s', 'hagri_s', 'hvhsz_s', 'hfb_s', 'slope_s', 
+                'neigh1d_s', 'uphill_s', 'strdens_s', 'neigh2d_s', 'qtrpct_s', 'maxslp_s', 'hbrn_s',
+                
+                # Quantile score columns
+                'qtrmi_q', 'hwui_q', 'hagri_q', 'hvhsz_q', 'hfb_q', 'slope_q', 
+                'neigh1d_q', 'uphill_q', 'strdens_q', 'neigh2d_q', 'qtrpct_q', 'maxslp_q', 'hbrn_q',
+                
+                # Z-score columns
+                'qtrmi_z', 'hwui_z', 'hagri_z', 'hvhsz_z', 'hfb_z', 'slope_z', 
+                'neigh1d_z', 'uphill_z', 'strdens_z', 'neigh2d_z', 'qtrpct_z', 'maxslp_z', 'hbrn_z',
+                
+                # Raw data columns
+                'yearbuilt', 'qtrmi_cnt', 'hlfmi_agri', 'hlfmi_wui', 'hlfmi_vhsz', 
+                'hlfmi_fb', 'hlfmi_brn', 'num_neighb', 'strcnt', 'neigh1_d', 'neigh2_d',
+                'perimeter', 'par_elev', 'par_elev_m', 'avg_slope', 'max_slope',
+                'par_aspe_1', 'str_slope', 'pixel_coun', 'num_brns',
+                
+                # Identification columns
+                'parcel_id', 'apn', 'all_ids', 'direct_ids', 'across_ids',
+                
+                # Additional data
+                'area_sqft', 'str_dens', 'landval', 'bedrooms', 'baths', 'landuse',
+                'direct_cou', 'across_cou', 'all_count'
+            ]
+             
             for idx, row in tqdm(gdf_3857.iterrows(), total=len(gdf_3857), desc="Processing parcels"):
                 # Check if geometry is valid
                 if row.geometry is None or row.geometry.is_empty:
@@ -146,29 +289,48 @@ class ParcelDataLoader:
             # Batch insert
             logger.info("Inserting parcels into database...")
             insert_query = """
-                INSERT INTO parcels (geom, geom_type, qtrmi_s, hwui_s, hagri_s, hvhsz_s, 
-                                   uphill_s, neigh1d_s, yearbuilt, qtrmi_cnt, 
-                                   hlfmi_agri, hlfmi_wui, hlfmi_vhsz, num_neighb)
-                VALUES (ST_GeomFromText(%s, 3857), %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                INSERT INTO parcels (
+                    geom, geom_type,
+                    qtrmi_s, hwui_s, hagri_s, hvhsz_s, hfb_s, slope_s, neigh1d_s, uphill_s,
+                    strdens_s, neigh2d_s, qtrpct_s, maxslp_s, hbrn_s,
+                    qtrmi_q, hwui_q, hagri_q, hvhsz_q, hfb_q, slope_q, neigh1d_q, uphill_q,
+                    strdens_q, neigh2d_q, qtrpct_q, maxslp_q, hbrn_q,
+                    qtrmi_z, hwui_z, hagri_z, hvhsz_z, hfb_z, slope_z, neigh1d_z, uphill_z,
+                    strdens_z, neigh2d_z, qtrpct_z, maxslp_z, hbrn_z,
+                    yearbuilt, qtrmi_cnt, hlfmi_agri, hlfmi_wui, hlfmi_vhsz, hlfmi_fb, hlfmi_brn,
+                    num_neighb, strcnt, neigh1_d, neigh2_d, perimeter, par_elev, par_elev_m,
+                    avg_slope, max_slope, par_aspe_1, str_slope, pixel_coun, num_brns,
+                    parcel_id, apn, all_ids, direct_ids, across_ids,
+                    area_sqft, str_dens, landval, bedrooms, baths, landuse,
+                    direct_cou, across_cou, all_count
+                )
+                VALUES (
+                    ST_GeomFromText(%s, 3857), %s,
+                    %s, %s, %s, %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s, %s, %s,
+                    %s, %s, %s
+                );
             """
             
             # Insert in batches
             batch_size = 1000
             for i in range(0, len(values), batch_size):
-                batch = values[i:i+batch_size]
+                batch = values[i:i + batch_size]
                 self.cur.executemany(insert_query, batch)
                 self.conn.commit()
-                logger.info(f"Inserted batch {i//batch_size + 1}/{(len(values)-1)//batch_size + 1}")
+                logger.info(f"Inserted batch {i//batch_size + 1}/{(len(values) + batch_size - 1)//batch_size}")
             
-            # Log final geometry statistics
-            self.cur.execute("""
-                SELECT geom_type, COUNT(*) 
-                FROM parcels 
-                GROUP BY geom_type
-            """)
-            final_geom_stats = self.cur.fetchall()
-            logger.info(f"Successfully loaded {len(values)} parcels:")
-            for geom_type, count in final_geom_stats:
+            logger.info(f"Successfully loaded {len(gdf)} parcels:")
+            for geom_type, count in geom_types.items():
                 logger.info(f"  {geom_type}: {count} parcels")
             
         except Exception as e:
@@ -188,9 +350,32 @@ class ParcelDataLoader:
             logger.info(f"Found {len(features)} features")
             
             values = []
-            columns = ['qtrmi_s', 'hwui_s', 'hagri_s', 'hvhsz_s', 'uphill_s', 
-                      'neigh1d_s', 'yearbuilt', 'qtrmi_cnt', 'hlfmi_agri', 
-                      'hlfmi_wui', 'hlfmi_vhsz', 'num_neighb']
+            columns = [
+                # Score-related columns
+                'qtrmi_s', 'hwui_s', 'hagri_s', 'hvhsz_s', 'hfb_s', 'slope_s', 
+                'neigh1d_s', 'uphill_s', 'strdens_s', 'neigh2d_s', 'qtrpct_s', 'maxslp_s', 'hbrn_s',
+                
+                # Quantile score columns
+                'qtrmi_q', 'hwui_q', 'hagri_q', 'hvhsz_q', 'hfb_q', 'slope_q', 
+                'neigh1d_q', 'uphill_q', 'strdens_q', 'neigh2d_q', 'qtrpct_q', 'maxslp_q', 'hbrn_q',
+                
+                # Z-score columns
+                'qtrmi_z', 'hwui_z', 'hagri_z', 'hvhsz_z', 'hfb_z', 'slope_z', 
+                'neigh1d_z', 'uphill_z', 'strdens_z', 'neigh2d_z', 'qtrpct_z', 'maxslp_z', 'hbrn_z',
+                
+                # Raw data columns
+                'yearbuilt', 'qtrmi_cnt', 'hlfmi_agri', 'hlfmi_wui', 'hlfmi_vhsz', 
+                'hlfmi_fb', 'hlfmi_brn', 'num_neighb', 'strcnt', 'neigh1_d', 'neigh2_d',
+                'perimeter', 'par_elev', 'par_elev_m', 'avg_slope', 'max_slope',
+                'par_aspe_1', 'str_slope', 'pixel_coun', 'num_brns',
+                
+                # Identification columns
+                'parcel_id', 'apn', 'all_ids', 'direct_ids', 'across_ids',
+                
+                # Additional data
+                'area_sqft', 'str_dens', 'landval', 'bedrooms', 'baths', 'landuse',
+                'direct_cou', 'across_cou', 'all_count'
+            ]
             
             geom_type_counts = {}
             
@@ -210,14 +395,108 @@ class ParcelDataLoader:
                     # Count geometry types
                     geom_type_counts[geom_type] = geom_type_counts.get(geom_type, 0) + 1
                     
-                    # Get properties
-                    props = feature.get('properties', {})
-                    attrs = []
-                    for col in columns:
-                        val = props.get(col)
-                        attrs.append(val if val is not None else None)
+                    # Extract all fields from the feature
+                    fields = {
+                        'qtrmi_s': feature.get('qtrmi_s'),
+                        'hwui_s': feature.get('hwui_s'),
+                        'hagri_s': feature.get('hagri_s'),
+                        'hvhsz_s': feature.get('hvhsz_s'),
+                        'hfb_s': feature.get('hfb_s'),
+                        'slope_s': feature.get('slope_s'),
+                        'neigh1d_s': feature.get('neigh1d_s'),
+                        'uphill_s': feature.get('uphill_s'),
+                        'strdens_s': feature.get('strdens_s'),
+                        'neigh2d_s': feature.get('neigh2d_s'),
+                        'qtrpct_s': feature.get('qtrpct_s'),
+                        'maxslp_s': feature.get('maxslp_s'),
+                        'hbrn_s': feature.get('hbrn_s'),
+                        'yearbuilt': feature.get('yearbuilt'),
+                        'qtrmi_cnt': feature.get('qtrmi_cnt'),
+                        'hlfmi_agri': feature.get('hlfmi_agri'),
+                        'hlfmi_wui': feature.get('hlfmi_wui'),
+                        'hlfmi_vhsz': feature.get('hlfmi_vhsz'),
+                        'hlfmi_fb': feature.get('hlfmi_fb'),
+                        'hlfmi_brn': feature.get('hlfmi_brn'),
+                        'num_neighb': feature.get('num_neighb'),
+                        'strcnt': feature.get('strcnt'),
+                        # Convert distance from meters to feet (1 meter = 3.28084 feet)
+                        'neigh1_d': feature.get('neigh1_d') * 3.28084 if feature.get('neigh1_d') is not None else None,
+                        'neigh2_d': feature.get('neigh2_d') * 3.28084 if feature.get('neigh2_d') is not None else None,
+                        'perimeter': feature.get('perimeter'),
+                        'par_elev': feature.get('par_elev'),
+                        'par_elev_m': feature.get('par_elev_m'),
+                        'avg_slope': feature.get('avg_slope'),
+                        'max_slope': feature.get('max_slope'),
+                        'par_aspe_1': feature.get('par_aspe_1'),
+                        'str_slope': feature.get('str_slope'),
+                        'pixel_coun': feature.get('pixel_coun'),
+                        'num_brns': feature.get('num_brns'),
+                        'parcel_id': feature.get('parcel_id'),
+                        'apn': feature.get('apn'),
+                        'all_ids': feature.get('all_ids'),
+                        'direct_ids': feature.get('direct_ids'),
+                        'across_ids': feature.get('across_ids'),
+                        'area_sqft': feature.get('area_sqft'),
+                        'str_dens': feature.get('str_dens'),
+                        'landval': feature.get('landval'),
+                        'bedrooms': feature.get('bedrooms'),
+                        'baths': feature.get('baths'),
+                        'landuse': feature.get('landuse'),
+                        'direct_cou': feature.get('direct_cou'),
+                        'across_cou': feature.get('across_cou'),
+                        'all_count': feature.get('all_count'),
+                        'qtrmi_q': feature.get('qtrmi_q'),
+                        'hwui_q': feature.get('hwui_q'),
+                        'hagri_q': feature.get('hagri_q'),
+                        'hvhsz_q': feature.get('hvhsz_q'),
+                        'hfb_q': feature.get('hfb_q'),
+                        'slope_q': feature.get('slope_q'),
+                        'neigh1d_q': feature.get('neigh1d_q'),
+                        'uphill_q': feature.get('uphill_q'),
+                        'strdens_q': feature.get('strdens_q'),
+                        'neigh2d_q': feature.get('neigh2d_q'),
+                        'qtrpct_q': feature.get('qtrpct_q'),
+                        'maxslp_q': feature.get('maxslp_q'),
+                        'hbrn_q': feature.get('hbrn_q'),
+                        'qtrmi_z': feature.get('qtrmi_z'),
+                        'hwui_z': feature.get('hwui_z'),
+                        'hagri_z': feature.get('hagri_z'),
+                        'hvhsz_z': feature.get('hvhsz_z'),
+                        'hfb_z': feature.get('hfb_z'),
+                        'slope_z': feature.get('slope_z'),
+                        'neigh1d_z': feature.get('neigh1d_z'),
+                        'uphill_z': feature.get('uphill_z'),
+                        'strdens_z': feature.get('strdens_z'),
+                        'neigh2d_z': feature.get('neigh2d_z'),
+                        'qtrpct_z': feature.get('qtrpct_z'),
+                        'maxslp_z': feature.get('maxslp_z'),
+                        'hbrn_z': feature.get('hbrn_z')
+                    }
                     
-                    values.append((geom_wkt, geom_type) + tuple(attrs))
+                    # Convert geometry to WKT
+                    geom = feature.geometry.wkt
+                    
+                    # Prepare values for insertion
+                    values.append((
+                        geom, geom_type,
+                        fields['qtrmi_s'], fields['hwui_s'], fields['hagri_s'], fields['hvhsz_s'],
+                        fields['hfb_s'], fields['slope_s'], fields['neigh1d_s'], fields['uphill_s'],
+                        fields['strdens_s'], fields['neigh2d_s'], fields['qtrpct_s'], fields['maxslp_s'], fields['hbrn_s'],
+                        fields['qtrmi_q'], fields['hwui_q'], fields['hagri_q'], fields['hvhsz_q'],
+                        fields['hfb_q'], fields['slope_q'], fields['neigh1d_q'], fields['uphill_q'],
+                        fields['strdens_q'], fields['neigh2d_q'], fields['qtrpct_q'], fields['maxslp_q'], fields['hbrn_q'],
+                        fields['qtrmi_z'], fields['hwui_z'], fields['hagri_z'], fields['hvhsz_z'],
+                        fields['hfb_z'], fields['slope_z'], fields['neigh1d_z'], fields['uphill_z'],
+                        fields['strdens_z'], fields['neigh2d_z'], fields['qtrpct_z'], fields['maxslp_z'], fields['hbrn_z'],
+                        fields['yearbuilt'], fields['qtrmi_cnt'], fields['hlfmi_agri'], fields['hlfmi_wui'],
+                        fields['hlfmi_vhsz'], fields['hlfmi_fb'], fields['hlfmi_brn'], fields['num_neighb'], fields['strcnt'],
+                        fields['neigh1_d'], fields['neigh2_d'], fields['perimeter'], fields['par_elev'],
+                        fields['par_elev_m'], fields['avg_slope'], fields['max_slope'], fields['par_aspe_1'],
+                        fields['str_slope'], fields['pixel_coun'], fields['num_brns'], fields['parcel_id'], fields['apn'],
+                        fields['all_ids'], fields['direct_ids'], fields['across_ids'], fields['area_sqft'],
+                        fields['str_dens'], fields['landval'], fields['bedrooms'], fields['baths'],
+                        fields['landuse'], fields['direct_cou'], fields['across_cou'], fields['all_count']
+                    ))
                     
                 except Exception as e:
                     logger.warning(f"Failed to process feature: {e}")
@@ -228,11 +507,36 @@ class ParcelDataLoader:
             # Insert data
             logger.info("Inserting features into database...")
             insert_query = """
-                INSERT INTO parcels (geom, geom_type, qtrmi_s, hwui_s, hagri_s, hvhsz_s, 
-                                   uphill_s, neigh1d_s, yearbuilt, qtrmi_cnt, 
-                                   hlfmi_agri, hlfmi_wui, hlfmi_vhsz, num_neighb)
-                VALUES (ST_Transform(ST_GeomFromText(%s, 4326), 3857), %s,
-                        %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                INSERT INTO parcels (
+                    geom, geom_type,
+                    qtrmi_s, hwui_s, hagri_s, hvhsz_s, hfb_s, slope_s, neigh1d_s, uphill_s,
+                    strdens_s, neigh2d_s, qtrpct_s, maxslp_s, hbrn_s,
+                    qtrmi_q, hwui_q, hagri_q, hvhsz_q, hfb_q, slope_q, neigh1d_q, uphill_q,
+                    strdens_q, neigh2d_q, qtrpct_q, maxslp_q, hbrn_q,
+                    qtrmi_z, hwui_z, hagri_z, hvhsz_z, hfb_z, slope_z, neigh1d_z, uphill_z,
+                    strdens_z, neigh2d_z, qtrpct_z, maxslp_z, hbrn_z,
+                    yearbuilt, qtrmi_cnt, hlfmi_agri, hlfmi_wui, hlfmi_vhsz, hlfmi_fb, hlfmi_brn,
+                    num_neighb, strcnt, neigh1_d, neigh2_d, perimeter, par_elev, par_elev_m,
+                    avg_slope, max_slope, par_aspe_1, str_slope, pixel_coun, num_brns,
+                    parcel_id, apn, all_ids, direct_ids, across_ids,
+                    area_sqft, str_dens, landval, bedrooms, baths, landuse,
+                    direct_cou, across_cou, all_count
+                )
+                VALUES (
+                    ST_Transform(ST_GeomFromText(%s, 4326), 3857), %s,
+                    %s, %s, %s, %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s, %s, %s,
+                    %s, %s, %s
+                )
             """
             
             # Insert in batches
@@ -267,7 +571,9 @@ class ParcelDataLoader:
             'wui': 'wui_areas',
             'hazard': 'hazard_zones',
             'structures': 'structures',
-            'firewise': 'firewise_communities'
+            'firewise': 'firewise_communities',
+            'fuelbreaks': 'fuelbreaks',
+            'burnscars': 'burn_scars'
         }
         
         if layer_name not in table_map:
@@ -278,13 +584,26 @@ class ParcelDataLoader:
         
         try:
             # Create table if needed - using GEOMETRY to handle both Polygon and MultiPolygon
-            self.cur.execute(f"""
-                CREATE TABLE IF NOT EXISTS {table_name} (
-                    id SERIAL PRIMARY KEY,
-                    geom GEOMETRY({geometry_type}, 3857),
-                    original_geom_type TEXT
-                );
-            """)
+            # Special handling for burnscars to include additional columns
+            if layer_name == 'burnscars':
+                self.cur.execute(f"""
+                    CREATE TABLE IF NOT EXISTS {table_name} (
+                        id SERIAL PRIMARY KEY,
+                        geom GEOMETRY({geometry_type}, 3857),
+                        original_geom_type TEXT,
+                        incidentna TEXT,
+                        fireyear REAL,
+                        gisacres REAL
+                    );
+                """)
+            else:
+                self.cur.execute(f"""
+                    CREATE TABLE IF NOT EXISTS {table_name} (
+                        id SERIAL PRIMARY KEY,
+                        geom GEOMETRY({geometry_type}, 3857),
+                        original_geom_type TEXT
+                    );
+                """)
             self.cur.execute(f"CREATE INDEX IF NOT EXISTS {table_name}_geom_idx ON {table_name} USING GIST (geom);")
             self.conn.commit()
             
@@ -308,12 +627,29 @@ class ParcelDataLoader:
                     
                     # Get geometry type for logging/debugging
                     geom_type = geom.geom_type
+                    
+                    # Force 2D geometry to avoid Z dimension issues
+                    if geom.has_z:
+                        from shapely.ops import transform
+                        geom = transform(lambda x, y, z=None: (x, y), geom)
+                    
                     geom_wkt = geom.wkt
                     
-                    self.cur.execute(f"""
-                        INSERT INTO {table_name} (geom, original_geom_type)
-                        VALUES (ST_GeomFromText(%s, 3857), %s)
-                    """, (geom_wkt, geom_type))
+                    # Special handling for burnscars to include additional columns
+                    if layer_name == 'burnscars':
+                        incidentna = row.get('incidentna', '')
+                        fireyear = row.get('fireyear', None)
+                        gisacres = row.get('gisacres', None)
+                        
+                        self.cur.execute(f"""
+                            INSERT INTO {table_name} (geom, original_geom_type, incidentna, fireyear, gisacres)
+                            VALUES (ST_GeomFromText(%s, 3857), %s, %s, %s, %s)
+                        """, (geom_wkt, geom_type, incidentna, fireyear, gisacres))
+                    else:
+                        self.cur.execute(f"""
+                            INSERT INTO {table_name} (geom, original_geom_type)
+                            VALUES (ST_GeomFromText(%s, 3857), %s)
+                        """, (geom_wkt, geom_type))
                 
             elif filepath.endswith('.geojson') or filepath.endswith('.json'):
                 with open(filepath, 'r') as f:
@@ -329,12 +665,30 @@ class ParcelDataLoader:
                             continue
                         
                         geom_type = geom.geom_type
+                        
+                        # Force 2D geometry to avoid Z dimension issues
+                        if geom.has_z:
+                            from shapely.ops import transform
+                            geom = transform(lambda x, y, z=None: (x, y), geom)
+                        
                         geom_wkt = geom.wkt
                         
-                        self.cur.execute(f"""
-                            INSERT INTO {table_name} (geom, original_geom_type)
-                            VALUES (ST_Transform(ST_GeomFromText(%s, 4326), 3857), %s)
-                        """, (geom_wkt, geom_type))
+                        # Special handling for burnscars to include additional columns
+                        if layer_name == 'burnscars':
+                            props = feature.get('properties', {})
+                            incidentna = props.get('incidentna', '')
+                            fireyear = props.get('fireyear', None)
+                            gisacres = props.get('gisacres', None)
+                            
+                            self.cur.execute(f"""
+                                INSERT INTO {table_name} (geom, original_geom_type, incidentna, fireyear, gisacres)
+                                VALUES (ST_Transform(ST_GeomFromText(%s, 4326), 3857), %s, %s, %s, %s)
+                            """, (geom_wkt, geom_type, incidentna, fireyear, gisacres))
+                        else:
+                            self.cur.execute(f"""
+                                INSERT INTO {table_name} (geom, original_geom_type)
+                                VALUES (ST_Transform(ST_GeomFromText(%s, 4326), 3857), %s)
+                            """, (geom_wkt, geom_type))
                         
                     except Exception as e:
                         logger.warning(f"Failed to process feature: {e}")
@@ -371,34 +725,71 @@ class ParcelDataLoader:
                 total_parcels += count
             logger.info(f"Total parcels: {total_parcels}")
             
-            # Check data distribution
-            self.cur.execute("""
-                SELECT 
-                    AVG(qtrmi_s) as avg_qtrmi,
-                    AVG(hwui_s) as avg_hwui,
-                    AVG(hagri_s) as avg_hagri,
-                    AVG(hvhsz_s) as avg_hvhsz,
-                    AVG(uphill_s) as avg_uphill,
-                    AVG(neigh1d_s) as avg_neigh1d,
-                    COUNT(CASE WHEN yearbuilt IS NOT NULL THEN 1 END) as count_yearbuilt
-                FROM parcels
-            """)
-            stats = self.cur.fetchone()
-            logger.info(f"Data statistics: {dict(stats)}")
+            # Define numeric and text columns
+            numeric_columns = [
+                'qtrmi_s', 'hwui_s', 'hagri_s', 'hvhsz_s', 'hfb_s', 'slope_s', 
+                'neigh1d_s', 'hbrn_s', 'yearbuilt', 'qtrmi_cnt', 'hlfmi_agri', 'hlfmi_wui', 
+                'hlfmi_vhsz', 'hlfmi_fb', 'hlfmi_brn', 'num_neighb', 'strcnt', 'neigh1_d', 
+                'perimeter', 'par_elev', 'avg_slope', 'max_slope', 'uphill_s', 'num_brns'
+            ]
+            
+            text_columns = ['parcel_id', 'apn', 'all_ids', 'par_aspe_1']
+            
+            logger.info("\nColumn Statistics:")
+            logger.info("-" * 100)
+            logger.info(f"{'Column Name':<20} {'Total':<10} {'Non-Null':<10} {'Null':<10} {'Avg':<10} {'Min':<10} {'Max':<10}")
+            logger.info("-" * 100)
+            
+            # Check numeric columns
+            for col in numeric_columns:
+                self.cur.execute(f"""
+                    SELECT 
+                        COUNT(*) as total,
+                        COUNT({col}) as non_null,
+                        COUNT(*) - COUNT({col}) as null_count,
+                        ROUND(AVG({col})::numeric, 2) as avg_val,
+                        ROUND(MIN({col})::numeric, 2) as min_val,
+                        ROUND(MAX({col})::numeric, 2) as max_val
+                    FROM parcels
+                """)
+                stats = self.cur.fetchone()
+                
+                if stats:
+                    total, non_null, null_count, avg_val, min_val, max_val = stats
+                    logger.info(f"{col:<20} {total:<10} {non_null:<10} {null_count:<10} "
+                              f"{str(avg_val if avg_val is not None else 'N/A'):<10} "
+                              f"{str(min_val if min_val is not None else 'N/A'):<10} "
+                              f"{str(max_val if max_val is not None else 'N/A'):<10}")
+            
+            # Check text columns
+            for col in text_columns:
+                self.cur.execute(f"""
+                    SELECT 
+                        COUNT(*) as total,
+                        COUNT({col}) as non_null,
+                        COUNT(*) - COUNT({col}) as null_count
+                    FROM parcels
+                """)
+                stats = self.cur.fetchone()
+                
+                if stats:
+                    total, non_null, null_count = stats
+                    logger.info(f"{col:<20} {total:<10} {non_null:<10} {null_count:<10} "
+                              f"{'N/A':<10} {'N/A':<10} {'N/A':<10}")
             
             # Check auxiliary layers
-            for table in ['agricultural_areas', 'wui_areas', 'hazard_zones', 'structures', 'firewise_communities']:
+            for table in ['agricultural_areas', 'wui_areas', 'hazard_zones', 'structures', 'firewise_communities', 'fuelbreaks', 'burn_scars']:
                 try:
                     self.cur.execute(f"SELECT original_geom_type, COUNT(*) FROM {table} GROUP BY original_geom_type")
                     geom_stats = self.cur.fetchall()
                     if geom_stats:
-                        logger.info(f"{table}:")
+                        logger.info(f"\n{table}:")
                         for geom_type, count in geom_stats:
                             logger.info(f"  {geom_type}: {count} features")
                     else:
-                        logger.info(f"{table}: No data")
+                        logger.info(f"\n{table}: No data")
                 except:
-                    logger.info(f"{table}: Not loaded")
+                    logger.info(f"\n{table}: Not loaded")
             
         except Exception as e:
             logger.error(f"Failed to verify data: {e}")
@@ -413,7 +804,10 @@ def main():
     parser.add_argument('--hazard', help='Path to hazard zones file')
     parser.add_argument('--structures', help='Path to structures file')
     parser.add_argument('--firewise', help='Path to firewise communities file')
+    parser.add_argument('--fuelbreaks', help='Path to fuel breaks file')
+    parser.add_argument('--burnscars', help='Path to burn scars file')
     parser.add_argument('--create-tables', action='store_true', help='Create database tables')
+    parser.add_argument('--drop-tables', action='store_true', help='Drop existing tables before creating new ones')
     parser.add_argument('--verify', action='store_true', help='Verify loaded data')
     
     args = parser.parse_args()
@@ -423,6 +817,10 @@ def main():
     loader.connect()
     
     try:
+        # Drop tables if requested
+        if args.drop_tables:
+            loader.drop_tables()
+        
         # Create tables if requested
         if args.create_tables:
             loader.create_tables()
@@ -447,6 +845,10 @@ def main():
             loader.load_auxiliary_layer(args.structures, 'structures', 'GEOMETRY')
         if args.firewise:
             loader.load_auxiliary_layer(args.firewise, 'firewise', 'GEOMETRY')
+        if args.fuelbreaks:
+            loader.load_auxiliary_layer(args.fuelbreaks, 'fuelbreaks', 'GEOMETRY')
+        if args.burnscars:
+            loader.load_auxiliary_layer(args.burnscars, 'burnscars', 'GEOMETRY')
         
         # Verify data
         if args.verify:
