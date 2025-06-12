@@ -1,0 +1,4 @@
+# Ignore everything by default
+*
+# Unignore .env file
+!.env 
