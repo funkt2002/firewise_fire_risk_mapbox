@@ -22,16 +22,19 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt \
  && pip install --no-cache-dir tabulate gunicorn
 
-# Remove PuLP’s vendored CBC binary so that it will use /usr/bin/cbc instead
+# Remove PuLP's vendored CBC binary so that it will use /usr/bin/cbc instead
 RUN rm -f /usr/local/lib/python3.11/site-packages/pulp/solverdir/cbc/linux/64/cbc || true
 
 # Copy your application code
-COPY app.py railway_debug.py scripts/ ./scripts/
+COPY app.py .
+COPY railway_debug.py .
 COPY templates/ templates/
 COPY static/ static/
+COPY scripts/ scripts/
 
 # Make your scripts executable
-RUN chmod +x scripts/*.py railway_debug.py
+RUN chmod +x railway_debug.py && \
+    if [ -d "scripts" ]; then chmod +x scripts/*.py; fi
 
 # Create a non-root user and give them ownership of /app
 RUN useradd --create-home --shell /bin/bash app \
