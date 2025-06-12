@@ -429,6 +429,17 @@ def calculate_scores():
                                normalized_score = (float(raw_value) - norm_data['min']) / norm_data['range']
                                normalized_score = max(0, min(1, normalized_score))  # Clamp to [0,1]
                            
+                           # Store the locally normalized score in the appropriate individual score variable
+                           # This ensures popups show the renormalized individual scores
+                           if use_quantile:
+                               score_var = var_base + '_z'
+                           elif use_quantiled_scores:
+                               score_var = var_base + '_q'
+                           else:
+                               score_var = var_base + '_s'
+                           
+                           properties[score_var] = normalized_score
+                           
                            # Thresholds removed - using raw normalized scores
                            
                            score += weight * normalized_score

@@ -27,7 +27,7 @@ class WelcomePopup {
             <div id="welcome-popup-overlay" class="welcome-popup-overlay" style="display: none;">
                 <div class="welcome-popup-container">
                     <div class="welcome-popup-header">
-                        <h1>Fire Fire Risk Assessment Tool Guide</h1>
+                        <h1>Fire Risk Assessment Tool Guide</h1>
                         <button id="welcome-popup-close" class="welcome-popup-close">&times;</button>
                     </div>
                     <div class="welcome-popup-body">
@@ -100,7 +100,7 @@ class WelcomePopup {
                                 <li><strong>Export:</strong> Download top-risk parcels as shapefiles</li>
                                 <li><strong>Measure Tool:</strong> Measure distances on the map</li>
                             </ul>
-                            <p><em>Click anywhere on a parcel to see detailed information!</em></p>
+                            <p><em>Click on a parcel for pop-ups with detailed information</em></p>
                         </div>
                     </div>
                     <div class="welcome-popup-footer">
