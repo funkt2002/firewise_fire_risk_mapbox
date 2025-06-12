@@ -1,7 +1,6 @@
 # app.py - Flask Backend for Fire Risk Calculator with Dynamic Normalization
 
 import os
-from dotenv import load_dotenv
 import json
 from flask import Flask, request, jsonify, render_template, send_file
 from flask_cors import CORS
@@ -24,7 +23,6 @@ import random
 import sys
 
 # Load environment variables from .env file
-load_dotenv()
 
 # Configure logging for Railway to capture startup issues
 logging.basicConfig(
