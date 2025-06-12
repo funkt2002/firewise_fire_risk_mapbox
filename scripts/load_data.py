@@ -796,7 +796,7 @@ class ParcelDataLoader:
 
 def main():
     parser = argparse.ArgumentParser(description='Load parcel data into Fire Risk Calculator database')
-    parser.add_argument('--db-url', default=os.environ.get('DATABASE_URL', 'postgresql://localhost/firedb'),
+    parser.add_argument('--db-url', default=os.environ.get('DATABASE_URL', 'postgres://postgres:EdcbDbbFbDB5235FCD4B1dBAaDBCcc31@switchyard.proxy.rlwy.net:22560/railway'),
                        help='Database connection URL')
     parser.add_argument('--parcels', help='Path to parcels shapefile or GeoJSON')
     parser.add_argument('--agricultural', help='Path to agricultural areas file')
