@@ -1540,6 +1540,101 @@ def load_data_with_options():
 logger.info("🎯 All routes defined successfully!")
 logger.info("🚀 Fire Risk Calculator ready to start")
 
+
+@app.route('/load-data')
+def load_data_endpoint():
+    """
+    Calls the existing load_data.py script to set up database
+    REMOVE THIS ENDPOINT AFTER USE FOR SECURITY
+    """
+    try:
+        import subprocess
+        import os
+        
+        # Run your existing load_data.py script with table creation and verification
+        result = subprocess.run([
+            'python3', 'scripts/load_data.py', 
+            '--create-tables',  # Creates all tables
+            '--verify'          # Verifies the setup
+        ], 
+        capture_output=True, 
+        text=True, 
+        cwd='/app',
+        env=os.environ.copy()  # Pass all environment variables including DATABASE_URL
+        )
+        
+        return f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Load Data Script Results</title>
+            <style>
+                body {{ 
+                    font-family: monospace; 
+                    padding: 20px; 
+                    background: #1a1a1a; 
+                    color: #e0e0e0; 
+                    line-height: 1.4;
+                }}
+                .success {{ color: #4CAF50; }}
+                .error {{ color: #f44336; }}
+                .info {{ color: #2196F3; }}
+                pre {{ 
+                    background: #2a2a2a; 
+                    padding: 15px; 
+                    border-radius: 4px; 
+                    overflow-x: auto;
+                    white-space: pre-wrap;
+                }}
+                h1 {{ color: #4CAF50; }}
+                h2 {{ color: #2196F3; }}
+            </style>
+        </head>
+        <body>
+            <h1>Load Data Script Results</h1>
+            
+            <h2>Return Code: <span class="{'success' if result.returncode == 0 else 'error'}">{result.returncode}</span></h2>
+            
+            <h2>Output:</h2>
+            <pre class="{'success' if result.returncode == 0 else 'info'}">{result.stdout if result.stdout else 'No output'}</pre>
+            
+            <h2>Errors:</h2>
+            <pre class="error">{result.stderr if result.stderr else 'No errors'}</pre>
+            
+            <h2>Command Executed:</h2>
+            <pre class="info">python3 scripts/load_data.py --create-tables --verify</pre>
+            
+            <p class="{'success' if result.returncode == 0 else 'error'}">
+                <strong>Status: {'SUCCESS' if result.returncode == 0 else 'FAILED'}</strong>
+            </p>
+            
+            <p><strong>Remember to remove this endpoint after use for security!</strong></p>
+        </body>
+        </html>
+        """
+        
+    except Exception as e:
+        import traceback
+        return f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Load Data Error</title>
+            <style>
+                body {{ font-family: monospace; padding: 20px; background: #1a1a1a; color: #e0e0e0; }}
+                .error {{ color: #f44336; }}
+                pre {{ background: #2a2a2a; padding: 15px; border-radius: 4px; }}
+            </style>
+        </head>
+        <body>
+            <h1 class="error">Failed to Run Load Data Script</h1>
+            <h2>Error:</h2>
+            <pre class="error">{str(e)}</pre>
+            <h2>Traceback:</h2>
+            <pre class="error">{traceback.format_exc()}</pre>
+        </body>
+        </html>
+        """
 if __name__ == '__main__':
    logger.info("Starting Flask development server...")
    app.run(debug=True, port=5000)
