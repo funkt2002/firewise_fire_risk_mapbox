@@ -11,8 +11,7 @@ RUN apt-get update && apt-get install -y \
     libpq5 \
     gdal-bin \
     libgdal-dev \
-    glpk-utils \
-    wget \
+
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements first for better caching
@@ -43,7 +42,7 @@ RUN chown -R app:app /app
 USER app
 
 # Railway uses PORT environment variable
-EXPOSE $PORT
+EXPOSE 5000
 
-# Use gunicorn for production
-CMD gunicorn --bind 0.0.0.0:$PORT --workers 4 --timeout 120 --max-requests 1000 --max-requests-jitter 100 app:app
+# Use gunicorn for production and Railway PORT
+CMD gunicorn --bind 0.0.0.0:${PORT:-5000} --workers 4 --timeout 120 --max-requests 1000 --max-requests-jitter 100 app:app
