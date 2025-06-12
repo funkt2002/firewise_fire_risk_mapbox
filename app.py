@@ -33,26 +33,44 @@ app.config['DATABASE_URL'] = os.environ.get('DATABASE_URL', 'postgresql://postgr
 app.config['REDIS_URL'] = os.environ.get('REDIS_URL', 'redis://redis:6379')
 app.config['MAPBOX_TOKEN'] = os.environ.get('MAPBOX_TOKEN', '')
 
-# Redis setup
-r = redis.from_url(app.config['REDIS_URL'])
+# Redis setup - make connection lazy to avoid startup issues
+def get_redis():
+    """Get Redis connection, with fallback if Redis is not available"""
+    try:
+        return redis.from_url(app.config['REDIS_URL'])
+    except Exception as e:
+        print(f"Redis connection failed: {e}")
+        return None
 
 # Database connection
 def get_db():
    return psycopg2.connect(app.config['DATABASE_URL'], cursor_factory=RealDictCursor)
 
-# Cache decorator
+# Cache decorator with Redis fallback
 def cache_result(expiration=300):
    def decorator(f):
        @wraps(f)
        def decorated_function(*args, **kwargs):
-           cache_key = f"{f.__name__}:{json.dumps(request.get_json() or request.args.to_dict())}"
-           cached = r.get(cache_key)
-           if cached:
-               return jsonify(json.loads(cached))
-         
-           result = f(*args, **kwargs)
-           r.setex(cache_key, expiration, json.dumps(result))
-           return jsonify(result)
+           r = get_redis()
+           if r is None:
+               # If Redis is not available, skip caching
+               result = f(*args, **kwargs)
+               return jsonify(result)
+               
+           try:
+               cache_key = f"{f.__name__}:{json.dumps(request.get_json() or request.args.to_dict())}"
+               cached = r.get(cache_key)
+               if cached:
+                   return jsonify(json.loads(cached))
+             
+               result = f(*args, **kwargs)
+               r.setex(cache_key, expiration, json.dumps(result))
+               return jsonify(result)
+           except Exception as e:
+               print(f"Cache operation failed: {e}")
+               # Fall back to normal operation without caching
+               result = f(*args, **kwargs)
+               return jsonify(result)
        return decorated_function
    return decorator
 
@@ -143,7 +161,36 @@ def get_allowed_distribution_vars(use_quantiled_scores=False, use_quantile=False
 
 @app.route('/')
 def index():
-   return render_template('index.html', mapbox_token=app.config.get('MAPBOX_TOKEN', ''))
+   try:
+       return render_template('index.html', mapbox_token=app.config.get('MAPBOX_TOKEN', ''))
+   except Exception as e:
+       # Fallback if template loading fails
+       return f"""
+       <html>
+       <body>
+           <h1>Fire Risk Calculator - Status Check</h1>
+           <p>Application is running, but template loading failed: {str(e)}</p>
+           <p><a href="/health">Check Health Status</a></p>
+           <p><a href="/api/debug/columns">Debug Database Columns</a></p>
+           <p>Timestamp: {time.strftime('%Y-%m-%d %H:%M:%S')}</p>
+       </body>
+       </html>
+       """
+
+@app.route('/status')
+def status():
+   """Simple status endpoint that works without database"""
+   return jsonify({
+       "status": "running",
+       "timestamp": time.strftime('%Y-%m-%d %H:%M:%S'),
+       "version": "1.0",
+       "port": os.environ.get('PORT', 'not set'),
+       "env_vars": {
+           "DATABASE_URL": "set" if app.config.get('DATABASE_URL') else "not set",
+           "REDIS_URL": "set" if app.config.get('REDIS_URL') else "not set",
+           "MAPBOX_TOKEN": "set" if app.config.get('MAPBOX_TOKEN') else "not set"
+       }
+   })
 
 @app.route('/api/score', methods=['POST'])
 def calculate_scores():
@@ -1210,25 +1257,52 @@ def get_columns():
 @app.route('/health')
 def health_check():
     """Health check endpoint for Railway"""
+    health_status = {
+        "status": "healthy",
+        "timestamp": time.strftime('%Y-%m-%d %H:%M:%S'),
+        "services": {}
+    }
+    
+    overall_healthy = True
+    
+    # Test database connection
     try:
-        # Test database connection
         conn = get_db()
         cur = conn.cursor()
         cur.execute("SELECT 1")
         cur.close()
         conn.close()
-        
-        return jsonify({
-            "status": "healthy",
-            "database": "connected",
-            "timestamp": time.strftime('%Y-%m-%d %H:%M:%S')
-        }), 200
+        health_status["services"]["database"] = "connected"
     except Exception as e:
-        return jsonify({
-            "status": "unhealthy", 
-            "error": str(e),
-            "timestamp": time.strftime('%Y-%m-%d %H:%M:%S')
-        }), 500
+        health_status["services"]["database"] = f"error: {str(e)}"
+        overall_healthy = False
+    
+    # Test Redis connection
+    try:
+        r = get_redis()
+        if r is not None:
+            r.ping()
+            health_status["services"]["redis"] = "connected"
+        else:
+            health_status["services"]["redis"] = "not configured"
+    except Exception as e:
+        health_status["services"]["redis"] = f"error: {str(e)}"
+        # Redis failure doesn't make the app unhealthy since we have fallbacks
+    
+    # Check environment variables
+    env_vars = {
+        "DATABASE_URL": "✓" if app.config.get('DATABASE_URL') else "✗",
+        "REDIS_URL": "✓" if app.config.get('REDIS_URL') else "✗",
+        "MAPBOX_TOKEN": "✓" if app.config.get('MAPBOX_TOKEN') else "✗",
+        "PORT": os.environ.get('PORT', 'not set')
+    }
+    health_status["environment"] = env_vars
+    
+    if not overall_healthy:
+        health_status["status"] = "unhealthy"
+        return jsonify(health_status), 500
+    
+    return jsonify(health_status), 200
 
 # Add this to your app.py (before the `if __name__ == '__main__':` line)
 
@@ -1327,6 +1401,86 @@ def load_data_endpoint():
         </html>
         """
 
+
+@app.route('/debug')
+def debug_endpoint():
+    """Run diagnostic tests and return results"""
+    try:
+        import subprocess
+        import os
+        
+        # Run the debug script
+        result = subprocess.run(
+            ['python3', 'railway_debug.py'],
+            capture_output=True,
+            text=True,
+            cwd='/app',
+            env=os.environ.copy()
+        )
+        
+        return f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Railway Debug Results</title>
+            <style>
+                body {{ 
+                    font-family: monospace; 
+                    padding: 20px; 
+                    background: #1a1a1a; 
+                    color: #e0e0e0; 
+                    line-height: 1.4;
+                }}
+                .success {{ color: #4CAF50; }}
+                .error {{ color: #f44336; }}
+                .warning {{ color: #ff9800; }}
+                pre {{ 
+                    background: #2a2a2a; 
+                    padding: 15px; 
+                    border-radius: 4px; 
+                    overflow-x: auto;
+                    white-space: pre-wrap;
+                }}
+                h1 {{ color: #4CAF50; }}
+                .nav {{ margin: 20px 0; }}
+                .nav a {{ 
+                    color: #2196F3; 
+                    margin-right: 20px; 
+                    text-decoration: none;
+                    padding: 5px 10px;
+                    border: 1px solid #2196F3;
+                    border-radius: 3px;
+                }}
+                .nav a:hover {{ background: #2196F3; color: #fff; }}
+            </style>
+        </head>
+        <body>
+            <h1>Railway Debug Results</h1>
+            
+            <div class="nav">
+                <a href="/status">Status</a>
+                <a href="/health">Health Check</a>
+                <a href="/debug">Refresh Debug</a>
+                <a href="/">Home</a>
+            </div>
+            
+            <h2>Debug Output:</h2>
+            <pre>{result.stdout if result.stdout else 'No output'}</pre>
+            
+            {f'<h2>Errors:</h2><pre class="error">{result.stderr}</pre>' if result.stderr else ''}
+            
+            <h2>Return Code: {result.returncode}</h2>
+        </body>
+        </html>
+        """
+        
+    except Exception as e:
+        import traceback
+        return f"""
+        <h1>Debug Script Error</h1>
+        <pre>{str(e)}</pre>
+        <pre>{traceback.format_exc()}</pre>
+        """
 
 @app.route('/load-data-with-options')
 def load_data_with_options():
