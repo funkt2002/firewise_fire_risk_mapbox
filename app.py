@@ -55,8 +55,8 @@ CORS(app)
 logger.info("✅ Flask app and CORS configured")
 
 # Configuration
-app.config['DATABASE_URL'] = os.environ.get('postgres://postgres:EdcbDbbFbDB5235FCD4B1dBAaDBCcc31@switchyard.proxy.rlwy.net:22560/railway')
-app.config['REDIS_URL'] = os.environ.get('REDIS_URL', 'redis://default:zEPGAUhqemgIAmXakBHNZRoFHZWXKbdJ@turntable.proxy.rlwy.net:22185')
+app.config['DATABASE_URL'] = os.environ.get('DATABASE_URL', 'postgresql://postgres:postgres@localhost:5432/firedb')
+app.config['REDIS_URL'] = os.environ.get('REDIS_URL', 'redis://localhost:6379')
 app.config['MAPBOX_TOKEN'] = os.environ.get('MAPBOX_TOKEN', 'pk.eyJ1IjoidGhlbzExNTgiLCJhIjoiY21iYTU2dzdkMDBqajJub2tmY2c4Z3ltYyJ9.9-DIZmCBjFGIb2TUQ4QyXg')
 
 logger.info("✅ App configuration loaded")
