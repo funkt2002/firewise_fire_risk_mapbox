@@ -6,8 +6,6 @@ from flask import Flask, request, jsonify, render_template, send_file
 from flask_cors import CORS
 import psycopg2
 from psycopg2.extras import RealDictCursor
-from psycopg2 import pool
-from contextlib import contextmanager
 import numpy as np
 from pulp import *
 import redis
@@ -74,45 +72,6 @@ app.config['MAPBOX_TOKEN'] = os.environ.get('MAPBOX_TOKEN', 'pk.eyJ1IjoidGhlbzEx
 
 logger.info("✅ App configuration loaded")
 
-# Database connection pool setup
-db_pool = None
-
-def init_db_pool():
-    """Initialize database connection pool"""
-    global db_pool
-    try:
-        logger.info("Initializing database connection pool...")
-        db_pool = psycopg2.pool.ThreadedConnectionPool(
-            1, 20,  # min and max connections
-            app.config['DATABASE_URL'],
-            cursor_factory=RealDictCursor
-        )
-        logger.info("✅ Database connection pool initialized (1-20 connections)")
-    except Exception as e:
-        logger.error(f"❌ Failed to initialize database connection pool: {e}")
-        raise
-
-@contextmanager
-def get_db():
-    """Get database connection from pool"""
-    if db_pool is None:
-        logger.error("Database pool not initialized")
-        raise RuntimeError("Database pool not initialized")
-    
-    conn = None
-    try:
-        conn = db_pool.getconn()
-        if conn is None:
-            raise RuntimeError("Failed to get connection from pool")
-        yield conn
-    except Exception as e:
-        if conn:
-            conn.rollback()
-        raise
-    finally:
-        if conn:
-            db_pool.putconn(conn)
-
 # Redis setup - make connection lazy to avoid startup issues
 def get_redis():
     """Get Redis connection, with fallback if Redis is not available"""
@@ -124,6 +83,17 @@ def get_redis():
     except Exception as e:
         logger.warning(f"⚠️ Redis connection failed: {e}")
         return None
+
+# Database connection
+def get_db():
+    try:
+        logger.info("Attempting database connection...")
+        conn = psycopg2.connect(app.config['DATABASE_URL'], cursor_factory=RealDictCursor)
+        logger.info("✅ Database connection successful")
+        return conn
+    except Exception as e:
+        logger.error(f"❌ Database connection failed: {e}")
+        raise
 
 # Cache decorator with Redis fallback
 def cache_result(expiration=300):
@@ -183,18 +153,19 @@ def get_score_vars(use_quantiled_scores=False, use_quantile=False):
 def get_allowed_distribution_vars(use_quantiled_scores=False, use_quantile=False):
     """Get allowed variables for distribution plots - only return columns that actually exist"""
     try:
-        with get_db() as conn:
-            cur = conn.cursor()
-            
-            # Get actual columns from database
-            cur.execute("""
-                SELECT column_name 
-                FROM information_schema.columns 
-                WHERE table_name = 'parcels'
-            """)
-            existing_columns = {row['column_name'] for row in cur.fetchall()}
-            
-            cur.close()
+        conn = get_db()
+        cur = conn.cursor()
+        
+        # Get actual columns from database
+        cur.execute("""
+            SELECT column_name 
+            FROM information_schema.columns 
+            WHERE table_name = 'parcels'
+        """)
+        existing_columns = {row['column_name'] for row in cur.fetchall()}
+        
+        cur.close()
+        conn.close()
         
         # Build allowed variables based on what actually exists
         allowed_vars = set()
@@ -332,14 +303,14 @@ def calculate_scores():
    where_clause = "WHERE " + " AND ".join(filters) if filters else ""
    
    try:
-       with get_db() as conn:
-           cur = conn.cursor()
-           
-           # Get count of total parcels before filtering for metadata
-           count_start = time.time()
-           cur.execute("SELECT COUNT(*) as total_count FROM parcels")
-           total_parcels_before_filter = cur.fetchone()['total_count']
-           timings['count_query'] = time.time() - count_start
+       conn = get_db()
+       cur = conn.cursor()
+       
+       # Get count of total parcels before filtering for metadata
+       count_start = time.time()
+       cur.execute("SELECT COUNT(*) as total_count FROM parcels")
+       total_parcels_before_filter = cur.fetchone()['total_count']
+       timings['count_query'] = time.time() - count_start
        
        # Include _s, _q, and _z versions in the select
        all_score_vars = []
@@ -568,8 +539,9 @@ def calculate_scores():
                "total_parcels_after_filter": len(features),
                "note": f"Using predefined {'quantile' if use_quantile else 'robust min-max' if use_quantiled_scores else 'min-max'} score columns"
            }
-           
-           cur.close()
+       
+       cur.close()
+       conn.close()
  
        geojson = {
            "type": "FeatureCollection",
@@ -747,21 +719,22 @@ def infer_weights():
 
         # STEP 4: EXECUTE DATABASE QUERY TO GET SCORES
         # Fetch the score data for all parcels that meet our criteria
-        with get_db() as conn:
-            cur = conn.cursor()
-            
-            query_sql = f"""
-                WITH selected_parcels AS (
-                    SELECT id, {', '.join(select_exprs)}
-                    FROM parcels
-                    WHERE {filter_sql}
-                )
-                SELECT * FROM selected_parcels;
-            """
-            
-            cur.execute(query_sql, params)
-            rows = cur.fetchall()
-            cur.close()
+        conn = get_db()
+        cur = conn.cursor()
+        
+        query_sql = f"""
+            WITH selected_parcels AS (
+                SELECT id, {', '.join(select_exprs)}
+                FROM parcels
+                WHERE {filter_sql}
+            )
+            SELECT * FROM selected_parcels;
+        """
+        
+        cur.execute(query_sql, params)
+        rows = cur.fetchall()
+        cur.close()
+        conn.close()
 
         if not rows:
             return jsonify({"error": "No parcels found in selection"}), 400
@@ -998,16 +971,17 @@ def generate_solution_txt(include_vars_base, best_weights, weights_pct, total_sc
 
 @app.route('/api/agricultural', methods=['GET'])
 def get_agricultural():
-   with get_db() as conn:
-       cur = conn.cursor()
-       cur.execute("""
-           SELECT
-               ST_AsGeoJSON(ST_Transform(geom, 4326))::json as geometry,
-               *
-           FROM agricultural_areas
-       """)
-       rows = cur.fetchall()
-       cur.close()
+   conn = get_db()
+   cur = conn.cursor()
+   cur.execute("""
+       SELECT
+           ST_AsGeoJSON(ST_Transform(geom, 4326))::json as geometry,
+           *
+       FROM agricultural_areas
+   """)
+   rows = cur.fetchall()
+   cur.close()
+   conn.close()
  
    features = [{
        "type": "Feature",
@@ -1019,16 +993,17 @@ def get_agricultural():
 
 @app.route('/api/wui', methods=['GET'])
 def get_wui():
-   with get_db() as conn:
-       cur = conn.cursor()
-       cur.execute("""
-           SELECT
-               ST_AsGeoJSON(ST_Transform(geom, 4326))::json as geometry,
-               *
-           FROM wui_areas
-       """)
-       rows = cur.fetchall()
-       cur.close()
+   conn = get_db()
+   cur = conn.cursor()
+   cur.execute("""
+       SELECT
+           ST_AsGeoJSON(ST_Transform(geom, 4326))::json as geometry,
+           *
+       FROM wui_areas
+   """)
+   rows = cur.fetchall()
+   cur.close()
+   conn.close()
  
    features = [{
        "type": "Feature",
@@ -1040,16 +1015,17 @@ def get_wui():
 
 @app.route('/api/hazard', methods=['GET'])
 def get_hazard():
-   with get_db() as conn:
-       cur = conn.cursor()
-       cur.execute("""
-           SELECT
-               ST_AsGeoJSON(ST_Transform(geom, 4326))::json as geometry,
-               *
-           FROM hazard_zones
-       """)
-       rows = cur.fetchall()
-       cur.close()
+   conn = get_db()
+   cur = conn.cursor()
+   cur.execute("""
+       SELECT
+           ST_AsGeoJSON(ST_Transform(geom, 4326))::json as geometry,
+           *
+       FROM hazard_zones
+   """)
+   rows = cur.fetchall()
+   cur.close()
+   conn.close()
  
    features = [{
        "type": "Feature",
@@ -1061,16 +1037,17 @@ def get_hazard():
 
 @app.route('/api/structures', methods=['GET'])
 def get_structures():
-   with get_db() as conn:
-       cur = conn.cursor()
-       cur.execute("""
-           SELECT
-               ST_AsGeoJSON(ST_Transform(geom, 4326))::json as geometry,
-               *
-           FROM structures
-       """)
-       rows = cur.fetchall()
-       cur.close()
+   conn = get_db()
+   cur = conn.cursor()
+   cur.execute("""
+       SELECT
+           ST_AsGeoJSON(ST_Transform(geom, 4326))::json as geometry,
+           *
+       FROM structures
+   """)
+   rows = cur.fetchall()
+   cur.close()
+   conn.close()
  
    features = [{
        "type": "Feature",
@@ -1082,16 +1059,17 @@ def get_structures():
 
 @app.route('/api/firewise', methods=['GET'])
 def get_firewise():
-   with get_db() as conn:
-       cur = conn.cursor()
-       cur.execute("""
-           SELECT
-               ST_AsGeoJSON(ST_Transform(geom, 4326))::json as geometry,
-               *
-           FROM firewise_communities
-       """)
-       rows = cur.fetchall()
-       cur.close()
+   conn = get_db()
+   cur = conn.cursor()
+   cur.execute("""
+       SELECT
+           ST_AsGeoJSON(ST_Transform(geom, 4326))::json as geometry,
+           *
+       FROM firewise_communities
+   """)
+   rows = cur.fetchall()
+   cur.close()
+   conn.close()
  
    features = [{
        "type": "Feature",
@@ -1103,16 +1081,17 @@ def get_firewise():
 
 @app.route('/api/fuelbreaks', methods=['GET'])
 def get_fuelbreaks():
-   with get_db() as conn:
-       cur = conn.cursor()
-       cur.execute("""
-           SELECT
-               ST_AsGeoJSON(ST_Transform(geom, 4326))::json as geometry,
-               *
-           FROM fuelbreaks
-       """)
-       rows = cur.fetchall()
-       cur.close()
+   conn = get_db()
+   cur = conn.cursor()
+   cur.execute("""
+       SELECT
+           ST_AsGeoJSON(ST_Transform(geom, 4326))::json as geometry,
+           *
+       FROM fuelbreaks
+   """)
+   rows = cur.fetchall()
+   cur.close()
+   conn.close()
  
    features = [{
        "type": "Feature",
@@ -1124,16 +1103,17 @@ def get_fuelbreaks():
 
 @app.route('/api/burnscars', methods=['GET'])
 def get_burnscars():
-   with get_db() as conn:
-       cur = conn.cursor()
-       cur.execute("""
-           SELECT
-               ST_AsGeoJSON(ST_Transform(geom, 4326))::json as geometry,
-               *
-           FROM burn_scars
-       """)
-       rows = cur.fetchall()
-       cur.close()
+   conn = get_db()
+   cur = conn.cursor()
+   cur.execute("""
+       SELECT
+           ST_AsGeoJSON(ST_Transform(geom, 4326))::json as geometry,
+           *
+       FROM burn_scars
+   """)
+   rows = cur.fetchall()
+   cur.close()
+   conn.close()
  
    features = [{
        "type": "Feature",
@@ -1242,51 +1222,52 @@ def get_distribution(variable):
     
     where_clause = "WHERE " + " AND ".join(filters) if filters else ""
     
-    with get_db() as conn:
-        cur = conn.cursor()
+    conn = get_db()
+    cur = conn.cursor()
+    
+    # Get min/max for metadata
+    additional_where = variable + " IS NOT NULL"
+    if where_clause:
+        full_where_clause = where_clause + " AND " + additional_where
+    else:
+        full_where_clause = "WHERE " + additional_where
+    
+    try:
+        cur.execute(f"""
+            SELECT MIN({variable}) as min_val, MAX({variable}) as max_val, COUNT(*) as count
+            FROM parcels
+            {full_where_clause}
+        """, params)
+        min_max = cur.fetchone()
+        min_val = min_max['min_val'] if min_max['min_val'] is not None else 0
+        max_val = min_max['max_val'] if min_max['max_val'] is not None else 1
+        count = min_max['count'] if min_max['count'] is not None else 0
+    except Exception as e:
+        print(f"Error accessing column {variable}: {e}")
+        return jsonify({
+            "error": f"Column '{variable}' does not exist in database. Available columns need to be verified."
+        }), 400
+    
+    # Get original values without normalization
+    try:
+        cur.execute(f"""
+            SELECT {variable} as value
+            FROM parcels
+            {full_where_clause}
+        """, params)
         
-        # Get min/max for metadata
-        additional_where = variable + " IS NOT NULL"
-        if where_clause:
-            full_where_clause = where_clause + " AND " + additional_where
-        else:
-            full_where_clause = "WHERE " + additional_where
-        
-        try:
-            cur.execute(f"""
-                SELECT MIN({variable}) as min_val, MAX({variable}) as max_val, COUNT(*) as count
-                FROM parcels
-                {full_where_clause}
-            """, params)
-            min_max = cur.fetchone()
-            min_val = min_max['min_val'] if min_max['min_val'] is not None else 0
-            max_val = min_max['max_val'] if min_max['max_val'] is not None else 1
-            count = min_max['count'] if min_max['count'] is not None else 0
-        except Exception as e:
-            print(f"Error accessing column {variable}: {e}")
-            return jsonify({
-                "error": f"Column '{variable}' does not exist in database. Available columns need to be verified."
-            }), 400
-        
-        # Get original values without normalization
-        try:
-            cur.execute(f"""
-                SELECT {variable} as value
-                FROM parcels
-                {full_where_clause}
-            """, params)
-            
-            results = cur.fetchall()
-        except Exception as e:
-            print(f"Error querying column {variable}: {e}")
-            return jsonify({
-                "error": f"Error querying column '{variable}': {str(e)}"
-            }), 400
-        
-        # Use all values without threshold filtering
-        values = [float(r['value']) for r in results]
-        
-        cur.close()
+        results = cur.fetchall()
+    except Exception as e:
+        print(f"Error querying column {variable}: {e}")
+        return jsonify({
+            "error": f"Error querying column '{variable}': {str(e)}"
+        }), 400
+    
+    # Use all values without threshold filtering
+    values = [float(r['value']) for r in results]
+    
+    cur.close()
+    conn.close()
     
     return jsonify({
         "values": values, 
@@ -1299,18 +1280,19 @@ def get_distribution(variable):
 def get_columns():
     """Debug endpoint to check what columns exist in the parcels table"""
     try:
-        with get_db() as conn:
-            cur = conn.cursor()
-            
-            cur.execute("""
-                SELECT column_name, data_type 
-                FROM information_schema.columns 
-                WHERE table_name = 'parcels' 
-                ORDER BY column_name
-            """)
-            columns = cur.fetchall()
-            
-            cur.close()
+        conn = get_db()
+        cur = conn.cursor()
+        
+        cur.execute("""
+            SELECT column_name, data_type 
+            FROM information_schema.columns 
+            WHERE table_name = 'parcels' 
+            ORDER BY column_name
+        """)
+        columns = cur.fetchall()
+        
+        cur.close()
+        conn.close()
         
         column_info = {row['column_name']: row['data_type'] for row in columns}
         
@@ -1348,10 +1330,11 @@ def health_check():
     
     # Test database connection
     try:
-        with get_db() as conn:
-            cur = conn.cursor()
-            cur.execute("SELECT 1")
-            cur.close()
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute("SELECT 1")
+        cur.close()
+        conn.close()
         health_status["services"]["database"] = "connected"
     except Exception as e:
         health_status["services"]["database"] = f"error: {str(e)}"
@@ -1467,28 +1450,6 @@ def debug_endpoint():
         <pre>{traceback.format_exc()}</pre>
         """
 
-
-# Initialize database pool on startup
-try:
-    init_db_pool()
-except Exception as e:
-    logger.error(f"Failed to initialize database pool: {e}")
-    # Don't exit, let the app try to start anyway for debugging
-
-# Cleanup function for graceful shutdown
-import atexit
-
-def cleanup_db_pool():
-    """Clean up database connection pool on shutdown"""
-    global db_pool
-    if db_pool:
-        try:
-            db_pool.closeall()
-            logger.info("✅ Database connection pool closed")
-        except Exception as e:
-            logger.error(f"Error closing database pool: {e}")
-
-atexit.register(cleanup_db_pool)
 
 if __name__ == '__main__':
    logger.info("Starting Flask development server...")
