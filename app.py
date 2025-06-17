@@ -704,7 +704,7 @@ console.log('%c 🚀 Score Calculation Performance Breakdown', 'background: #222
 console.log('%c Total Time: {time.time() - start_time:.2f}s', 'color: #4CAF50; font-weight: bold;');
 console.log('%c Normalization Mode: {normalization_info["mode"]}', 'color: #9C27B0; font-weight: bold;');
 console.log('%c ====== DETAILED BREAKDOWN ======', 'color: #2196F3; font-weight: bold;');
-{chr(10).join(f"console.log('%c {step}: {duration}{"s" if isinstance(duration, (int, float)) and step not in ["raw_query_column_count", "raw_query_result_count", "raw_query_estimated_total_bytes", "global_query_column_count", "global_query_result_count", "global_query_estimated_total_bytes", "local_filtered_parcel_count", "global_filtered_parcel_count"] else ("" if isinstance(duration, (int, float)) else "")}', 'color: #FF9800;');" for step, duration in timings.items())}
+{chr(10).join([f"console.log('%c {step}: {duration}', 'color: #FF9800;');" for step, duration in timings.items()])}
 console.log('%c ================================', 'color: #2196F3; font-weight: bold;');
 """
        }
