@@ -335,8 +335,16 @@ def calculate_scores():
            
            # Test raw data query without geometry
            raw_no_geom_start = time.time()
+           # Apply neigh1_d capping at SQL level for efficiency
+           capped_raw_columns = []
+           for raw_var in raw_var_columns:
+               if raw_var == 'neigh1_d':
+                   capped_raw_columns.append(f"LEAST({raw_var}, 5280) as {raw_var}")
+               else:
+                   capped_raw_columns.append(raw_var)
+           
            raw_no_geom_query = f"""
-           SELECT id, {', '.join(raw_var_columns)}
+           SELECT id, {', '.join(capped_raw_columns)}
            FROM parcels
            {where_clause}
            """
@@ -347,7 +355,7 @@ def calculate_scores():
            # Test geometry operations on subset
            geometry_test_start = time.time()
            geometry_test_query = f"""
-           SELECT id, ST_AsGeoJSON(ST_Transform(geom, 4326))::json as geometry
+           SELECT id, geom_geojson::json as geometry
            FROM parcels
            {where_clause}
            LIMIT 100
@@ -363,13 +371,16 @@ def calculate_scores():
            
            # Full query with geometry
            raw_query_start = time.time()
+           # Apply neigh1_d capping at SQL level for the full query too
+           all_columns = capped_raw_columns + all_score_vars + ['yearbuilt', 'qtrmi_cnt', 'hlfmi_agri', 'hlfmi_wui', 'hlfmi_vhsz', 'hlfmi_fb', 'hlfmi_brn', 'num_neighb',
+                                                           'parcel_id', 'strcnt', 'LEAST(neigh1_d, 5280) as neigh1_d', 'apn', 'all_ids', 'perimeter',
+                                                           'par_elev', 'avg_slope', 'par_aspe_1', 'max_slope', 'num_brns']
+           
            raw_query = f"""
            SELECT
                id,
-               ST_AsGeoJSON(ST_Transform(geom, 4326))::json as geometry,
-               {', '.join(raw_var_columns + all_score_vars + ['yearbuilt', 'qtrmi_cnt', 'hlfmi_agri', 'hlfmi_wui', 'hlfmi_vhsz', 'hlfmi_fb', 'hlfmi_brn', 'num_neighb',
-                                       'parcel_id', 'strcnt', 'neigh1_d', 'apn', 'all_ids', 'perimeter',
-                                       'par_elev', 'avg_slope', 'par_aspe_1', 'max_slope', 'num_brns'])}
+               geom_geojson::json as geometry,
+               {', '.join(all_columns)}
            FROM parcels
            {where_clause}
            """
@@ -541,7 +552,7 @@ def calculate_scores():
            WITH scored_parcels AS (
                SELECT
                    id,
-                   ST_AsGeoJSON(ST_Transform(geom, 4326))::json as geometry,
+                   geom_geojson::json as geometry,
                    {score_formula} as score,
                    {', '.join(all_score_vars + ['yearbuilt', 'qtrmi_cnt', 'hlfmi_agri', 'hlfmi_wui', 'hlfmi_vhsz', 'hlfmi_fb', 'hlfmi_brn', 'num_neighb',
                                            'parcel_id', 'strcnt', 'neigh1_d', 'apn', 'all_ids', 'perimeter',
@@ -589,7 +600,7 @@ def calculate_scores():
                geometry_test_start = time.time()
                # Test just geometry transformation on a subset
                geometry_test_query = f"""
-               SELECT id, ST_AsGeoJSON(ST_Transform(geom, 4326))::json as geometry
+               SELECT id, geom_geojson::json as geometry
                FROM parcels
                {where_clause}
                LIMIT 100
@@ -1069,7 +1080,7 @@ def get_agricultural():
    cur = conn.cursor()
    cur.execute("""
        SELECT
-           ST_AsGeoJSON(ST_Transform(geom, 4326))::json as geometry,
+           geom_geojson::json as geometry,
            *
        FROM agricultural_areas
    """)
@@ -1091,7 +1102,7 @@ def get_wui():
    cur = conn.cursor()
    cur.execute("""
        SELECT
-           ST_AsGeoJSON(ST_Transform(geom, 4326))::json as geometry,
+           geom_geojson::json as geometry,
            *
        FROM wui_areas
    """)
@@ -1113,7 +1124,7 @@ def get_hazard():
    cur = conn.cursor()
    cur.execute("""
        SELECT
-           ST_AsGeoJSON(ST_Transform(geom, 4326))::json as geometry,
+           geom_geojson::json as geometry,
            *
        FROM hazard_zones
    """)
@@ -1135,7 +1146,7 @@ def get_structures():
    cur = conn.cursor()
    cur.execute("""
        SELECT
-           ST_AsGeoJSON(ST_Transform(geom, 4326))::json as geometry,
+           geom_geojson::json as geometry,
            *
        FROM structures
    """)
@@ -1157,7 +1168,7 @@ def get_firewise():
    cur = conn.cursor()
    cur.execute("""
        SELECT
-           ST_AsGeoJSON(ST_Transform(geom, 4326))::json as geometry,
+           geom_geojson::json as geometry,
            *
        FROM firewise_communities
    """)
@@ -1179,7 +1190,7 @@ def get_fuelbreaks():
    cur = conn.cursor()
    cur.execute("""
        SELECT
-           ST_AsGeoJSON(ST_Transform(geom, 4326))::json as geometry,
+           geom_geojson::json as geometry,
            *
        FROM fuelbreaks
    """)
@@ -1201,7 +1212,7 @@ def get_burnscars():
    cur = conn.cursor()
    cur.execute("""
        SELECT
-           ST_AsGeoJSON(ST_Transform(geom, 4326))::json as geometry,
+           geom_geojson::json as geometry,
            *
        FROM burn_scars
    """)
@@ -1339,18 +1350,22 @@ def get_distribution(variable):
                 full_where_clause = "WHERE " + raw_where
             
             try:
-                cur.execute(f"""
-                    SELECT {raw_var} as value
-                    FROM parcels
-                    {full_where_clause}
-                """, params)
+                if raw_var == 'neigh1_d':
+                    # Apply capping at SQL level for better performance
+                    cur.execute(f"""
+                        SELECT LEAST({raw_var}, 5280) as value
+                        FROM parcels
+                        {full_where_clause}
+                    """, params)
+                else:
+                    cur.execute(f"""
+                        SELECT {raw_var} as value
+                        FROM parcels
+                        {full_where_clause}
+                    """, params)
                 
                 results = cur.fetchall()
                 raw_values = [float(r['value']) for r in results if r['value'] is not None]
-                
-                # Cap neigh1_d values at 5280 feet (1 mile)
-                if raw_var == 'neigh1_d':
-                    raw_values = [min(val, 5280) for val in raw_values]
                 
                 if len(raw_values) >= 10:  # Only apply local normalization if we have enough data
                     # Apply the same local normalization logic as in scoring
@@ -1406,29 +1421,22 @@ def get_distribution(variable):
     else:
         full_where_clause = "WHERE " + additional_where
     
+    # Get original values without normalization, with optional capping at SQL level for efficiency
     try:
-        cur.execute(f"""
-            SELECT MIN({variable}) as min_val, MAX({variable}) as max_val, COUNT(*) as count
-            FROM parcels
-            {full_where_clause}
-        """, params)
-        min_max = cur.fetchone()
-        min_val = min_max['min_val'] if min_max['min_val'] is not None else 0
-        max_val = min_max['max_val'] if min_max['max_val'] is not None else 1
-        count = min_max['count'] if min_max['count'] is not None else 0
-    except Exception as e:
-        print(f"Error accessing column {variable}: {e}")
-        return jsonify({
-            "error": f"Column '{variable}' does not exist in database. Available columns need to be verified."
-        }), 400
-    
-    # Get original values without normalization
-    try:
-        cur.execute(f"""
-            SELECT {variable} as value
-            FROM parcels
-            {full_where_clause}
-        """, params)
+        if variable == 'neigh1_d':
+            # Apply capping at SQL level for better performance
+            cur.execute(f"""
+                SELECT LEAST({variable}, 5280) as value
+                FROM parcels
+                {full_where_clause}
+            """, params)
+            print(f"Applied neigh1_d capping at SQL level for distribution display")
+        else:
+            cur.execute(f"""
+                SELECT {variable} as value
+                FROM parcels
+                {full_where_clause}
+            """, params)
         
         results = cur.fetchall()
     except Exception as e:
@@ -1437,8 +1445,18 @@ def get_distribution(variable):
             "error": f"Error querying column '{variable}': {str(e)}"
         }), 400
     
-    # Use all values without threshold filtering
-    values = [float(r['value']) for r in results]
+    # Use all values (already capped at SQL level if neigh1_d)
+    values = [float(r['value']) for r in results if r['value'] is not None]
+    
+    # Calculate min/max/count from the capped values
+    if values:
+        min_val = min(values)
+        max_val = max(values)
+        count = len(values)
+    else:
+        min_val = 0
+        max_val = 1
+        count = 0
     
     cur.close()
     conn.close()
