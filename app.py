@@ -181,11 +181,7 @@ def cache_result(expiration=300, key_prefix=None):
                     logger.info(f"Cache HIT for {f.__name__} (key: {cache_key})")
                     # Deserialize the cached data
                     result = pickle.loads(cached_data)
-                    
-                    # If it's already a Flask response, return it
-                    if hasattr(result, 'get_json'):
-                        return result
-                    # Otherwise, jsonify it
+                    # Always return jsonified data
                     return jsonify(result)
                 else:
                     logger.debug(f"Cache MISS for {f.__name__} (key: {cache_key})")
@@ -205,16 +201,28 @@ def cache_result(expiration=300, key_prefix=None):
             
             # Try to cache the result
             try:
-                # Extract the data from the response
-                if hasattr(result, 'get_json'):
+                # Extract the data from the response BEFORE caching
+                if hasattr(result, 'json'):
+                    # It's a Flask Response object
+                    data_to_cache = result.json
+                elif hasattr(result, 'get_json'):
+                    # It's a Flask Response object (alternative method)
                     data_to_cache = result.get_json()
                 else:
+                    # It's raw data
                     data_to_cache = result
                 
-                # Serialize and store in cache
-                serialized_data = pickle.dumps(data_to_cache)
-                redis_client.setex(cache_key, expiration, serialized_data)
-                logger.debug(f"Cached result for {f.__name__} (key: {cache_key}, expires: {expiration}s)")
+                # Debug logging
+                logger.debug(f"Type of result: {type(result)}")
+                logger.debug(f"Type of data_to_cache: {type(data_to_cache)}")
+                
+                # Only cache if we successfully extracted data
+                if data_to_cache is not None:
+                    serialized_data = pickle.dumps(data_to_cache)
+                    redis_client.setex(cache_key, expiration, serialized_data)
+                    logger.debug(f"Cached result for {f.__name__} (key: {cache_key}, expires: {expiration}s)")
+                else:
+                    logger.warning(f"No data to cache for {f.__name__}")
                 
             except redis.ConnectionError as e:
                 logger.error(f"Redis connection error during SET: {e}")
@@ -222,6 +230,8 @@ def cache_result(expiration=300, key_prefix=None):
                 logger.error(f"Redis timeout during SET: {e}")
             except Exception as e:
                 logger.error(f"Unexpected error setting cache: {type(e).__name__}: {e}")
+                import traceback
+                logger.debug(f"Cache error traceback: {traceback.format_exc()}")
             
             return result
             
@@ -372,7 +382,10 @@ def return_db(conn):
             connection_pool.putconn(conn)
         except Exception as e:
             logger.error(f"Error returning connection to pool: {e}")
-            conn.close()
+            try:
+                conn.close()
+            except:
+                pass  # Connection might already be closed
 
 logger.info("📋 Defining Flask routes...")
 
@@ -471,6 +484,7 @@ def calculate_scores():
     
     where_clause = "WHERE " + " AND ".join(filters) if filters else ""
     
+    conn = None  # Initialize conn before try block
     try:
         conn = get_db()
         cur = conn.cursor()
@@ -646,21 +660,30 @@ def calculate_scores():
         if not use_local_normalization:
             # GLOBAL NORMALIZATION: Use predefined score columns
             score_components = []
+            weight_values = []  # Store weight values in correct order
+            
             for i, var_base in enumerate(WEIGHT_VARS_BASE):
                 score_var = score_vars[i]  # Use the appropriate _s, _q, or _z suffix
                 weight_key = var_base + '_s'  # Weights always use _s key
                 
                 # Use predefined scores directly without thresholds
                 score_components.append(f"COALESCE({score_var}, 0) * %s")
+                weight_values.append(weights.get(weight_key, 0))
             
             score_formula = " + ".join(score_components)
             
-            # Build the main query - use weight keys that match the frontend
-            weight_keys = [var + '_s' for var in WEIGHT_VARS_BASE]
-            params_for_query = [weights.get(key, 0) for key in weight_keys] + params
+            # Build params in correct order: weights first, then filter params
+            params_for_query = weight_values + params
             
             # PERFORMANCE OPTIMIZATION: Add index hints and limit
             max_parcels = data.get('max_parcels', 500)
+            
+            # Log query details for debugging
+            logger.debug(f"Score formula: {score_formula}")
+            logger.debug(f"Weight values: {weight_values}")
+            logger.debug(f"Filter params: {params}")
+            logger.debug(f"Total params count: {len(params_for_query)}")
+            logger.debug(f"Score components count: {len(score_components)}")
             
             # Create a materialized CTE for better performance
             query = f"""
@@ -736,7 +759,6 @@ console.log('%c Total Time: {time.time() - start_time:.2f}s', 'color: #4CAF50; f
 console.log('%c Detailed Timings:', 'color: #2196F3; font-weight: bold;');
 {chr(10).join(f"console.log('%c {step}: {duration:.2f}s', 'color: #FF9800;');" for step, duration in timings.items())}
 console.log('%c Normalization Mode: {normalization_info["mode"]}', 'color: #9C27B0; font-weight: bold;');
-console.log('%c Redis Cache: {"HIT" if redis_available else "DISABLED"}', 'color: #FF5722;');
 """
         }
         
@@ -894,25 +916,27 @@ def infer_weights():
         filter_sql = ' AND '.join(filter_conditions) if filter_conditions else 'TRUE'
 
         # STEP 4: EXECUTE DATABASE QUERY
-        conn = get_db()
-        cur = conn.cursor()
-        
-        query_sql = f"""
-            WITH selected_parcels AS (
-                SELECT id, {', '.join(select_exprs)}
-                FROM parcels
-                WHERE {filter_sql}
-            )
-            SELECT * FROM selected_parcels;
-        """
-        
-        cur.execute(query_sql, params)
-        rows = cur.fetchall()
-        cur.close()
-        return_db(conn)
+        conn = None  # Initialize conn before try block
+        try:
+            conn = get_db()
+            cur = conn.cursor()
+            
+            query_sql = f"""
+                WITH selected_parcels AS (
+                    SELECT id, {', '.join(select_exprs)}
+                    FROM parcels
+                    WHERE {filter_sql}
+                )
+                SELECT * FROM selected_parcels;
+            """
+            
+            cur.execute(query_sql, params)
+            rows = cur.fetchall()
+            cur.close()
+            return_db(conn)
 
-        if not rows:
-            return jsonify({"error": "No parcels found in selection"}), 400
+            if not rows:
+                return jsonify({"error": "No parcels found in selection"}), 400
 
         # STEP 5: PREPARE DATA FOR LP
         parcel_data = []
@@ -1651,44 +1675,6 @@ def generate_solution_txt(include_vars_base, best_weights, weights_pct, total_sc
     lines.append("Generated by Fire Risk Calculator")
     
     return "\n".join(lines)
-
-# Performance recommendations function
-def log_performance_recommendations():
-    """Log performance optimization recommendations"""
-    recommendations = """
-    🚀 PERFORMANCE OPTIMIZATION RECOMMENDATIONS:
-    
-    1. DATABASE OPTIMIZATIONS:
-       - Create composite indexes for frequently filtered columns:
-         CREATE INDEX idx_parcels_filters ON parcels(yearbuilt, neigh1_d, strcnt, hlfmi_wui, hlfmi_vhsz, num_brns);
-       - Create spatial index if not exists:
-         CREATE INDEX idx_parcels_geom ON parcels USING GIST(geom);
-       - Consider partitioning the parcels table by geographic region
-       
-    2. QUERY OPTIMIZATIONS:
-       - Use materialized views for pre-calculated scores
-       - Implement query result pagination
-       - Use EXPLAIN ANALYZE to identify slow queries
-       
-    3. CACHING STRATEGY:
-       - Redis caching is now implemented for all major endpoints
-       - Consider increasing cache TTL for static data (layers)
-       - Implement cache warming for frequently accessed data
-       
-    4. CONNECTION POOLING:
-       - Database connection pooling is now implemented
-       - Monitor pool usage and adjust size if needed
-       
-    5. ADDITIONAL OPTIMIZATIONS:
-       - Consider using PostGIS MVT (Mapbox Vector Tiles) for large geometries
-       - Implement data compression for API responses
-       - Use CDN for static assets
-       - Consider async processing for heavy computations
-    """
-    logger.info(recommendations)
-
-# Log performance recommendations on startup
-log_performance_recommendations()
 
 if __name__ == '__main__':
     logger.info("Starting Flask development server...")
