@@ -523,9 +523,51 @@ def calculate_scores():
            
            # Execute main query and measure time
            query_start = time.time()
+           
+           # Step 1: Test a simple count query first to measure filtering overhead
+           count_query_start = time.time()
+           cur.execute(f"SELECT COUNT(*) as filtered_count FROM parcels {where_clause}", params)
+           filtered_count = cur.fetchone()['filtered_count']
+           timings['filtering_count'] = time.time() - count_query_start
+           
+           # Step 2: Test score calculation without geometry
+           score_calc_start = time.time()
+           score_only_query = f"""
+           SELECT id, {score_formula} as score
+           FROM parcels
+           {where_clause}
+           """
+           cur.execute(score_only_query, params_for_query)
+           score_results = cur.fetchall()
+           timings['score_calculation'] = time.time() - score_calc_start
+           
+           # Step 3: Full query with geometry
+           full_query_start = time.time()
            cur.execute(query, params_for_query)
            results = cur.fetchall()
+           timings['full_query_with_geometry'] = time.time() - full_query_start
+           
+           # Step 4: Test geometry operations separately (if we have results)
+           if len(score_results) > 0:
+               geometry_test_start = time.time()
+               # Test just geometry transformation on a subset
+               geometry_test_query = f"""
+               SELECT id, ST_AsGeoJSON(ST_Transform(geom, 4326))::json as geometry
+               FROM parcels
+               {where_clause}
+               LIMIT 100
+               """
+               cur.execute(geometry_test_query, params)
+               geometry_test_results = cur.fetchall()
+               timings['geometry_ops_100_parcels'] = time.time() - geometry_test_start
+               
+               # Estimate geometry time for full dataset
+               if len(geometry_test_results) > 0:
+                   geometry_per_parcel = timings['geometry_ops_100_parcels'] / len(geometry_test_results)
+                   timings['estimated_geometry_full'] = geometry_per_parcel * filtered_count
+           
            timings['main_query'] = time.time() - query_start
+           timings['filtered_parcel_count'] = filtered_count
            
            # Format as GeoJSON
            geojson_start = time.time()
