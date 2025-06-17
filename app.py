@@ -369,12 +369,17 @@ def calculate_scores():
                geometry_per_parcel = timings['local_geometry_100_parcels'] / len(geometry_test_results)
                timings['local_estimated_geometry_full'] = geometry_per_parcel * local_filtered_count
            
-           # Full query with geometry
+           # Full query with geometry - break down the timing
            raw_query_start = time.time()
+           
            # Apply neigh1_d capping at SQL level for the full query too
            all_columns = capped_raw_columns + all_score_vars + ['yearbuilt', 'qtrmi_cnt', 'hlfmi_agri', 'hlfmi_wui', 'hlfmi_vhsz', 'hlfmi_fb', 'hlfmi_brn', 'num_neighb',
                                                            'parcel_id', 'strcnt', 'LEAST(neigh1_d, 5280) as neigh1_d', 'apn', 'all_ids', 'perimeter',
                                                            'par_elev', 'avg_slope', 'par_aspe_1', 'max_slope', 'num_brns']
+           
+           # Count total columns being fetched
+           total_columns = 2 + len(all_columns)  # id + geometry + all other columns
+           timings['raw_query_column_count'] = total_columns
            
            raw_query = f"""
            SELECT
@@ -385,9 +390,27 @@ def calculate_scores():
            {where_clause}
            """
            
+           # Time the query execution
+           query_execution_start = time.time()
            cur.execute(raw_query, params)
+           timings['raw_query_execution'] = time.time() - query_execution_start
+           
+           # Time the data fetching
+           fetch_start = time.time()
            raw_results = cur.fetchall()
-           timings['raw_data_query'] = time.time() - raw_query_start
+           timings['raw_query_fetch'] = time.time() - fetch_start
+           
+           # Calculate data transfer metrics
+           result_count = len(raw_results)
+           timings['raw_query_result_count'] = result_count
+           if result_count > 0:
+               # Estimate data size by looking at first row
+               sample_row = raw_results[0]
+               estimated_row_size = sum(len(str(v)) if v is not None else 0 for v in sample_row.values())
+               timings['raw_query_estimated_total_bytes'] = estimated_row_size * result_count
+               timings['raw_query_estimated_mb'] = (estimated_row_size * result_count) / (1024 * 1024)
+           
+           timings['raw_data_query_total'] = time.time() - raw_query_start
            timings['local_filtered_parcel_count'] = local_filtered_count
            
            if len(raw_results) < 10:
@@ -569,14 +592,14 @@ def calculate_scores():
            ORDER BY score DESC
            """
            
-           # Execute main query and measure time
+           # Execute main query and measure time - GLOBAL NORMALIZATION BREAKDOWN
            query_start = time.time()
            
            # Step 1: Test a simple count query first to measure filtering overhead
            count_query_start = time.time()
            cur.execute(f"SELECT COUNT(*) as filtered_count FROM parcels {where_clause}", params)
            filtered_count = cur.fetchone()['filtered_count']
-           timings['filtering_count'] = time.time() - count_query_start
+           timings['global_filtering_count'] = time.time() - count_query_start
            
            # Step 2: Test score calculation without geometry
            score_calc_start = time.time()
@@ -587,13 +610,35 @@ def calculate_scores():
            """
            cur.execute(score_only_query, params_for_query)
            score_results = cur.fetchall()
-           timings['score_calculation'] = time.time() - score_calc_start
+           timings['global_score_calculation'] = time.time() - score_calc_start
            
-           # Step 3: Full query with geometry
+           # Step 3: Full query with geometry - break down execution vs fetch
            full_query_start = time.time()
+           global_execution_start = time.time()
            cur.execute(query, params_for_query)
+           timings['global_query_execution'] = time.time() - global_execution_start
+           
+           global_fetch_start = time.time()
            results = cur.fetchall()
-           timings['full_query_with_geometry'] = time.time() - full_query_start
+           timings['global_query_fetch'] = time.time() - global_fetch_start
+           
+           # Calculate global query metrics
+           result_count = len(results)
+           timings['global_query_result_count'] = result_count
+           if result_count > 0:
+               # Count columns in global query
+               all_global_columns = ['id', 'geometry', 'score'] + all_score_vars + ['yearbuilt', 'qtrmi_cnt', 'hlfmi_agri', 'hlfmi_wui', 'hlfmi_vhsz', 'hlfmi_fb', 'hlfmi_brn', 'num_neighb',
+                                   'parcel_id', 'strcnt', 'neigh1_d', 'apn', 'all_ids', 'perimeter',
+                                   'par_elev', 'avg_slope', 'par_aspe_1', 'max_slope', 'num_brns', 'rank']
+               timings['global_query_column_count'] = len(all_global_columns)
+               
+               # Estimate data size
+               sample_row = results[0]
+               estimated_row_size = sum(len(str(v)) if v is not None else 0 for v in sample_row.values())
+               timings['global_query_estimated_total_bytes'] = estimated_row_size * result_count
+               timings['global_query_estimated_mb'] = (estimated_row_size * result_count) / (1024 * 1024)
+           
+           timings['global_full_query_total'] = time.time() - full_query_start
            
            # Step 4: Test geometry operations separately (if we have results)
            if len(score_results) > 0:
@@ -614,8 +659,8 @@ def calculate_scores():
                    geometry_per_parcel = timings['geometry_ops_100_parcels'] / len(geometry_test_results)
                    timings['estimated_geometry_full'] = geometry_per_parcel * filtered_count
            
-           timings['main_query'] = time.time() - query_start
-           timings['filtered_parcel_count'] = filtered_count
+           timings['global_main_query_total'] = time.time() - query_start
+           timings['global_filtered_parcel_count'] = filtered_count
            
            # Format as GeoJSON
            geojson_start = time.time()
@@ -655,11 +700,12 @@ def calculate_scores():
            "timings": timings,
            "total_time": time.time() - start_time,
            "console_log": f"""
-console.log('%c Score Calculation Performance Metrics', 'background: #222; color: #bada55; font-size: 14px; padding: 4px;');
+console.log('%c 🚀 Score Calculation Performance Breakdown', 'background: #222; color: #bada55; font-size: 14px; padding: 4px;');
 console.log('%c Total Time: {time.time() - start_time:.2f}s', 'color: #4CAF50; font-weight: bold;');
-console.log('%c Detailed Timings:', 'color: #2196F3; font-weight: bold;');
-{chr(10).join(f"console.log('%c {step}: {duration:.2f}s', 'color: #FF9800;');" for step, duration in timings.items())}
 console.log('%c Normalization Mode: {normalization_info["mode"]}', 'color: #9C27B0; font-weight: bold;');
+console.log('%c ====== DETAILED BREAKDOWN ======', 'color: #2196F3; font-weight: bold;');
+{chr(10).join(f"console.log('%c {step}: {duration}{"s" if isinstance(duration, (int, float)) and step not in ["raw_query_column_count", "raw_query_result_count", "raw_query_estimated_total_bytes", "global_query_column_count", "global_query_result_count", "global_query_estimated_total_bytes", "local_filtered_parcel_count", "global_filtered_parcel_count"] else ("" if isinstance(duration, (int, float)) else "")}', 'color: #FF9800;');" for step, duration in timings.items())}
+console.log('%c ================================', 'color: #2196F3; font-weight: bold;');
 """
        }
  
