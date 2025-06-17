@@ -355,6 +355,10 @@ def calculate_scores():
                    raw_var = RAW_VAR_MAP[var_base]
                    values = [float(row[raw_var]) for row in raw_results if row[raw_var] is not None]
                    
+                   # Cap neigh1_d values at 5280 feet (1 mile)
+                   if var_base == 'neigh1d':
+                       values = [min(val, 5280) for val in values]
+                   
                    if len(values) > 0:
                        if use_quantile:
                            # Quantile normalization: (x - mean) / std
@@ -418,6 +422,10 @@ def calculate_scores():
                        
                        raw_var = RAW_VAR_MAP[var_base]
                        raw_value = row[raw_var]
+                       
+                       # Cap neigh1_d values at 5280 feet (1 mile)
+                       if var_base == 'neigh1d' and raw_value is not None:
+                           raw_value = min(float(raw_value), 5280)
                        
                        if raw_value is not None and var_base in raw_data:
                            # Apply local normalization
@@ -1260,6 +1268,10 @@ def get_distribution(variable):
                 
                 results = cur.fetchall()
                 raw_values = [float(r['value']) for r in results if r['value'] is not None]
+                
+                # Cap neigh1_d values at 5280 feet (1 mile)
+                if raw_var == 'neigh1_d':
+                    raw_values = [min(val, 5280) for val in raw_values]
                 
                 if len(raw_values) >= 10:  # Only apply local normalization if we have enough data
                     # Apply the same local normalization logic as in scoring
