@@ -126,6 +126,9 @@ def cache_result(expiration=300):
 # Weight variables - base names without suffix
 WEIGHT_VARS_BASE = ['qtrmi', 'hwui', 'hagri', 'hvhsz', 'hfb', 'slope', 'neigh1d', 'hbrn']
 
+# Variables where higher raw value = lower risk (invert scoring)
+INVERT_VARS = {'hagri', 'neigh1d', 'hfb'}
+
 # Score thresholds removed - using raw scores without filtering
 
 # Raw variable mapping
@@ -428,6 +431,10 @@ def calculate_scores():
                            else:  # minmax
                                normalized_score = (float(raw_value) - norm_data['min']) / norm_data['range']
                                normalized_score = max(0, min(1, normalized_score))  # Clamp to [0,1]
+                           
+                           # Apply inversion for variables where higher raw value = lower risk
+                           if var_base in INVERT_VARS:
+                               normalized_score = 1 - normalized_score
                            
                            # Store the locally normalized score in the appropriate individual score variable
                            # This ensures popups show the renormalized individual scores
@@ -1261,32 +1268,24 @@ def get_distribution(variable):
                         mean_val = np.mean(raw_values)
                         std_val = np.std(raw_values)
                         if std_val > 0:
-                            if var_base == 'neigh1d':
-                                # For neighbor distance: closer neighbors = higher risk
-                                values = [(mean_val - val) / std_val for val in raw_values]
-                            else:
-                                values = [(val - mean_val) / std_val for val in raw_values]
+                            values = [(val - mean_val) / std_val for val in raw_values]
                         else:
                             values = [0.0 for _ in raw_values]  # Handle zero variance
                     elif use_quantiled_scores:
                         # Robust min-max: use 5th and 95th percentiles
                         q05, q95 = np.percentile(raw_values, [5, 95])
                         range_val = q95 - q05 if q95 > q05 else 1.0
-                        if var_base == 'neigh1d':
-                            # For neighbor distance: closer neighbors = higher risk
-                            values = [max(0, min(1, (q95 - val) / range_val)) for val in raw_values]
-                        else:
-                            values = [max(0, min(1, (val - q05) / range_val)) for val in raw_values]
+                        values = [max(0, min(1, (val - q05) / range_val)) for val in raw_values]
                     else:
                         # Basic min-max normalization
                         min_val = np.min(raw_values)
                         max_val = np.max(raw_values)
                         range_val = max_val - min_val if max_val > min_val else 1.0
-                        if var_base == 'neigh1d':
-                            # For neighbor distance: closer neighbors = higher risk
-                            values = [max(0, min(1, (max_val - val) / range_val)) for val in raw_values]
-                        else:
-                            values = [max(0, min(1, (val - min_val) / range_val)) for val in raw_values]
+                        values = [max(0, min(1, (val - min_val) / range_val)) for val in raw_values]
+                    
+                    # Apply inversion for variables where higher raw value = lower risk
+                    if var_base in INVERT_VARS:
+                        values = [1 - val for val in values]
                     
                     # Calculate new min/max for the locally normalized values
                     min_val = min(values) if values else 0
