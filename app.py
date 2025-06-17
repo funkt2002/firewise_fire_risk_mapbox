@@ -327,7 +327,7 @@ def calculate_scores():
            raw_query = f"""
            SELECT
                id,
-               ST_AsGeoJSON(geom)::json as geometry,
+               ST_AsGeoJSON(ST_Transform(geom, 4326))::json as geometry,
                {', '.join(raw_var_columns + all_score_vars + ['yearbuilt', 'qtrmi_cnt', 'hlfmi_agri', 'hlfmi_wui', 'hlfmi_vhsz', 'hlfmi_fb', 'hlfmi_brn', 'num_neighb',
                                        'parcel_id', 'strcnt', 'neigh1_d', 'apn', 'all_ids', 'perimeter',
                                        'par_elev', 'avg_slope', 'par_aspe_1', 'max_slope', 'num_brns'])}
@@ -489,7 +489,7 @@ def calculate_scores():
            WITH scored_parcels AS (
                SELECT
                    id,
-                   ST_AsGeoJSON(geom)::json as geometry,
+                   ST_AsGeoJSON(ST_Transform(geom, 4326))::json as geometry,
                    {score_formula} as score,
                    {', '.join(all_score_vars + ['yearbuilt', 'qtrmi_cnt', 'hlfmi_agri', 'hlfmi_wui', 'hlfmi_vhsz', 'hlfmi_fb', 'hlfmi_brn', 'num_neighb',
                                            'parcel_id', 'strcnt', 'neigh1_d', 'apn', 'all_ids', 'perimeter',
@@ -975,7 +975,7 @@ def get_agricultural():
    cur = conn.cursor()
    cur.execute("""
        SELECT
-           ST_AsGeoJSON(geom)::json as geometry,
+           ST_AsGeoJSON(ST_Transform(geom, 4326))::json as geometry,
            *
        FROM agricultural_areas
    """)
@@ -997,7 +997,7 @@ def get_wui():
    cur = conn.cursor()
    cur.execute("""
        SELECT
-           ST_AsGeoJSON(geom)::json as geometry,
+           ST_AsGeoJSON(ST_Transform(geom, 4326))::json as geometry,
            *
        FROM wui_areas
    """)
@@ -1019,7 +1019,7 @@ def get_hazard():
    cur = conn.cursor()
    cur.execute("""
        SELECT
-           ST_AsGeoJSON(geom)::json as geometry,
+           ST_AsGeoJSON(ST_Transform(geom, 4326))::json as geometry,
            *
        FROM hazard_zones
    """)
@@ -1041,7 +1041,7 @@ def get_structures():
    cur = conn.cursor()
    cur.execute("""
        SELECT
-           ST_AsGeoJSON(geom)::json as geometry,
+           ST_AsGeoJSON(ST_Transform(geom, 4326))::json as geometry,
            *
        FROM structures
    """)
@@ -1063,7 +1063,7 @@ def get_firewise():
    cur = conn.cursor()
    cur.execute("""
        SELECT
-           ST_AsGeoJSON(geom)::json as geometry,
+           ST_AsGeoJSON(ST_Transform(geom, 4326))::json as geometry,
            *
        FROM firewise_communities
    """)
@@ -1085,7 +1085,7 @@ def get_fuelbreaks():
    cur = conn.cursor()
    cur.execute("""
        SELECT
-           ST_AsGeoJSON(geom)::json as geometry,
+           ST_AsGeoJSON(ST_Transform(geom, 4326))::json as geometry,
            *
        FROM fuelbreaks
    """)
@@ -1107,7 +1107,7 @@ def get_burnscars():
    cur = conn.cursor()
    cur.execute("""
        SELECT
-           ST_AsGeoJSON(geom)::json as geometry,
+           ST_AsGeoJSON(ST_Transform(geom, 4326))::json as geometry,
            *
        FROM burn_scars
    """)
