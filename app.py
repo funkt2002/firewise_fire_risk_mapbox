@@ -327,7 +327,7 @@ def calculate_scores():
            raw_query = f"""
            SELECT
                id,
-               ST_AsGeoJSON(ST_Transform(geom, 4326))::json as geometry,
+               ST_AsGeoJSON(geom)::json as geometry,
                {', '.join(raw_var_columns + all_score_vars + ['yearbuilt', 'qtrmi_cnt', 'hlfmi_agri', 'hlfmi_wui', 'hlfmi_vhsz', 'hlfmi_fb', 'hlfmi_brn', 'num_neighb',
                                        'parcel_id', 'strcnt', 'neigh1_d', 'apn', 'all_ids', 'perimeter',
                                        'par_elev', 'avg_slope', 'par_aspe_1', 'max_slope', 'num_brns'])}
@@ -421,13 +421,30 @@ def calculate_scores():
                            norm_data = raw_data[var_base]
                            
                            if norm_data['norm_type'] == 'quantile':
-                               normalized_score = (float(raw_value) - norm_data['mean']) / norm_data['std']
+                               if var_base == 'neigh1d':
+                                   # For neighbor distance: closer neighbors = higher risk
+                                   # Invert the z-score by subtracting from mean instead of mean from value
+                                   normalized_score = (norm_data['mean'] - float(raw_value)) / norm_data['std']
+                               else:
+                                   normalized_score = (float(raw_value) - norm_data['mean']) / norm_data['std']
                            elif norm_data['norm_type'] == 'robust_minmax':
-                               normalized_score = (float(raw_value) - norm_data['min']) / norm_data['range']
-                               normalized_score = max(0, min(1, normalized_score))  # Clamp to [0,1]
+                               if var_base == 'neigh1d':
+                                   # For neighbor distance: closer neighbors = higher risk
+                                   # Invert by using (max - value) instead of (value - min)
+                                   normalized_score = (norm_data['max'] - float(raw_value)) / norm_data['range']
+                                   normalized_score = max(0, min(1, normalized_score))  # Clamp to [0,1]
+                               else:
+                                   normalized_score = (float(raw_value) - norm_data['min']) / norm_data['range']
+                                   normalized_score = max(0, min(1, normalized_score))  # Clamp to [0,1]
                            else:  # minmax
-                               normalized_score = (float(raw_value) - norm_data['min']) / norm_data['range']
-                               normalized_score = max(0, min(1, normalized_score))  # Clamp to [0,1]
+                               if var_base == 'neigh1d':
+                                   # For neighbor distance: closer neighbors = higher risk
+                                   # Invert by using (max - value) instead of (value - min)
+                                   normalized_score = (norm_data['max'] - float(raw_value)) / norm_data['range']
+                                   normalized_score = max(0, min(1, normalized_score))  # Clamp to [0,1]
+                               else:
+                                   normalized_score = (float(raw_value) - norm_data['min']) / norm_data['range']
+                                   normalized_score = max(0, min(1, normalized_score))  # Clamp to [0,1]
                            
                            # Store the locally normalized score in the appropriate individual score variable
                            # This ensures popups show the renormalized individual scores
@@ -489,7 +506,7 @@ def calculate_scores():
            WITH scored_parcels AS (
                SELECT
                    id,
-                   ST_AsGeoJSON(ST_Transform(geom, 4326))::json as geometry,
+                   ST_AsGeoJSON(geom)::json as geometry,
                    {score_formula} as score,
                    {', '.join(all_score_vars + ['yearbuilt', 'qtrmi_cnt', 'hlfmi_agri', 'hlfmi_wui', 'hlfmi_vhsz', 'hlfmi_fb', 'hlfmi_brn', 'num_neighb',
                                            'parcel_id', 'strcnt', 'neigh1_d', 'apn', 'all_ids', 'perimeter',
@@ -975,7 +992,7 @@ def get_agricultural():
    cur = conn.cursor()
    cur.execute("""
        SELECT
-           ST_AsGeoJSON(ST_Transform(geom, 4326))::json as geometry,
+           ST_AsGeoJSON(geom)::json as geometry,
            *
        FROM agricultural_areas
    """)
@@ -997,7 +1014,7 @@ def get_wui():
    cur = conn.cursor()
    cur.execute("""
        SELECT
-           ST_AsGeoJSON(ST_Transform(geom, 4326))::json as geometry,
+           ST_AsGeoJSON(geom)::json as geometry,
            *
        FROM wui_areas
    """)
@@ -1019,7 +1036,7 @@ def get_hazard():
    cur = conn.cursor()
    cur.execute("""
        SELECT
-           ST_AsGeoJSON(ST_Transform(geom, 4326))::json as geometry,
+           ST_AsGeoJSON(geom)::json as geometry,
            *
        FROM hazard_zones
    """)
@@ -1041,7 +1058,7 @@ def get_structures():
    cur = conn.cursor()
    cur.execute("""
        SELECT
-           ST_AsGeoJSON(ST_Transform(geom, 4326))::json as geometry,
+           ST_AsGeoJSON(geom)::json as geometry,
            *
        FROM structures
    """)
@@ -1063,7 +1080,7 @@ def get_firewise():
    cur = conn.cursor()
    cur.execute("""
        SELECT
-           ST_AsGeoJSON(ST_Transform(geom, 4326))::json as geometry,
+           ST_AsGeoJSON(geom)::json as geometry,
            *
        FROM firewise_communities
    """)
@@ -1085,7 +1102,7 @@ def get_fuelbreaks():
    cur = conn.cursor()
    cur.execute("""
        SELECT
-           ST_AsGeoJSON(ST_Transform(geom, 4326))::json as geometry,
+           ST_AsGeoJSON(geom)::json as geometry,
            *
        FROM fuelbreaks
    """)
@@ -1107,7 +1124,7 @@ def get_burnscars():
    cur = conn.cursor()
    cur.execute("""
        SELECT
-           ST_AsGeoJSON(ST_Transform(geom, 4326))::json as geometry,
+           ST_AsGeoJSON(geom)::json as geometry,
            *
        FROM burn_scars
    """)
@@ -1169,6 +1186,7 @@ def get_distribution(variable):
     data = request.get_json() or {}
     use_quantiled_scores = data.get('use_quantiled_scores', False)
     use_quantile = data.get('use_quantile', False)
+    use_local_normalization = data.get('use_local_normalization', False)
     
     # Get allowed variables for current setting
     allowed_vars = get_allowed_distribution_vars(use_quantiled_scores, use_quantile)
@@ -1177,6 +1195,7 @@ def get_distribution(variable):
     print(f"Requested variable: {variable}")
     print(f"Use quantiled scores: {use_quantiled_scores}")
     print(f"Use quantile: {use_quantile}")
+    print(f"Use local normalization: {use_local_normalization}")
     print(f"Allowed variables: {sorted(allowed_vars)}")
     
     if variable not in allowed_vars:
@@ -1225,6 +1244,88 @@ def get_distribution(variable):
     conn = get_db()
     cur = conn.cursor()
     
+    # Check if we need to apply local normalization
+    if use_local_normalization and variable.endswith(('_s', '_q', '_z')):
+        # For local normalization, we need to work with raw data and apply local normalization
+        # Extract the base variable name
+        var_base = variable.replace('_s', '').replace('_q', '').replace('_z', '')
+        
+        # Check if this is a valid fire risk variable
+        if var_base in RAW_VAR_MAP:
+            raw_var = RAW_VAR_MAP[var_base]
+            
+            # Get raw values for normalization
+            raw_where = variable.replace(var_base + '_s', raw_var).replace(var_base + '_q', raw_var).replace(var_base + '_z', raw_var) + " IS NOT NULL"
+            if where_clause:
+                full_where_clause = where_clause + " AND " + raw_where
+            else:
+                full_where_clause = "WHERE " + raw_where
+            
+            try:
+                cur.execute(f"""
+                    SELECT {raw_var} as value
+                    FROM parcels
+                    {full_where_clause}
+                """, params)
+                
+                results = cur.fetchall()
+                raw_values = [float(r['value']) for r in results if r['value'] is not None]
+                
+                if len(raw_values) >= 10:  # Only apply local normalization if we have enough data
+                    # Apply the same local normalization logic as in scoring
+                    if use_quantile:
+                        # Quantile normalization: (x - mean) / std
+                        mean_val = np.mean(raw_values)
+                        std_val = np.std(raw_values)
+                        if std_val > 0:
+                            if var_base == 'neigh1d':
+                                # For neighbor distance: closer neighbors = higher risk
+                                values = [(mean_val - val) / std_val for val in raw_values]
+                            else:
+                                values = [(val - mean_val) / std_val for val in raw_values]
+                        else:
+                            values = [0.0 for _ in raw_values]  # Handle zero variance
+                    elif use_quantiled_scores:
+                        # Robust min-max: use 5th and 95th percentiles
+                        q05, q95 = np.percentile(raw_values, [5, 95])
+                        range_val = q95 - q05 if q95 > q05 else 1.0
+                        if var_base == 'neigh1d':
+                            # For neighbor distance: closer neighbors = higher risk
+                            values = [max(0, min(1, (q95 - val) / range_val)) for val in raw_values]
+                        else:
+                            values = [max(0, min(1, (val - q05) / range_val)) for val in raw_values]
+                    else:
+                        # Basic min-max normalization
+                        min_val = np.min(raw_values)
+                        max_val = np.max(raw_values)
+                        range_val = max_val - min_val if max_val > min_val else 1.0
+                        if var_base == 'neigh1d':
+                            # For neighbor distance: closer neighbors = higher risk
+                            values = [max(0, min(1, (max_val - val) / range_val)) for val in raw_values]
+                        else:
+                            values = [max(0, min(1, (val - min_val) / range_val)) for val in raw_values]
+                    
+                    # Calculate new min/max for the locally normalized values
+                    min_val = min(values) if values else 0
+                    max_val = max(values) if values else 1
+                    count = len(values)
+                    
+                    cur.close()
+                    conn.close()
+                    
+                    return jsonify({
+                        "values": values, 
+                        "min": min_val, 
+                        "max": max_val,
+                        "count": count,
+                        "normalization": "local"
+                    })
+                    
+            except Exception as e:
+                print(f"Error applying local normalization for {variable}: {e}")
+                # Fall through to global normalization
+    
+    # GLOBAL NORMALIZATION (original logic)
     # Get min/max for metadata
     additional_where = variable + " IS NOT NULL"
     if where_clause:
@@ -1273,7 +1374,8 @@ def get_distribution(variable):
         "values": values, 
         "min": min_val, 
         "max": max_val,
-        "count": count
+        "count": count,
+        "normalization": "global"
     })
 
 @app.route('/api/debug/columns', methods=['GET'])
