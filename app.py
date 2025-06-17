@@ -322,11 +322,47 @@ def calculate_scores():
        
        if use_local_normalization:
            # LOCAL NORMALIZATION: Calculate scores from raw values and renormalize on filtered subset
-           timings['local_norm_start'] = time.time()
+           local_norm_overall_start = time.time()
            
            # Step 1: Get raw values for filtered parcels
            raw_var_columns = [RAW_VAR_MAP[var_base] for var_base in WEIGHT_VARS_BASE]
            
+           # Test filtering performance first
+           filter_test_start = time.time()
+           cur.execute(f"SELECT COUNT(*) as local_filtered_count FROM parcels {where_clause}", params)
+           local_filtered_count = cur.fetchone()['local_filtered_count']
+           timings['local_filtering_count'] = time.time() - filter_test_start
+           
+           # Test raw data query without geometry
+           raw_no_geom_start = time.time()
+           raw_no_geom_query = f"""
+           SELECT id, {', '.join(raw_var_columns)}
+           FROM parcels
+           {where_clause}
+           """
+           cur.execute(raw_no_geom_query, params)
+           raw_no_geom_results = cur.fetchall()
+           timings['raw_data_no_geometry'] = time.time() - raw_no_geom_start
+           
+           # Test geometry operations on subset
+           geometry_test_start = time.time()
+           geometry_test_query = f"""
+           SELECT id, ST_AsGeoJSON(ST_Transform(geom, 4326))::json as geometry
+           FROM parcels
+           {where_clause}
+           LIMIT 100
+           """
+           cur.execute(geometry_test_query, params)
+           geometry_test_results = cur.fetchall()
+           timings['local_geometry_100_parcels'] = time.time() - geometry_test_start
+           
+           # Estimate full geometry cost
+           if len(geometry_test_results) > 0 and local_filtered_count > 0:
+               geometry_per_parcel = timings['local_geometry_100_parcels'] / len(geometry_test_results)
+               timings['local_estimated_geometry_full'] = geometry_per_parcel * local_filtered_count
+           
+           # Full query with geometry
+           raw_query_start = time.time()
            raw_query = f"""
            SELECT
                id,
@@ -340,7 +376,8 @@ def calculate_scores():
            
            cur.execute(raw_query, params)
            raw_results = cur.fetchall()
-           timings['raw_data_query'] = time.time() - timings['local_norm_start']
+           timings['raw_data_query'] = time.time() - raw_query_start
+           timings['local_filtered_parcel_count'] = local_filtered_count
            
            if len(raw_results) < 10:
                # Not enough data for local normalization, fall back to global
