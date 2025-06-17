@@ -1080,7 +1080,7 @@ def get_agricultural():
    cur = conn.cursor()
    cur.execute("""
        SELECT
-           geom_geojson::json as geometry,
+           ST_AsGeoJSON(ST_Transform(geom, 4326))::json as geometry,
            *
        FROM agricultural_areas
    """)
@@ -1102,7 +1102,7 @@ def get_wui():
    cur = conn.cursor()
    cur.execute("""
        SELECT
-           geom_geojson::json as geometry,
+           ST_AsGeoJSON(ST_Transform(geom, 4326))::json as geometry,
            *
        FROM wui_areas
    """)
@@ -1124,7 +1124,7 @@ def get_hazard():
    cur = conn.cursor()
    cur.execute("""
        SELECT
-           geom_geojson::json as geometry,
+           ST_AsGeoJSON(ST_Transform(geom, 4326))::json as geometry,
            *
        FROM hazard_zones
    """)
@@ -1146,7 +1146,7 @@ def get_structures():
    cur = conn.cursor()
    cur.execute("""
        SELECT
-           geom_geojson::json as geometry,
+           ST_AsGeoJSON(ST_Transform(geom, 4326))::json as geometry,
            *
        FROM structures
    """)
@@ -1168,7 +1168,7 @@ def get_firewise():
    cur = conn.cursor()
    cur.execute("""
        SELECT
-           geom_geojson::json as geometry,
+           ST_AsGeoJSON(ST_Transform(geom, 4326))::json as geometry,
            *
        FROM firewise_communities
    """)
@@ -1190,7 +1190,7 @@ def get_fuelbreaks():
    cur = conn.cursor()
    cur.execute("""
        SELECT
-           geom_geojson::json as geometry,
+           ST_AsGeoJSON(ST_Transform(geom, 4326))::json as geometry,
            *
        FROM fuelbreaks
    """)
@@ -1212,7 +1212,7 @@ def get_burnscars():
    cur = conn.cursor()
    cur.execute("""
        SELECT
-           geom_geojson::json as geometry,
+           ST_AsGeoJSON(ST_Transform(geom, 4326))::json as geometry,
            *
        FROM burn_scars
    """)
