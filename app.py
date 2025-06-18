@@ -22,7 +22,7 @@ import pandas as pd
 import geopandas as gpd
 from shapely.geometry import shape
 import redis
-from pulp import *
+from pulp import LpProblem, LpMaximize, LpVariable, lpSum, LpStatus, COIN_CMD, value, listSolvers
 
 # Configure logging
 logging.basicConfig(

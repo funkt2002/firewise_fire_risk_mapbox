@@ -1505,9 +1505,10 @@
             // Get all current filters
             const filters = getCurrentFilters();
             
+            let endpoint;
+            
             try {
                 let response;
-                let endpoint;
                 
                 // Use prepare endpoint for initial load or filter changes
                 if (!currentSessionId || isFilterChange) {
