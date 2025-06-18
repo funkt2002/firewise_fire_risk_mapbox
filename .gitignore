@@ -1,6 +1,13 @@
 # Data directory
 data/
 
+# Development/analysis files (non-essential for production)
+extras/
+
+# Local environment files
+.env
+.env.local
+
 # Python
 __pycache__/
 *.py[cod]
@@ -26,11 +33,13 @@ wheels/
 
 # Virtual Environment
 venv/
+venv_clean/
 ENV/
 
 # IDE
 .idea/
 .vscode/
+.cursorignore
 *.swp
 *.swo
 
@@ -38,9 +47,8 @@ ENV/
 .DS_Store
 Thumbs.db
 
+# Docker (keeping Dockerfile but not .dockerignore)
+.dockerignore
+
 # Logs
 *.log
-
-# Local configuration
-.env
-.env.local
