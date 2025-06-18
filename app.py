@@ -2,29 +2,32 @@
 
 import os
 import json
-from flask import Flask, request, jsonify, render_template, send_file
+import sys
+import math
+import time
+import uuid
+import pickle
+import logging
+import tempfile
+import zipfile
+import traceback
+from datetime import datetime, timedelta
+
+from flask import Flask, request, jsonify, render_template, send_file, session
 from flask_cors import CORS
 import psycopg2
 from psycopg2.extras import RealDictCursor
 import numpy as np
-import math
-from pulp import *
-import redis
-from functools import wraps
-import time
+import pandas as pd
 import geopandas as gpd
 from shapely.geometry import shape
-import tempfile
-import zipfile
-import pulp
-import pandas as pd
-import logging
-import sys
+import redis
+from pulp import *
 
 # Configure logging
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
+    level=logging.INFO, 
+    format='%(asctime)s - %(levelname)s - %(message)s', 
     stream=sys.stdout
 )
 logger = logging.getLogger(__name__)
@@ -33,26 +36,31 @@ logger.info("STARTING FIRE RISK CALCULATOR")
 
 # Check LP solver availability
 try:
-    available_solvers = pulp.listSolvers(onlyAvailable=True)
+    available_solvers = listSolvers(onlyAvailable=True)
     logger.info(f"Available LP solvers: {available_solvers}")
-    if 'COIN_CMD' not in available_solvers:
-        logger.warning("COIN solver not available. LP optimization will not work.")
-    else:
-        logger.info("COIN solver is available")
 except Exception as e:
     logger.error(f"Error checking LP solvers: {e}")
 
+# ====================
+# FLASK APP SETUP
+# ====================
+
 app = Flask(__name__)
-CORS(app)
+CORS(app, supports_credentials=True)
 
 # Configuration
 app.config['DATABASE_URL'] = os.environ.get('DATABASE_URL', 'postgresql://postgres:postgres@localhost:5432/firedb')
 app.config['REDIS_URL'] = os.environ.get('REDIS_URL', 'redis://localhost:6379')
 app.config['MAPBOX_TOKEN'] = os.environ.get('MAPBOX_TOKEN', 'pk.eyJ1IjoidGhlbzExNTgiLCJhIjoiY21iYTU2dzdkMDBqajJub2tmY2c4Z3ltYyJ9.9-DIZmCBjFGIb2TUQ4QyXg')
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-secret-key-change-in-production')
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+app.config['CACHE_TTL'] = 3600  # 1 hour cache TTL
 
-logger.info("App configuration loaded")
+# ====================
+# CONSTANTS
+# ====================
 
-# Constants
 WEIGHT_VARS_BASE = ['qtrmi', 'hwui', 'hagri', 'hvhsz', 'hfb', 'slope', 'neigh1d', 'hbrn']
 INVERT_VARS = {'hagri', 'neigh1d', 'hfb'}
 RAW_VAR_MAP = {
@@ -66,7 +74,6 @@ RAW_VAR_MAP = {
     'hbrn': 'hlfmi_brn'
 }
 
-# Layer mapping for consolidated endpoint
 LAYER_TABLE_MAP = {
     'agricultural': 'agricultural_areas',
     'wui': 'wui_areas',
@@ -77,6 +84,9 @@ LAYER_TABLE_MAP = {
     'burnscars': 'burn_scars'
 }
 
+# In-memory cache fallback
+MEMORY_CACHE = {}
+
 # ====================
 # UTILITY FUNCTIONS
 # ====================
@@ -86,7 +96,6 @@ def get_redis():
     try:
         conn = redis.from_url(app.config['REDIS_URL'])
         conn.ping()
-        logger.info("Redis connection successful")
         return conn
     except Exception as e:
         logger.warning(f"Redis connection failed: {e}")
@@ -96,7 +105,6 @@ def get_db():
     """Get database connection"""
     try:
         conn = psycopg2.connect(app.config['DATABASE_URL'], cursor_factory=RealDictCursor)
-        logger.info("Database connection successful")
         return conn
     except Exception as e:
         logger.error(f"Database connection failed: {e}")
@@ -109,9 +117,7 @@ def fetch_geojson_features(table_name, where_clause="", params=None):
     cur = conn.cursor()
     
     query = f"""
-        SELECT
-            ST_AsGeoJSON(ST_Transform(geom, 4326))::json as geometry,
-            *
+        SELECT ST_AsGeoJSON(ST_Transform(geom, 4326))::json as geometry, *
         FROM {table_name}
         {where_clause}
     """
@@ -129,8 +135,8 @@ def fetch_geojson_features(table_name, where_clause="", params=None):
     
     features = [{
         "type": "Feature",
-        "geometry": row['geometry'],
-        "properties": {k: row[k] for k in row.keys() if k not in ['geometry', 'geom']}
+        "geometry": row['geometry'],  # type: ignore
+        "properties": {k: row[k] for k in row.keys() if k not in ['geometry', 'geom']}  # type: ignore
     } for row in rows]
     
     return {"type": "FeatureCollection", "features": features}
@@ -183,29 +189,140 @@ def get_score_vars(use_quantiled_scores=False, use_quantile=False):
         suffix = '_s'
     return [var + suffix for var in WEIGHT_VARS_BASE]
 
-def cache_result(expiration=300):
-    """Simplified cache decorator with Redis fallback"""
-    def decorator(f):
-        @wraps(f)
-        def decorated_function(*args, **kwargs):
-            r = get_redis()
-            if r is None:
-                return jsonify(f(*args, **kwargs))
+def get_allowed_distribution_vars(use_quantiled_scores=False, use_quantile=False):
+    """Get allowed variables for distribution plots"""
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        
+        cur.execute("""
+            SELECT column_name 
+            FROM information_schema.columns 
+            WHERE table_name = 'parcels'
+        """)
+        existing_columns = {row['column_name'] for row in cur.fetchall()}  # type: ignore
+        
+        cur.close()
+        conn.close()
+        
+        # Build allowed variables
+        allowed_vars = set()
+        
+        # Add score variables
+        if use_quantile:
+            suffix = '_z'
+        elif use_quantiled_scores:
+            suffix = '_q'
+        else:
+            suffix = '_s'
             
-            try:
-                cache_key = f"{f.__name__}:{json.dumps(request.get_json() or request.args.to_dict())}"
-                cached = r.get(cache_key)
-                if cached:
-                    return jsonify(json.loads(cached))
-                
-                result = f(*args, **kwargs)
-                r.setex(cache_key, expiration, json.dumps(result))
-                return jsonify(result)
-            except Exception as e:
-                logger.warning(f"Cache operation failed: {e}")
-                return jsonify(f(*args, **kwargs))
-        return decorated_function
-    return decorator
+        for var_base in WEIGHT_VARS_BASE:
+            score_var = var_base + suffix
+            if score_var in existing_columns:
+                allowed_vars.add(score_var)
+            else:
+                fallback_var = var_base + '_s'
+                if fallback_var in existing_columns:
+                    allowed_vars.add(fallback_var)
+        
+        # Add raw variables
+        for raw_var in RAW_VAR_MAP.values():
+            if raw_var in existing_columns:
+                allowed_vars.add(raw_var)
+        
+        # Add specific columns
+        for var in ['num_brns', 'hlfmi_brn']:
+            if var in existing_columns:
+                allowed_vars.add(var)
+        
+        return allowed_vars
+        
+    except Exception as e:
+        logger.error(f"Error checking database columns: {e}")
+        # Fallback
+        score_vars = get_score_vars(use_quantiled_scores, use_quantile)
+        raw_vars = set(RAW_VAR_MAP.values())
+        return set(score_vars) | raw_vars | {'num_brns', 'hlfmi_brn'}
+
+# ====================
+# SESSION & CACHE MANAGEMENT
+# ====================
+
+def get_or_create_session_id():
+    """Get existing session ID or create new one"""
+    if 'session_id' not in session:
+        session['session_id'] = str(uuid.uuid4())
+        session.permanent = True
+        app.permanent_session_lifetime = timedelta(hours=1)
+    return session['session_id']
+
+def get_cache_key(session_id, key_type):
+    """Generate cache key for session"""
+    return f"fire_risk:{session_id}:{key_type}"
+
+def set_cache(key, data, ttl=None):
+    """Set data in cache with Redis fallback to memory"""
+    ttl = ttl or app.config['CACHE_TTL']
+    
+    # Try Redis first
+    r = get_redis()
+    if r:
+        try:
+            serialized = pickle.dumps(data)
+            r.setex(key, ttl, serialized)
+            logger.info(f"Cached data in Redis: {key} ({len(serialized)} bytes)")
+            return True
+        except Exception as e:
+            logger.warning(f"Failed to cache in Redis: {e}")
+    
+    # Fallback to memory cache
+    MEMORY_CACHE[key] = {'data': data, 'expires': time.time() + ttl}
+    logger.info(f"Cached data in memory: {key}")
+    return True
+
+def get_cache(key):
+    """Get data from cache with Redis fallback to memory"""
+    # Try Redis first
+    r = get_redis()
+    if r:
+        try:
+            cached = r.get(key)
+            if cached and isinstance(cached, bytes):
+                data = pickle.loads(cached)
+                logger.info(f"Retrieved data from Redis: {key}")
+                return data
+        except Exception as e:
+            logger.warning(f"Failed to get from Redis: {e}")
+    
+    # Fallback to memory cache
+    if key in MEMORY_CACHE:
+        cached = MEMORY_CACHE[key]
+        if cached['expires'] > time.time():
+            logger.info(f"Retrieved data from memory: {key}")
+            return cached['data']
+        else:
+            del MEMORY_CACHE[key]
+    
+    return None
+
+def clear_session_cache(session_id):
+    """Clear all cache for a session"""
+    # Clear from Redis
+    r = get_redis()
+    if r:
+        try:
+            pattern = f"fire_risk:{session_id}:*"
+            for key in r.scan_iter(match=pattern):
+                r.delete(key)
+            logger.info(f"Cleared Redis cache for session: {session_id}")
+        except Exception as e:
+            logger.warning(f"Failed to clear Redis cache: {e}")
+    
+    # Clear from memory cache
+    keys_to_delete = [k for k in MEMORY_CACHE.keys() if k.startswith(f"fire_risk:{session_id}:")]
+    for key in keys_to_delete:
+        del MEMORY_CACHE[key]
+    logger.info(f"Cleared memory cache for session: {session_id}")
 
 # ====================
 # SCORE CALCULATION HELPERS
@@ -219,31 +336,20 @@ def apply_local_normalization(raw_results, use_quantile, use_quantiled_scores):
     logger.info(f"Starting local normalization for {len(raw_results)} parcels")
     
     for var_base in WEIGHT_VARS_BASE:
-        var_start_time = time.time()
         raw_var = RAW_VAR_MAP[var_base]
-        logger.info(f"Processing variable: {var_base} (raw column: {raw_var})")
         
         try:
-            # Check if the column exists in the data
-            if len(raw_results) > 0 and raw_var not in raw_results[0]:
-                logger.error(f"Column '{raw_var}' not found in raw results. Available columns: {list(raw_results[0].keys())}")
-                continue
-                
             values = [float(row[raw_var]) for row in raw_results if row[raw_var] is not None]
-            logger.info(f"  - Extracted {len(values)} non-null values for {var_base}")
             
             # Cap neigh1_d values at 5280 feet (1 mile) and apply sqrt transformation
             if var_base == 'neigh1d':
-                original_count = len(values)
                 values = [math.sqrt(min(val, 5280)) for val in values]
-                logger.info(f"  - Applied sqrt transformation to {original_count} neigh1d values (capped at 5280)")
             
             if len(values) > 0:
                 if use_quantile:
                     # Quantile normalization
                     mean_val = np.mean(values)
                     std_val = np.std(values)
-                    logger.info(f"  - Quantile normalization: mean={mean_val:.4f}, std={std_val:.4f}")
                     if std_val > 0:
                         raw_data[var_base] = {
                             'values': values,
@@ -262,7 +368,6 @@ def apply_local_normalization(raw_results, use_quantile, use_quantiled_scores):
                     # Robust min-max
                     q05, q95 = np.percentile(values, [5, 95])
                     range_val = q95 - q05 if q95 > q05 else 1.0
-                    logger.info(f"  - Robust min-max: q05={q05:.4f}, q95={q95:.4f}, range={range_val:.4f}")
                     raw_data[var_base] = {
                         'values': values,
                         'min': q05,
@@ -275,7 +380,6 @@ def apply_local_normalization(raw_results, use_quantile, use_quantiled_scores):
                     min_val = np.min(values)
                     max_val = np.max(values)
                     range_val = max_val - min_val if max_val > min_val else 1.0
-                    logger.info(f"  - Basic min-max: min={min_val:.4f}, max={max_val:.4f}, range={range_val:.4f}")
                     raw_data[var_base] = {
                         'values': values,
                         'min': min_val,
@@ -283,18 +387,11 @@ def apply_local_normalization(raw_results, use_quantile, use_quantiled_scores):
                         'range': range_val,
                         'norm_type': 'minmax'
                     }
-                    
-                logger.info(f"  - Variable {var_base} processed in {time.time() - var_start_time:.3f}s")
-            else:
-                logger.warning(f"  - No valid values found for variable {var_base}")
                 
         except Exception as e:
-            logger.error(f"Error processing variable {var_base} (raw column: {raw_var}): {e}")
-            import traceback
-            logger.error(traceback.format_exc())
+            logger.error(f"Error processing variable {var_base}: {e}")
     
-    total_time = time.time() - start_time
-    logger.info(f"Local normalization completed in {total_time:.2f}s for {len(raw_data)} variables")
+    logger.info(f"Local normalization completed in {time.time() - start_time:.2f}s")
     return raw_data
 
 def calculate_parcel_score(row, weights, raw_data, use_quantile, use_quantiled_scores):
@@ -344,432 +441,8 @@ def calculate_parcel_score(row, weights, raw_data, use_quantile, use_quantiled_s
     return score, score_components
 
 # ====================
-# ROUTES
+# OPTIMIZATION FUNCTIONS
 # ====================
-
-@app.route('/')
-def index():
-    try:
-        return render_template('index.html', mapbox_token=app.config.get('MAPBOX_TOKEN', ''))
-    except Exception as e:
-        return f"""
-        <html>
-        <body>
-            <h1>Fire Risk Calculator - Status Check</h1>
-            <p>Application is running, but template loading failed: {str(e)}</p>
-            <p><a href="/health">Check Health Status</a></p>
-        </body>
-        </html>
-        """
-
-@app.route('/status')
-def status():
-    """Simple status endpoint"""
-    return jsonify({
-        "status": "running",
-        "timestamp": time.strftime('%Y-%m-%d %H:%M:%S'),
-        "version": "1.0"
-    })
-
-@app.route('/health')
-def health_check():
-    """Health check endpoint"""
-    health_status = {
-        "status": "healthy",
-        "timestamp": time.strftime('%Y-%m-%d %H:%M:%S'),
-        "services": {}
-    }
-    
-    # Test database
-    try:
-        conn = get_db()
-        cur = conn.cursor()
-        cur.execute("SELECT 1")
-        cur.close()
-        conn.close()
-        health_status["services"]["database"] = "connected"
-    except Exception as e:
-        health_status["services"]["database"] = f"error: {str(e)}"
-        health_status["status"] = "unhealthy"
-    
-    # Test Redis
-    try:
-        r = get_redis()
-        if r:
-            health_status["services"]["redis"] = "connected"
-        else:
-            health_status["services"]["redis"] = "not configured"
-    except Exception as e:
-        health_status["services"]["redis"] = f"error: {str(e)}"
-    
-    return jsonify(health_status), 200 if health_status["status"] == "healthy" else 500
-
-# CONSOLIDATED GEOJSON ENDPOINT
-@app.route('/api/layer/<layer_name>', methods=['GET'])
-def get_layer(layer_name):
-    """Consolidated endpoint for all GeoJSON layers"""
-    table_name = LAYER_TABLE_MAP.get(layer_name)
-    if not table_name:
-        logger.warning(f"Invalid layer requested: {layer_name}")
-        return jsonify({"error": f"Invalid layer: {layer_name}"}), 404
-    
-    try:
-        geojson = fetch_geojson_features(table_name)
-        return jsonify(geojson)
-    except Exception as e:
-        logger.error(f"Error fetching layer {layer_name}: {e}")
-        return jsonify({"error": str(e)}), 500
-
-@app.route('/api/score', methods=['POST'])
-def calculate_scores():
-    """Calculate fire risk scores with optional local renormalization"""
-    timings = {}
-    start_time = time.time()
-    
-    try:
-        data = request.get_json()
-        weights = data.get('weights', {})
-        use_local_normalization = data.get('use_local_normalization', False)
-        
-        logger.info(f"Score calculation started - Local normalization: {use_local_normalization}")
-        logger.info(f"Request data keys: {list(data.keys())}")
-        logger.info(f"Weights: {weights}")
-        
-        # Normalize weights
-        weight_norm_start = time.time()
-        total = sum(weights.values())
-        if total > 0:
-            weights = {k: v/total for k, v in weights.items()}
-        timings['weight_normalization'] = time.time() - weight_norm_start
-        
-        # Build filters
-        filter_start = time.time()
-        conditions, params = build_filter_conditions(data)
-        where_clause = "WHERE " + " AND ".join(conditions) if conditions else ""
-        logger.info(f"Filter conditions: {len(conditions)} conditions, {len(params)} parameters")
-        timings['filter_building'] = time.time() - filter_start
-        
-        # Get score variables
-        score_var_start = time.time()
-        use_quantiled_scores = data.get('use_quantiled_scores', False)
-        use_quantile = data.get('use_quantile', False)
-        score_vars = get_score_vars(use_quantiled_scores, use_quantile)
-        logger.info(f"Score variables: {score_vars}")
-        timings['score_var_setup'] = time.time() - score_var_start
-        
-        # Database connection
-        db_connect_start = time.time()
-        conn = get_db()
-        cur = conn.cursor()
-        timings['database_connection'] = time.time() - db_connect_start
-        
-        # Get total count
-        count_start = time.time()
-        cur.execute("SELECT COUNT(*) as total_count FROM parcels")
-        total_parcels_before_filter = cur.fetchone()['total_count']
-        logger.info(f"Total parcels in database: {total_parcels_before_filter}")
-        timings['count_query'] = time.time() - count_start
-        
-        # Prepare column lists
-        col_prep_start = time.time()
-        all_score_vars = []
-        for var_base in WEIGHT_VARS_BASE:
-            all_score_vars.extend([var_base + '_s', var_base + '_q', var_base + '_z'])
-        
-        other_columns = ['yearbuilt', 'qtrmi_cnt', 'hlfmi_agri', 'hlfmi_wui', 'hlfmi_vhsz', 
-                        'hlfmi_fb', 'hlfmi_brn', 'num_neighb', 'parcel_id', 'strcnt', 
-                        'neigh1_d', 'apn', 'all_ids', 'perimeter', 'par_elev', 'avg_slope',
-                        'par_aspe_1', 'max_slope', 'num_brns']
-        timings['column_list_preparation'] = time.time() - col_prep_start
-        
-        if use_local_normalization:
-            logger.info("Using local normalization")
-            features = process_local_normalization(
-                cur, where_clause, params, weights, use_quantile, use_quantiled_scores,
-                all_score_vars, other_columns, timings, data.get('max_parcels', 500)
-            )
-            normalization_info = {
-                "mode": "local",
-                "total_parcels_before_filter": total_parcels_before_filter,
-                "total_parcels_after_filter": len(features),
-                "note": f"Scores renormalized using {'quantile' if use_quantile else 'robust min-max' if use_quantiled_scores else 'min-max'} on filtered subset"
-            }
-        else:
-            logger.info("Using global normalization")
-            features = process_global_normalization(
-                cur, where_clause, params, weights, score_vars, all_score_vars,
-                other_columns, data.get('max_parcels', 500), timings
-            )
-            normalization_info = {
-                "mode": "global",
-                "total_parcels_before_filter": total_parcels_before_filter,
-                "total_parcels_after_filter": len(features),
-                "note": f"Using predefined {'quantile' if use_quantile else 'robust min-max' if use_quantiled_scores else 'min-max'} score columns"
-            }
-        
-        # Cleanup
-        cleanup_start = time.time()
-        cur.close()
-        conn.close()
-        timings['database_cleanup'] = time.time() - cleanup_start
-        
-        total_time = time.time() - start_time
-        geojson = {
-            "type": "FeatureCollection",
-            "features": features,
-            "normalization": normalization_info,
-            "timings": timings,
-            "total_time": total_time
-        }
-        
-        # Add a console_log field for browser debugging
-        timing_log = f"Score calculation timings: {timings}, total_time: {total_time:.2f}s"
-        geojson["console_log"] = f'console.log("{timing_log}")'
-        
-        # Detailed timing log for console
-        detailed_timing_log = []
-        detailed_timing_log.append(f"DETAILED SCORE CALCULATION TIMING:")
-        detailed_timing_log.append(f"  Weight normalization: {timings.get('weight_normalization', 0):.3f}s")
-        detailed_timing_log.append(f"  Filter building: {timings.get('filter_building', 0):.3f}s")
-        detailed_timing_log.append(f"  Score variable setup: {timings.get('score_var_setup', 0):.3f}s")
-        detailed_timing_log.append(f"  Database connection: {timings.get('database_connection', 0):.3f}s")
-        detailed_timing_log.append(f"  Count query: {timings.get('count_query', 0):.3f}s")
-        detailed_timing_log.append(f"  Column preparation: {timings.get('column_list_preparation', 0):.3f}s")
-        
-        if use_local_normalization:
-            detailed_timing_log.append(f"  LOCAL NORMALIZATION BREAKDOWN:")
-            detailed_timing_log.append(f"    Column prep: {timings.get('column_preparation', 0):.3f}s")
-            detailed_timing_log.append(f"    Query building: {timings.get('query_building', 0):.3f}s")
-            detailed_timing_log.append(f"    Raw data query: {timings.get('raw_data_query', 0):.3f}s")
-            detailed_timing_log.append(f"    Normalization calc: {timings.get('normalization_calculation', 0):.3f}s")
-            detailed_timing_log.append(f"    Score calculation: {timings.get('score_calculation', 0):.3f}s")
-            detailed_timing_log.append(f"    Ranking: {timings.get('ranking', 0):.3f}s")
-        else:
-            detailed_timing_log.append(f"  Global query: {timings.get('global_query', 0):.3f}s")
-        
-        detailed_timing_log.append(f"  Database cleanup: {timings.get('database_cleanup', 0):.3f}s")
-        detailed_timing_log.append(f"  TOTAL TIME: {total_time:.3f}s")
-        
-        for log_line in detailed_timing_log:
-            logger.info(log_line)
-        
-        logger.info(f"Score calculation completed in {total_time:.2f}s")
-        return jsonify(geojson)
-        
-    except Exception as e:
-        logger.error(f"Error in /api/score: {str(e)}")
-        import traceback
-        logger.error(traceback.format_exc())
-        return jsonify({"error": str(e), "traceback": traceback.format_exc()}), 500
-
-def process_local_normalization(cur, where_clause, params, weights, use_quantile, 
-                               use_quantiled_scores, all_score_vars, other_columns, timings, max_parcels):
-    """Process local normalization for score calculation"""
-    logger.info("Starting process_local_normalization")
-    
-    # Get raw values
-    column_prep_start = time.time()
-    raw_var_columns = [RAW_VAR_MAP[var_base] for var_base in WEIGHT_VARS_BASE]
-    logger.info(f"Raw variable columns: {raw_var_columns}")
-    
-    # Apply neigh1_d capping at SQL level
-    capped_raw_columns = []
-    for raw_var in raw_var_columns:
-        if raw_var == 'neigh1_d':
-            capped_raw_columns.append(f"LEAST({raw_var}, 5280) as {raw_var}")
-        else:
-            capped_raw_columns.append(raw_var)
-    
-    all_columns = capped_raw_columns + all_score_vars + other_columns
-    logger.info(f"Total columns to select: {len(all_columns)}")
-    timings['column_preparation'] = time.time() - column_prep_start
-    
-    # Build and execute query
-    query_build_start = time.time()
-    raw_query = f"""
-    SELECT
-        id,
-        geom_geojson::json as geometry,
-        {', '.join(all_columns)}
-    FROM parcels
-    {where_clause}
-    """
-    timings['query_building'] = time.time() - query_build_start
-    
-    logger.info(f"Executing raw data query with {len(params)} parameters")
-    query_start = time.time()
-    cur.execute(raw_query, params)
-    raw_results = cur.fetchall()
-    timings['raw_data_query'] = time.time() - query_start
-    logger.info(f"Raw data query completed in {timings['raw_data_query']:.2f}s, returned {len(raw_results)} rows")
-    
-    if len(raw_results) < 10:
-        raise ValueError("Not enough data for local normalization")
-    
-    # Apply local normalization
-    norm_start = time.time()
-    raw_data = apply_local_normalization(raw_results, use_quantile, use_quantiled_scores)
-    timings['normalization_calculation'] = time.time() - norm_start
-    
-    # Calculate scores
-    scoring_start = time.time()
-    logger.info(f"Starting score calculation for {len(raw_results)} parcels")
-    features = []
-    for i, row in enumerate(raw_results):
-        if i % 10000 == 0 and i > 0:
-            logger.info(f"  - Processed {i}/{len(raw_results)} parcels ({i/len(raw_results)*100:.1f}%)")
-            
-        score, score_components = calculate_parcel_score(
-            row, weights, raw_data, use_quantile, use_quantiled_scores
-        )
-        
-        properties = {
-            "id": row['id'],
-            "score": score,
-            "rank": 0,
-            "top500": False,
-            **{k: row[k] for k in all_score_vars + other_columns},
-            **score_components
-        }
-        
-        features.append({
-            "type": "Feature",
-            "id": row['id'],
-            "geometry": row['geometry'],
-            "properties": properties
-        })
-    
-    timings['score_calculation'] = time.time() - scoring_start
-    logger.info(f"Score calculation completed in {timings['score_calculation']:.2f}s")
-    
-    # Rank features
-    ranking_start = time.time()
-    logger.info("Starting feature ranking")
-    features.sort(key=lambda f: f['properties']['score'], reverse=True)
-    for i, feature in enumerate(features):
-        feature['properties']['rank'] = i + 1
-        feature['properties']['top500'] = i < max_parcels
-    
-    timings['ranking'] = time.time() - ranking_start
-    logger.info(f"Feature ranking completed in {timings['ranking']:.2f}s")
-    
-    timings['local_normalization_total'] = time.time() - norm_start
-    
-    return features
-
-def process_global_normalization(cur, where_clause, params, weights, score_vars, 
-                               all_score_vars, other_columns, max_parcels, timings):
-    """Process global normalization for score calculation"""
-    # Build score formula
-    score_components = []
-    for i, var_base in enumerate(WEIGHT_VARS_BASE):
-        score_var = score_vars[i]
-        weight_key = var_base + '_s'
-        score_components.append(f"COALESCE({score_var}, 0) * %s")
-    
-    score_formula = " + ".join(score_components)
-    
-    # Add weights to params
-    weight_params = [weights.get(var + '_s', 0) for var in WEIGHT_VARS_BASE]
-    params_for_query = weight_params + params
-    
-    query = f"""
-    WITH scored_parcels AS (
-        SELECT
-            id,
-            geom_geojson::json as geometry,
-            {score_formula} as score,
-            {', '.join(all_score_vars + other_columns)}
-        FROM parcels
-        {where_clause}
-    ),
-    ranked_parcels AS (
-        SELECT *,
-               RANK() OVER (ORDER BY score DESC) as rank
-        FROM scored_parcels
-    )
-    SELECT * FROM ranked_parcels
-    ORDER BY score DESC
-    """
-    
-    query_start = time.time()
-    cur.execute(query, params_for_query)
-    results = cur.fetchall()
-    timings['global_query'] = time.time() - query_start
-    
-    # Format as GeoJSON
-    features = []
-    for row in results:
-        feature = {
-            "type": "Feature",
-            "id": row['id'],
-            "geometry": row['geometry'],
-            "properties": {
-                "id": row['id'],
-                "score": float(row['score']) if row['score'] else 0,
-                "rank": row['rank'],
-                "top500": row['rank'] <= max_parcels,
-                **{k: row[k] for k in all_score_vars + other_columns}
-            }
-        }
-        features.append(feature)
-    
-    return features
-
-@app.route('/api/infer-weights', methods=['POST'])
-def infer_weights():
-    """Infer optimal weights using linear programming"""
-    start_time = time.time()
-    try:
-        data = request.get_json()
-        logger.info(f"/api/infer-weights called with data: {data}")
-        
-        # Validate input
-        if not data.get('selection'):
-            return jsonify({"error": "No selection provided"}), 400
-        
-        include_vars = data.get('include_vars', [var + '_s' for var in WEIGHT_VARS_BASE])
-        if not include_vars:
-            return jsonify({"error": "No variables selected for optimization"}), 400
-        
-        # Get parcel scores for optimization
-        parcel_data = get_parcel_scores_for_optimization(data, include_vars)
-        if not parcel_data:
-            return jsonify({"error": "No parcels found in selection"}), 400
-        
-        # Solve optimization problem
-        best_weights, total_score, solver_status = solve_weight_optimization(
-            parcel_data, include_vars
-        )
-        
-        if solver_status != 'Optimal':
-            return jsonify({"error": f"Solver failed: {solver_status}"}), 500
-        
-        # Generate solution files
-        weights_pct = {var: round(best_weights[var] * 100, 1) for var in best_weights}
-        lp_content, txt_content = generate_solution_files(
-            include_vars, best_weights, weights_pct, total_score, 
-            parcel_data, data
-        )
-        total_time = time.time() - start_time
-        timing_log = f"Weight inference completed in {total_time:.2f}s for {len(parcel_data)} parcels."
-        logger.info(timing_log)
-        return jsonify({
-            "weights": weights_pct,
-            "total_score": total_score,
-            "num_parcels": len(parcel_data),
-            "lp_file_content": lp_content,
-            "txt_file_content": txt_content,
-            "solver_status": solver_status,
-            "optimization_parcel_data": parcel_data,
-            "timing_log": timing_log,
-            "console_log": f'console.log("{timing_log}")'
-        })
-        
-    except Exception as e:
-        logger.error(f"Exception in /api/infer-weights: {e}")
-        import traceback
-        return jsonify({"error": str(e), "traceback": traceback.format_exc()}), 500
 
 def get_parcel_scores_for_optimization(data, include_vars):
     """Get parcel scores within selection area for optimization"""
@@ -824,7 +497,7 @@ def get_parcel_scores_for_optimization(data, include_vars):
             score_var = score_vars_to_use[i]
             parcel_scores[var_base] = float(row[score_var] or 0)
         parcel_data.append({
-            'id': row['id'],
+            'id': dict(row)['id'],
             'scores': parcel_scores
         })
     
@@ -938,6 +611,458 @@ def generate_solution_files(include_vars, best_weights, weights_pct, total_score
     
     return lp_content, txt_content
 
+# ====================
+# FAST SCORING FUNCTIONS
+# ====================
+
+def score_fast_internal(session_id, weights, max_parcels):
+    """Internal fast scoring logic that can be called from both endpoints"""
+    timings = {}
+    start_time = time.time()
+    
+    try:
+        # Get cached data
+        cache_start = time.time()
+        cache_key_data = get_cache_key(session_id, 'raw_data')
+        raw_results = get_cache(cache_key_data)
+        
+        if not raw_results:
+            return {"error": "No cached data found. Please call /api/prepare first"}
+        
+        timings['cache_retrieval'] = time.time() - cache_start
+        logger.info(f"Retrieved {len(raw_results)} parcels from cache in {timings['cache_retrieval']:.3f}s")
+        
+        # Normalize weights
+        weight_norm_start = time.time()
+        total = sum(weights.values())
+        if total > 0:
+            weights = {k: v/total for k, v in weights.items()}
+        timings['weight_normalization'] = time.time() - weight_norm_start
+        
+        # Get normalization data if using local normalization
+        cache_key_norm = get_cache_key(session_id, 'normalization')
+        norm_data = get_cache(cache_key_norm)
+        
+        scoring_start = time.time()
+        
+        if norm_data:
+            # Local normalization scoring
+            logger.info("Using cached local normalization data")
+            features = []
+            
+            for i, row in enumerate(raw_results):
+                if i % 10000 == 0 and i > 0:
+                    logger.info(f"  - Processed {i}/{len(raw_results)} parcels ({i/len(raw_results)*100:.1f}%)")
+                
+                score, score_components = calculate_parcel_score(
+                    row, weights, norm_data['raw_data'], 
+                    norm_data['use_quantile'], norm_data['use_quantiled_scores']
+                )
+                
+                # Get all score vars from row
+                all_score_vars = {}
+                for var_base in WEIGHT_VARS_BASE:
+                    for suffix in ['_s', '_q', '_z']:
+                        var_name = var_base + suffix
+                        if var_name in row:
+                            all_score_vars[var_name] = row[var_name]
+                
+                properties = {
+                    "id": row['id'],
+                    "score": score,
+                    "rank": 0,
+                    "top500": False,
+                    **all_score_vars,
+                    **{k: row[k] for k in row.keys() if k not in ['id', 'geometry'] and not k.endswith(('_s', '_q', '_z'))},
+                    **score_components
+                }
+                
+                features.append({
+                    "type": "Feature",
+                    "id": row['id'],
+                    "geometry": row['geometry'],
+                    "properties": properties
+                })
+            
+            normalization_info = {
+                "mode": "local",
+                "total_parcels_before_filter": len(raw_results),
+                "total_parcels_after_filter": len(features),
+                "note": f"Scores renormalized using {'quantile' if norm_data['use_quantile'] else 'robust min-max' if norm_data['use_quantiled_scores'] else 'min-max'} on filtered subset"
+            }
+        else:
+            # Global normalization scoring
+            logger.info("Using global normalization")
+            features = []
+            score_vars = get_score_vars(use_quantiled_scores=False, use_quantile=False)
+            
+            for row in raw_results:
+                score = 0.0
+                for i, var_base in enumerate(WEIGHT_VARS_BASE):
+                    score_var = score_vars[i]
+                    weight_key = var_base + '_s'
+                    weight = weights.get(weight_key, 0)
+                    score += weight * (float(row[score_var]) if row[score_var] else 0)
+                
+                # Get all score vars from row
+                all_score_vars = {}
+                for var_base in WEIGHT_VARS_BASE:
+                    for suffix in ['_s', '_q', '_z']:
+                        var_name = var_base + suffix
+                        if var_name in row:
+                            all_score_vars[var_name] = row[var_name]
+                
+                properties = {
+                    "id": row['id'],
+                    "score": score,
+                    "rank": 0,
+                    "top500": False,
+                    **all_score_vars,
+                    **{k: row[k] for k in row.keys() if k not in ['id', 'geometry'] and not k.endswith(('_s', '_q', '_z'))}
+                }
+                
+                features.append({
+                    "type": "Feature",
+                    "id": row['id'],
+                    "geometry": row['geometry'],
+                    "properties": properties
+                })
+            
+            normalization_info = {
+                "mode": "global",
+                "total_parcels_before_filter": len(raw_results),
+                "total_parcels_after_filter": len(features),
+                "note": "Using predefined score columns"
+            }
+        
+        timings['score_calculation'] = time.time() - scoring_start
+        
+        # Rank features
+        ranking_start = time.time()
+        features.sort(key=lambda f: f['properties']['score'], reverse=True)
+        for i, feature in enumerate(features):
+            feature['properties']['rank'] = i + 1
+            feature['properties']['top500'] = i < max_parcels
+        
+        timings['ranking'] = time.time() - ranking_start
+        
+        total_time = time.time() - start_time
+        
+        return {
+            "type": "FeatureCollection",
+            "features": features,
+            "normalization": normalization_info,
+            "timings": timings,
+            "total_time": total_time
+        }
+        
+    except Exception as e:
+        logger.error(f"Error in score_fast_internal: {str(e)}")
+        return {"error": str(e), "traceback": traceback.format_exc()}
+
+# ====================
+# ROUTES - MAIN ENDPOINTS
+# ====================
+
+@app.route('/')
+def index():
+    try:
+        return render_template('index.html', mapbox_token=app.config.get('MAPBOX_TOKEN', ''))
+    except Exception as e:
+        return f"""
+        <html>
+        <body>
+            <h1>Fire Risk Calculator - Status Check</h1>
+            <p>Application is running, but template loading failed: {str(e)}</p>
+            <p><a href="/health">Check Health Status</a></p>
+        </body>
+        </html>
+        """
+
+@app.route('/status')
+def status():
+    """Simple status endpoint"""
+    return jsonify({
+        "status": "running",
+        "timestamp": time.strftime('%Y-%m-%d %H:%M:%S'),
+        "version": "2.0"
+    })
+
+@app.route('/health')
+def health_check():
+    """Health check endpoint"""
+    health_status = {
+        "status": "healthy",
+        "timestamp": time.strftime('%Y-%m-%d %H:%M:%S'),
+        "services": {}
+    }
+    
+    # Test database
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute("SELECT 1")
+        cur.close()
+        conn.close()
+        health_status["services"]["database"] = "connected"
+    except Exception as e:
+        health_status["services"]["database"] = f"error: {str(e)}"
+        health_status["status"] = "unhealthy"
+    
+    # Test Redis
+    try:
+        r = get_redis()
+        if r:
+            health_status["services"]["redis"] = "connected"
+        else:
+            health_status["services"]["redis"] = "not configured"
+    except Exception as e:
+        health_status["services"]["redis"] = f"error: {str(e)}"
+    
+    return jsonify(health_status), 200 if health_status["status"] == "healthy" else 500
+
+# ====================
+# ROUTES - DATA PREPARATION & SCORING
+# ====================
+
+@app.route('/api/clear-cache', methods=['POST'])
+def clear_cache():
+    """Clear session cache"""
+    session_id = get_or_create_session_id()
+    clear_session_cache(session_id)
+    return jsonify({"status": "cache_cleared", "session_id": session_id})
+
+@app.route('/api/prepare', methods=['POST'])
+def prepare_data():
+    """Prepare data by loading from DB and caching for fast scoring"""
+    timings = {}
+    start_time = time.time()
+    session_id = get_or_create_session_id()
+    
+    try:
+        data = request.get_json()
+        logger.info(f"Prepare data called for session: {session_id}")
+        
+        # Check if we need to clear cache (filter change)
+        cache_key_filters = get_cache_key(session_id, 'filters')
+        cached_filters = get_cache(cache_key_filters)
+        
+        # Compare filters to see if they changed
+        current_filters = {k: v for k, v in data.items() if k != 'weights'}
+        if cached_filters != current_filters:
+            logger.info("Filters changed, clearing session cache")
+            clear_session_cache(session_id)
+            set_cache(cache_key_filters, current_filters)
+        
+        # Build filters
+        filter_start = time.time()
+        conditions, params = build_filter_conditions(data)
+        where_clause = "WHERE " + " AND ".join(conditions) if conditions else ""
+        timings['filter_building'] = time.time() - filter_start
+        
+        # Database connection
+        db_connect_start = time.time()
+        conn = get_db()
+        cur = conn.cursor()
+        timings['database_connection'] = time.time() - db_connect_start
+        
+        # Get total count
+        count_start = time.time()
+        cur.execute("SELECT COUNT(*) as total_count FROM parcels")
+        result = cur.fetchone()
+        total_parcels_before_filter = dict(result)['total_count'] if result else 0
+        timings['count_query'] = time.time() - count_start
+        
+        # Prepare columns
+        col_prep_start = time.time()
+        all_score_vars = []
+        for var_base in WEIGHT_VARS_BASE:
+            all_score_vars.extend([var_base + '_s', var_base + '_q', var_base + '_z'])
+        
+        other_columns = ['yearbuilt', 'qtrmi_cnt', 'hlfmi_agri', 'hlfmi_wui', 'hlfmi_vhsz', 
+                        'hlfmi_fb', 'hlfmi_brn', 'num_neighb', 'parcel_id', 'strcnt', 
+                        'neigh1_d', 'apn', 'all_ids', 'perimeter', 'par_elev', 'avg_slope',
+                        'par_aspe_1', 'max_slope', 'num_brns']
+        
+        raw_var_columns = [RAW_VAR_MAP[var_base] for var_base in WEIGHT_VARS_BASE]
+        
+        # Apply neigh1_d capping at SQL level
+        capped_raw_columns = []
+        for raw_var in raw_var_columns:
+            if raw_var == 'neigh1_d':
+                capped_raw_columns.append(f"LEAST({raw_var}, 5280) as {raw_var}")
+            else:
+                capped_raw_columns.append(raw_var)
+        
+        all_columns = capped_raw_columns + all_score_vars + other_columns
+        timings['column_preparation'] = time.time() - col_prep_start
+        
+        # Query data
+        query_start = time.time()
+        query = f"""
+        SELECT
+            id,
+            geom_geojson::json as geometry,
+            {', '.join(all_columns)}
+        FROM parcels
+        {where_clause}
+        """
+        
+        logger.info(f"Executing data query with {len(params)} parameters")
+        cur.execute(query, params)
+        raw_results = cur.fetchall()
+        timings['raw_data_query'] = time.time() - query_start
+        logger.info(f"Raw data query completed in {timings['raw_data_query']:.2f}s, returned {len(raw_results)} rows")
+        
+        cur.close()
+        conn.close()
+        
+        if len(raw_results) < 10:
+            return jsonify({"error": "Not enough data for analysis"}), 400
+        
+        # Cache the raw results
+        cache_key_data = get_cache_key(session_id, 'raw_data')
+        set_cache(cache_key_data, raw_results)
+        
+        # Apply local normalization if requested
+        use_local_normalization = data.get('use_local_normalization', False)
+        use_quantile = data.get('use_quantile', False)
+        use_quantiled_scores = data.get('use_quantiled_scores', False)
+        
+        if use_local_normalization:
+            norm_start = time.time()
+            raw_data = apply_local_normalization(raw_results, use_quantile, use_quantiled_scores)
+            timings['normalization_calculation'] = time.time() - norm_start
+            
+            # Cache normalization data
+            cache_key_norm = get_cache_key(session_id, 'normalization')
+            set_cache(cache_key_norm, {
+                'raw_data': raw_data,
+                'use_quantile': use_quantile,
+                'use_quantiled_scores': use_quantiled_scores
+            })
+        
+        # Get initial weights from request or use defaults
+        weights = data.get('weights', {
+            'qtrmi_s': 0.3,
+            'neigh1d_s': 0.0,
+            'hwui_s': 0.1,
+            'hvhsz_s': 0.3,
+            'hagri_s': 0.11,
+            'hfb_s': 0.1,
+            'slope_s': 0.0,
+            'hbrn_s': 0.09
+        })
+        
+        total_time = time.time() - start_time
+        
+        # Return response with session info
+        response_data = {
+            "session_id": session_id,
+            "status": "prepared",
+            "total_parcels_before_filter": total_parcels_before_filter,
+            "total_parcels_after_filter": len(raw_results),
+            "use_local_normalization": use_local_normalization,
+            "timings": timings,
+            "total_time": total_time
+        }
+        
+        # Automatically trigger fast scoring with initial weights
+        score_response = score_fast_internal(session_id, weights, data.get('max_parcels', 500))
+        response_data.update(score_response)
+        
+        logger.info(f"Prepare completed in {total_time:.2f}s")
+        return jsonify(response_data)
+        
+    except Exception as e:
+        logger.error(f"Error in /api/prepare: {str(e)}")
+        return jsonify({"error": str(e), "traceback": traceback.format_exc()}), 500
+
+@app.route('/api/score-fast', methods=['POST'])
+def score_fast():
+    """Fast scoring using cached data"""
+    session_id = get_or_create_session_id()
+    data = request.get_json()
+    weights = data.get('weights', {})
+    max_parcels = data.get('max_parcels', 500)
+    
+    result = score_fast_internal(session_id, weights, max_parcels)
+    
+    if 'error' in result:
+        return jsonify(result), 400
+    
+    return jsonify(result)
+
+# DEPRECATED: Original score endpoint - kept for backwards compatibility
+@app.route('/api/score', methods=['POST'])
+def calculate_scores():
+    """DEPRECATED: Use /api/prepare followed by /api/score-fast instead"""
+    logger.warning("Using deprecated /api/score endpoint. Consider using /api/prepare + /api/score-fast")
+    
+    # Simply call prepare which will auto-trigger scoring
+    return prepare_data()
+
+# ====================
+# ROUTES - OPTIMIZATION
+# ====================
+
+@app.route('/api/infer-weights', methods=['POST'])
+def infer_weights():
+    """Infer optimal weights using linear programming"""
+    start_time = time.time()
+    try:
+        data = request.get_json()
+        logger.info(f"/api/infer-weights called with data: {data}")
+        
+        # Validate input
+        if not data.get('selection'):
+            return jsonify({"error": "No selection provided"}), 400
+        
+        include_vars = data.get('include_vars', [var + '_s' for var in WEIGHT_VARS_BASE])
+        if not include_vars:
+            return jsonify({"error": "No variables selected for optimization"}), 400
+        
+        # Get parcel scores for optimization
+        parcel_data = get_parcel_scores_for_optimization(data, include_vars)
+        if not parcel_data:
+            return jsonify({"error": "No parcels found in selection"}), 400
+        
+        # Solve optimization problem
+        best_weights, total_score, solver_status = solve_weight_optimization(
+            parcel_data, include_vars
+        )
+        
+        if solver_status != 'Optimal':
+            return jsonify({"error": f"Solver failed: {solver_status}"}), 500
+        
+        # Generate solution files
+        weights_pct = {var: round(best_weights[var] * 100, 1) for var in best_weights}
+        lp_content, txt_content = generate_solution_files(
+            include_vars, best_weights, weights_pct, total_score, 
+            parcel_data, data
+        )
+        
+        total_time = time.time() - start_time
+        
+        return jsonify({
+            "weights": weights_pct,
+            "total_score": total_score,
+            "num_parcels": len(parcel_data),
+            "lp_file_content": lp_content,
+            "txt_file_content": txt_content,
+            "solver_status": solver_status,
+            "optimization_parcel_data": parcel_data,
+            "timing_log": f"Weight inference completed in {total_time:.2f}s for {len(parcel_data)} parcels."
+        })
+        
+    except Exception as e:
+        logger.error(f"Exception in /api/infer-weights: {e}")
+        return jsonify({"error": str(e), "traceback": traceback.format_exc()}), 500
+
+# ====================
+# ROUTES - DATA EXPORT & VISUALIZATION
+# ====================
+
 @app.route('/api/export-shapefile', methods=['POST'])
 def export_shapefile():
     """Export selected parcels as shapefile"""
@@ -1032,7 +1157,7 @@ def get_distribution(variable):
                     """, params)
                 
                 results = cur.fetchall()
-                raw_values = [float(r['value']) for r in results if r['value'] is not None]
+                raw_values = [float(dict(r)['value']) for r in results if dict(r)['value'] is not None]
                 
                 if len(raw_values) >= 10:
                     # Apply local normalization
@@ -1100,7 +1225,7 @@ def get_distribution(variable):
     except Exception as e:
         return jsonify({"error": f"Error querying column '{variable}': {str(e)}"}), 400
     
-    values = [float(r['value']) for r in results if r['value'] is not None]
+    values = [float(dict(r)['value']) for r in results if dict(r)['value'] is not None]
     
     cur.close()
     conn.close()
@@ -1113,101 +1238,26 @@ def get_distribution(variable):
         "normalization": "global"
     })
 
-def get_allowed_distribution_vars(use_quantiled_scores=False, use_quantile=False):
-    """Get allowed variables for distribution plots"""
-    try:
-        conn = get_db()
-        cur = conn.cursor()
-        
-        cur.execute("""
-            SELECT column_name 
-            FROM information_schema.columns 
-            WHERE table_name = 'parcels'
-        """)
-        existing_columns = {row['column_name'] for row in cur.fetchall()}
-        
-        cur.close()
-        conn.close()
-        
-        # Build allowed variables
-        allowed_vars = set()
-        
-        # Add score variables
-        if use_quantile:
-            suffix = '_z'
-        elif use_quantiled_scores:
-            suffix = '_q'
-        else:
-            suffix = '_s'
-            
-        for var_base in WEIGHT_VARS_BASE:
-            score_var = var_base + suffix
-            if score_var in existing_columns:
-                allowed_vars.add(score_var)
-            else:
-                fallback_var = var_base + '_s'
-                if fallback_var in existing_columns:
-                    allowed_vars.add(fallback_var)
-        
-        # Add raw variables
-        for raw_var in RAW_VAR_MAP.values():
-            if raw_var in existing_columns:
-                allowed_vars.add(raw_var)
-        
-        # Add specific columns
-        for var in ['num_brns', 'hlfmi_brn']:
-            if var in existing_columns:
-                allowed_vars.add(var)
-        
-        return allowed_vars
-        
-    except Exception as e:
-        logger.error(f"Error checking database columns: {e}")
-        # Fallback
-        score_vars = get_score_vars(use_quantiled_scores, use_quantile)
-        raw_vars = set(RAW_VAR_MAP.values())
-        return set(score_vars) | raw_vars | {'num_brns', 'hlfmi_brn'}
+# ====================
+# ROUTES - LAYER DATA
+# ====================
 
-@app.route('/api/debug/columns', methods=['GET'])
-def get_columns():
-    """Debug endpoint to check columns"""
+@app.route('/api/layer/<layer_name>', methods=['GET'])
+def get_layer(layer_name):
+    """Consolidated endpoint for all GeoJSON layers"""
+    table_name = LAYER_TABLE_MAP.get(layer_name)
+    if not table_name:
+        logger.warning(f"Invalid layer requested: {layer_name}")
+        return jsonify({"error": f"Invalid layer: {layer_name}"}), 404
+    
     try:
-        conn = get_db()
-        cur = conn.cursor()
-        
-        cur.execute("""
-            SELECT column_name, data_type 
-            FROM information_schema.columns 
-            WHERE table_name = 'parcels' 
-            ORDER BY column_name
-        """)
-        columns = cur.fetchall()
-        
-        cur.close()
-        conn.close()
-        
-        column_info = {row['column_name']: row['data_type'] for row in columns}
-        
-        score_columns = {
-            '_s_columns': [col for col in column_info.keys() if col.endswith('_s')],
-            '_q_columns': [col for col in column_info.keys() if col.endswith('_q')],
-            '_z_columns': [col for col in column_info.keys() if col.endswith('_z')],
-            'raw_columns': [col for col in column_info.keys() if col in RAW_VAR_MAP.values()]
-        }
-        
-        return jsonify({
-            "all_columns": column_info,
-            "score_analysis": score_columns,
-            "weight_vars_base": WEIGHT_VARS_BASE,
-            "expected_s_columns": [var + '_s' for var in WEIGHT_VARS_BASE],
-            "expected_q_columns": [var + '_q' for var in WEIGHT_VARS_BASE],
-            "expected_z_columns": [var + '_z' for var in WEIGHT_VARS_BASE]
-        })
-        
+        geojson = fetch_geojson_features(table_name)
+        return jsonify(geojson)
     except Exception as e:
+        logger.error(f"Error fetching layer {layer_name}: {e}")
         return jsonify({"error": str(e)}), 500
 
-# Keep these routes for backwards compatibility, but they now redirect to the consolidated endpoint
+# Backwards compatibility routes
 @app.route('/api/agricultural')
 def get_agricultural():
     return get_layer('agricultural')
@@ -1235,6 +1285,53 @@ def get_fuelbreaks():
 @app.route('/api/burnscars')
 def get_burnscars():
     return get_layer('burnscars')
+
+# ====================
+# ROUTES - DEBUG
+# ====================
+
+@app.route('/api/debug/columns', methods=['GET'])
+def get_columns():
+    """Debug endpoint to check columns"""
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        
+        cur.execute("""
+            SELECT column_name, data_type 
+            FROM information_schema.columns 
+            WHERE table_name = 'parcels' 
+            ORDER BY column_name
+        """)
+        columns = cur.fetchall()
+        
+        cur.close()
+        conn.close()
+        
+        column_info = {dict(row)['column_name']: dict(row)['data_type'] for row in columns}
+        
+        score_columns = {
+            '_s_columns': [col for col in column_info.keys() if col.endswith('_s')],
+            '_q_columns': [col for col in column_info.keys() if col.endswith('_q')],
+            '_z_columns': [col for col in column_info.keys() if col.endswith('_z')],
+            'raw_columns': [col for col in column_info.keys() if col in RAW_VAR_MAP.values()]
+        }
+        
+        return jsonify({
+            "all_columns": column_info,
+            "score_analysis": score_columns,
+            "weight_vars_base": WEIGHT_VARS_BASE,
+            "expected_s_columns": [var + '_s' for var in WEIGHT_VARS_BASE],
+            "expected_q_columns": [var + '_q' for var in WEIGHT_VARS_BASE],
+            "expected_z_columns": [var + '_z' for var in WEIGHT_VARS_BASE]
+        })
+        
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# ====================
+# MAIN EXECUTION
+# ====================
 
 if __name__ == '__main__':
     logger.info("Starting Flask development server...")

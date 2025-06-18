@@ -1417,6 +1417,7 @@
 
         // State variables
         let currentData = null;
+        let currentSessionId = null;
         let selectedParcels = [];
         let measureMode = false;
         let measurePoints = [];
@@ -1486,8 +1487,8 @@
             'hbrn_z': 'Burn Score (Quantile)'
         };
 
-        // Update scores function with quantiled scores support
-        async function updateScores() {
+        // Update scores function with session management and fast scoring
+        async function updateScores(isFilterChange = false) {
             document.getElementById('spinner').style.display = 'block';
             
             const weights = {};
@@ -1501,26 +1502,47 @@
                 weights[slider.id] = total > 0 && !isExcluded ? parseFloat(slider.value) / total : 0;
             });
             
-            // Get all current filters including quantiled scores setting
+            // Get all current filters
             const filters = getCurrentFilters();
             
             try {
-                const response = await fetch('/api/score', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({
-                        weights,
-
-                        use_quantiled_scores: filters.use_quantiled_scores,
-                        use_quantile: filters.use_quantile,
-                        max_parcels: parseInt(document.getElementById('max-parcels').value),
-                        subset_area: filters.subset_area,
-                        // Include all other filters
-                        ...filters
-                    })
-                });
+                let response;
+                let endpoint;
+                
+                // Use prepare endpoint for initial load or filter changes
+                if (!currentSessionId || isFilterChange) {
+                    endpoint = '/api/prepare';
+                    response = await fetch(endpoint, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        credentials: 'include',  // Important for session cookies
+                        body: JSON.stringify({
+                            weights,
+                            use_quantiled_scores: filters.use_quantiled_scores,
+                            use_quantile: filters.use_quantile,
+                            use_local_normalization: filters.use_local_normalization,
+                            max_parcels: parseInt(document.getElementById('max-parcels').value),
+                            subset_area: filters.subset_area,
+                            ...filters
+                        })
+                    });
+                } else {
+                    // Use fast scoring for weight changes only
+                    endpoint = '/api/score-fast';
+                    response = await fetch(endpoint, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        credentials: 'include',  // Important for session cookies
+                        body: JSON.stringify({
+                            weights,
+                            max_parcels: parseInt(document.getElementById('max-parcels').value)
+                        })
+                    });
+                }
                 
                 if (!response.ok) {
                     const errorData = await response.json().catch(() => ({}));
@@ -1530,9 +1552,10 @@
                 
                 currentData = await response.json();
                 
-                // Execute the console log statements from the backend
-                if (currentData.console_log) {
-                    eval(currentData.console_log);
+                // Store session ID if returned from prepare
+                if (currentData.session_id) {
+                    currentSessionId = currentData.session_id;
+                    console.log('Session ID:', currentSessionId);
                 }
                 
                 updateMap();
@@ -1573,6 +1596,12 @@
                 
             } catch (error) {
                 console.error('Error updating scores:', error);
+                // If it was a score-fast call that failed, try prepare instead
+                if (endpoint === '/api/score-fast') {
+                    console.log('Fast scoring failed, falling back to prepare endpoint');
+                    currentSessionId = null;
+                    return updateScores(true);
+                }
             } finally {
                 document.getElementById('spinner').style.display = 'none';
             }
@@ -1620,6 +1649,7 @@
                 const response = await fetch(`/api/distribution/${variable}`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
                     body: JSON.stringify(filters)
                 });
                 const data = await response.json();
@@ -1704,19 +1734,23 @@
             slider.addEventListener('input', () => {
                 updateSliderFill(slider);
                 normalizeWeights();
+                // Don't call updateScores here - wait for change event
+            });
+            slider.addEventListener('change', () => {
+                updateScores(false);  // Not a filter change
             });
         });
 
-        document.getElementById('calculate-btn').addEventListener('click', updateScores);
+        document.getElementById('calculate-btn').addEventListener('click', () => updateScores(true));
         document.getElementById('budget').addEventListener('change', () => {
             updateMaxParcels();
-            updateScores();
+            updateScores(true);
         });
         document.getElementById('cost-per-parcel').addEventListener('change', () => {
             updateMaxParcels();
-            updateScores();
+            updateScores(true);
         });
-        document.getElementById('max-parcels').addEventListener('change', updateScores);
+        document.getElementById('max-parcels').addEventListener('change', () => updateScores(true));
 
         // Add score type toggles to filters that trigger recalculation
         const filters = ['filter-yearbuilt-enabled', 'filter-neigh1d-enabled', 'filter-yearbuilt-exclude-unknown', 
@@ -1724,22 +1758,22 @@
                         'filter-brns-enabled', 'use-basic-scores', 'use-quantiled-scores', 'use-quantile',
                         'use-local-normalization'];
         filters.forEach(id => {
-            document.getElementById(id).addEventListener('change', updateScores);
+            document.getElementById(id).addEventListener('change', () => updateScores(true));
         });
 
         ['filter-yearbuilt', 'filter-neigh1d', 'filter-strcnt'].forEach(id => {
             const element = document.getElementById(id);
-            element.addEventListener('change', updateScores);
+            element.addEventListener('change', () => updateScores(true));
             element.addEventListener('keypress', (e) => {
                 if (e.key === 'Enter') {
                     e.preventDefault();
-                    updateScores();
+                    updateScores(true);
                 }
             });
         });
 
         aspectExcludeCheckboxes.forEach(cb => {
-            cb.addEventListener('change', updateScores);
+            cb.addEventListener('change', () => updateScores(true));
         });
 
         // Download .LP file (client-side)
@@ -1810,7 +1844,7 @@
             draw.deleteAll();
             
             // Automatically recalculate to show all parcels again
-            updateScores();
+            updateScores(true);  // This is a filter change
         });
 
         document.getElementById('filter-parcels').addEventListener('click', () => {
@@ -1822,7 +1856,7 @@
                 // Clear the drawn shape from the map after filtering
                 draw.deleteAll();
                 
-                updateScores();
+                updateScores(true);  // This is a filter change
             } else {
                 console.log('No features or subsetArea to filter with. Features:', features.length, 'subsetArea:', subsetArea);
             }
@@ -1865,6 +1899,7 @@
                 const response = await fetch('/api/infer-weights', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
                     body: JSON.stringify({
                         selection: rectangle,
                         max_parcels: maxParcels,
@@ -2882,7 +2917,7 @@
             if (currentData) {
                 updateMap();
             } else {
-                updateScores();
+                updateScores(true);  // Initial load is like a filter change
             }
         }
 
@@ -2891,7 +2926,7 @@
             initializeLayers();
             normalizeWeights();
             updateMaxParcels();
-            updateScores();
+            updateScores(true);  // Initial load is like a filter change
             
             document.querySelectorAll('input[type="range"]').forEach(slider => {
                 updateSliderFill(slider);
@@ -2971,7 +3006,7 @@
                     inferWeightsBtn.click();
                 } else {
                     // No active weight inference selection, just update scores normally
-                    updateScores();
+                    updateScores(false);  // Weight change, not filter change
                 }
             });
         });
