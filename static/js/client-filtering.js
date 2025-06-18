@@ -253,10 +253,13 @@ class ClientNormalizationManager {
                 if (rawValue !== null && rawValue !== undefined) {
                     rawValue = parseFloat(rawValue);
                     
-                    // Cap and transform neigh1d with log
+                    // Apply log transformations
                     if (varBase === 'neigh1d') {
                         const cappedValue = Math.min(rawValue, 5280);
                         rawValue = Math.log(1 + cappedValue);
+                    } else if (varBase === 'hagri' || varBase === 'hfb') {
+                        // Apply log transformation to agriculture and fuel breaks
+                        rawValue = Math.log(1 + rawValue);
                     }
                     
                     values.push(rawValue);
@@ -320,10 +323,13 @@ class ClientNormalizationManager {
                 if (rawValue !== null && rawValue !== undefined && varBase in normData) {
                     rawValue = parseFloat(rawValue);
                     
-                    // Apply neigh1d log transformation
+                    // Apply log transformations  
                     if (varBase === 'neigh1d') {
                         const cappedValue = Math.min(rawValue, 5280);
                         rawValue = Math.log(1 + cappedValue);
+                    } else if (varBase === 'hagri' || varBase === 'hfb') {
+                        // Apply log transformation to agriculture and fuel breaks
+                        rawValue = Math.log(1 + rawValue);
                     }
 
                     const normInfo = normData[varBase];

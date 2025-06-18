@@ -193,6 +193,12 @@ def apply_local_normalization(raw_results, use_quantile, use_quantiled_scores):
                         # Log first few transformations for debugging
                         if len(values) < 3:
                             logger.info(f"neigh1d transformation: {capped_value} -> {raw_value:.3f}")
+                    elif var_base in ['hagri', 'hfb']:
+                        # Apply log transformation to agriculture and fuel breaks
+                        raw_value = math.log(1 + float(raw_value))
+                        # Log first few transformations for debugging
+                        if len(values) < 3:
+                            logger.info(f"{var_base} log transformation: {float(row[raw_var])} -> {raw_value:.3f}")
                     values.append(float(raw_value))
             
             if len(values) > 0:
@@ -240,6 +246,9 @@ def apply_local_normalization(raw_results, use_quantile, use_quantiled_scores):
                     # Apply log transformation: log(1 + capped_distance)
                     capped_value = min(float(raw_value), 5280)
                     raw_value = math.log(1 + capped_value)
+                elif var_base in ['hagri', 'hfb']:
+                    # Apply log transformation to agriculture and fuel breaks
+                    raw_value = math.log(1 + float(raw_value))
                 else:
                     raw_value = float(raw_value)
                 
@@ -274,7 +283,7 @@ def calculate_initial_scores(raw_results, weights, use_local_normalization, use_
     
     # Apply local normalization if requested (adds individual factor scores)
     if use_local_normalization:
-        logger.info("Using local normalization with log transformation for neigh1d")
+        logger.info("Using local normalization with log transformations for neigh1d, hagri, and hfb")
         raw_results = apply_local_normalization(raw_results, use_quantile, use_quantiled_scores)
         score_suffix = '_score'
     else:
