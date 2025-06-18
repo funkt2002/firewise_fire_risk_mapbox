@@ -1898,29 +1898,29 @@
                 }
             }
                 
-                // Simple chloropleth: white to red based on position
-                // Exception: for raw hagri, hfb, neigh1d - flip so left side (lower values) = red
+                // Simple chloropleth: white to red based on bin position
+                // Exception: for raw hagri, hfb, neigh1d - flip so left side = red
                 const baseVar = variable.replace(/_[sqz]$/, ''); // Remove score suffixes
                 const isRawInverseRisk = !variable.includes('_') && ['hagri', 'hfb', 'neigh1d'].includes(baseVar);
                 
-                const createRiskColors = (values, min, max) => {
-                    return values.map(value => {
-                        // Normalize value to 0-1 range
-                        const normalized = (value - min) / (max - min);
-                        
-                        // For raw inverse risk variables, flip the gradient
-                        const riskLevel = isRawInverseRisk ? (1 - normalized) : normalized;
-                        
-                        // Simple white to red gradient
-                        const red = 255;
-                        const green = Math.round(255 * (1 - riskLevel));
-                        const blue = Math.round(255 * (1 - riskLevel));
-                        
-                        return `rgb(${red},${green},${blue})`;
-                    });
-                };
+                // Create gradient colors for histogram bins (not individual values)
+                const numBins = 30;
+                const binColors = [];
                 
-                const binColors = createRiskColors(data.values, data.min, data.max);
+                for (let i = 0; i < numBins; i++) {
+                    // Position from 0 to 1 (left to right)
+                    const position = i / (numBins - 1);
+                    
+                    // For inverse risk variables, flip the gradient
+                    const riskLevel = isRawInverseRisk ? (1 - position) : position;
+                    
+                    // Simple white to red gradient
+                    const red = 255;
+                    const green = Math.round(255 * (1 - riskLevel));
+                    const blue = Math.round(255 * (1 - riskLevel));
+                    
+                    binColors.push(`rgb(${red},${green},${blue})`);
+                }
                 
                 const trace = {
                     x: data.values,
