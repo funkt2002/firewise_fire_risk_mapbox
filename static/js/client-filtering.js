@@ -105,16 +105,16 @@ class ClientFilterManager {
             }
         }
 
-        // WUI minimum filter
-        if (filters.exclude_wui_min30) {
-            if (!props.hlfmi_wui || props.hlfmi_wui < 30) {
+        // WUI zero coverage filter
+        if (filters.exclude_wui_zero) {
+            if (!props.hlfmi_wui || props.hlfmi_wui <= 0) {
                 return false;
             }
         }
 
-        // VHSZ minimum filter
-        if (filters.exclude_vhsz_min10) {
-            if (!props.hlfmi_vhsz || props.hlfmi_vhsz < 10) {
+        // VHSZ zero coverage filter
+        if (filters.exclude_vhsz_zero) {
+            if (!props.hlfmi_vhsz || props.hlfmi_vhsz <= 0) {
                 return false;
             }
         }
@@ -122,6 +122,13 @@ class ClientFilterManager {
         // Burn scars filter
         if (filters.exclude_no_brns) {
             if (!props.num_brns || props.num_brns <= 0) {
+                return false;
+            }
+        }
+
+        // Agricultural protection filter - exclude parcels WITH protection (non-zero values)
+        if (filters.exclude_agri_protection) {
+            if (props.hlfmi_agri && props.hlfmi_agri > 0) {
                 return false;
             }
         }

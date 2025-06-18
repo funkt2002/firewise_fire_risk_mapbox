@@ -796,20 +796,26 @@
                 <h3 style="font-size: 12px; color: #aaa; margin-bottom: 8px;">Exclude parcels without:</h3>
                 <div class="toggle-container">
                     <label class="toggle-label">
-                        <input type="checkbox" id="filter-wui-min30-enabled">
+                        <input type="checkbox" id="filter-wui-zero-enabled">
                         WUI Coverage
                     </label>
                 </div>
                 <div class="toggle-container">
                     <label class="toggle-label">
-                        <input type="checkbox" id="filter-vhsz-min10-enabled">
+                        <input type="checkbox" id="filter-vhsz-zero-enabled">
                         Fire Hazards Coverage
                     </label>
                 </div>
                 <div class="toggle-container">
                     <label class="toggle-label">
                         <input type="checkbox" id="filter-brns-enabled">
-                        No Burn Scars
+                        Burn Scars
+                    </label>
+                </div>
+                <div class="toggle-container">
+                    <label class="toggle-label">
+                        <input type="checkbox" id="filter-agri-protection-enabled">
+                        Agricultural Protection
                     </label>
                 </div>
 
@@ -1290,9 +1296,10 @@
                     parseInt(document.getElementById('filter-neigh1d').value) : null,
                 strcnt_min: document.getElementById('filter-strcnt-enabled').checked ? 
                     parseInt(document.getElementById('filter-strcnt').value) : null,
-                exclude_wui_min30: document.getElementById('filter-wui-min30-enabled').checked,
-                exclude_vhsz_min10: document.getElementById('filter-vhsz-min10-enabled').checked,
-                exclude_no_brns: document.getElementById('filter-brns-enabled').checked,
+                            exclude_wui_zero: document.getElementById('filter-wui-zero-enabled').checked,
+            exclude_vhsz_zero: document.getElementById('filter-vhsz-zero-enabled').checked,
+            exclude_no_brns: document.getElementById('filter-brns-enabled').checked,
+            exclude_agri_protection: document.getElementById('filter-agri-protection-enabled').checked,
 
                 use_quantiled_scores: document.getElementById('use-quantiled-scores').checked,
                 use_quantile: document.getElementById('use-quantile').checked,
@@ -1809,38 +1816,87 @@
         }
  
         async function showDistribution(variable) {
-            // Always fetch distribution with current filters
             const filters = getCurrentFilters();
             
-            // If this is a score variable (ends with _s, _q, or _z), use the correct suffix based on settings
-            if (variable.endsWith('_s') || variable.endsWith('_q') || variable.endsWith('_z')) {
-                const baseVar = variable.slice(0, -2); // Remove _s, _q, or _z
-                if (filters.use_quantile) {
-                    variable = baseVar + '_z';
-                } else if (filters.use_quantiled_scores) {
-                    variable = baseVar + '_q';
-                } else {
-                    variable = baseVar + '_s';
-                }
-            } else {
-                // For raw variables, use the mapped name
-                variable = rawVarMap[variable] || variable;
-            }
+            // Check if we should use client-side data (for local normalization or already processed data)
+            const useClientSide = filters.use_local_normalization || currentData;
             
-            try {
-                const response = await fetch(`/api/distribution/${variable}`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    credentials: 'include',
-                    body: JSON.stringify(filters)
-                });
-                const data = await response.json();
-                if (!response.ok) {
-                    throw new Error(data.error || response.statusText);
+            let data;
+            let mean;
+            
+            if (useClientSide && currentData) {
+                // Use client-side processed data
+                console.log('Using client-side data for distribution of:', variable);
+                
+                let values = [];
+                
+                // Handle both score variables and raw variables
+                if (variable.endsWith('_s') || variable.endsWith('_q') || variable.endsWith('_z')) {
+                    // Score variable - extract from client-side calculated scores
+                    const baseVar = variable.slice(0, -2); // Remove _s, _q, or _z
+                    values = currentData.features
+                        .map(f => f.properties[baseVar + '_s']) // Client always uses _s suffix for calculated scores
+                        .filter(v => v !== null && v !== undefined && !isNaN(v));
+                } else {
+                    // Raw variable - extract from properties
+                    const rawVar = rawVarMap[variable] || variable;
+                    values = currentData.features
+                        .map(f => f.properties[rawVar])
+                        .filter(v => v !== null && v !== undefined && !isNaN(v));
                 }
                 
-                // Calculate mean
-                const mean = data.values.reduce((a, b) => a + b, 0) / data.values.length;
+                if (values.length === 0) {
+                    alert(`No data available for ${variable}`);
+                    return;
+                }
+                
+                mean = values.reduce((a, b) => a + b, 0) / values.length;
+                
+                data = {
+                    values: values,
+                    min: Math.min(...values),
+                    max: Math.max(...values),
+                    count: values.length,
+                    normalization: filters.use_local_normalization ? "local_client" : "client"
+                };
+            } else {
+                // Use server-side data (fallback or when no client data available)
+                console.log('Using server-side data for distribution of:', variable);
+                
+                // If this is a score variable, use the correct suffix based on settings
+                if (variable.endsWith('_s') || variable.endsWith('_q') || variable.endsWith('_z')) {
+                    const baseVar = variable.slice(0, -2); // Remove _s, _q, or _z
+                    if (filters.use_quantile) {
+                        variable = baseVar + '_z';
+                    } else if (filters.use_quantiled_scores) {
+                        variable = baseVar + '_q';
+                    } else {
+                        variable = baseVar + '_s';
+                    }
+                } else {
+                    // For raw variables, use the mapped name
+                    variable = rawVarMap[variable] || variable;
+                }
+                
+                try {
+                    const response = await fetch(`/api/distribution/${variable}`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        credentials: 'include',
+                        body: JSON.stringify(filters)
+                    });
+                    data = await response.json();
+                    if (!response.ok) {
+                        throw new Error(data.error || response.statusText);
+                    }
+                    
+                    mean = data.values.reduce((a, b) => a + b, 0) / data.values.length;
+                } catch (error) {
+                    console.error('Error fetching server-side distribution:', error);
+                    alert('Error loading distribution data');
+                    return;
+                }
+            }
                 
                 const trace = {
                     x: data.values,
@@ -1856,10 +1912,10 @@
                 };
                 
                 // Create annotation for statistics
-                const statsText = `Min: ${data.min.toFixed(2)}<br>Max: ${data.max.toFixed(2)}<br>Mean: ${mean.toFixed(2)}<br>Count: ${data.count}`;
+                const statsText = `Min: ${data.min.toFixed(2)}<br>Max: ${data.max.toFixed(2)}<br>Mean: ${mean.toFixed(2)}<br>Count: ${data.count}<br>Source: ${data.normalization || 'server'}`;
                 
                 const layout = {
-                    title: `${varNameMap[variable] || variable} Distribution`,
+                    title: `${varNameMap[variable] || variable} Distribution ${data.normalization === 'local_client' ? '(Local Normalization)' : ''}`,
                     paper_bgcolor: '#1a1a1a',
                     plot_bgcolor: '#1a1a1a',
                     font: {
@@ -1897,10 +1953,6 @@
                 };
                 Plotly.newPlot('dist-plot', [trace], layout);
                 modal.style.display = "block";
-            } catch (error) {
-                console.error('Error fetching distribution:', error);
-                alert('Error loading distribution data');
-            }
         }
 
         // Event listeners
@@ -1943,8 +1995,8 @@
 
         // Filter and normalization controls - all use client-side processing
         const filters = ['filter-yearbuilt-enabled', 'filter-neigh1d-enabled', 'filter-yearbuilt-exclude-unknown', 
-                        'filter-strcnt-enabled', 'filter-wui-min30-enabled', 'filter-vhsz-min10-enabled', 
-                        'filter-brns-enabled', 'use-basic-scores', 'use-quantiled-scores', 'use-quantile',
+                        'filter-strcnt-enabled', 'filter-wui-zero-enabled', 'filter-vhsz-zero-enabled', 
+                        'filter-brns-enabled', 'filter-agri-protection-enabled', 'use-basic-scores', 'use-quantiled-scores', 'use-quantile',
                         'use-local-normalization'];
         filters.forEach(id => {
             document.getElementById(id).addEventListener('change', () => {

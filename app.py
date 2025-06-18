@@ -139,14 +139,17 @@ def build_filter_conditions(filters):
         conditions.append("strcnt >= %s")
         params.append(filters['strcnt_min'])
     
-    if filters.get('exclude_wui_min30'):
-        conditions.append("hlfmi_wui >= 30")
+    if filters.get('exclude_wui_zero'):
+        conditions.append("hlfmi_wui > 0")
     
-    if filters.get('exclude_vhsz_min10'):
-        conditions.append("hlfmi_vhsz >= 10")
+    if filters.get('exclude_vhsz_zero'):
+        conditions.append("hlfmi_vhsz > 0")
     
     if filters.get('exclude_no_brns'):
         conditions.append("num_brns > 0")
+    
+    if filters.get('exclude_agri_protection'):
+        conditions.append("hlfmi_agri = 0")
     
     if filters.get('subset_area'):
         conditions.append("""ST_Intersects(
