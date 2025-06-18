@@ -9,7 +9,9 @@
     <script src='https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-draw/v1.4.0/mapbox-gl-draw.js'></script>
     <link rel='stylesheet' href='https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-draw/v1.4.0/mapbox-gl-draw.css' type='text/css' />
     <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <script src="https://unpkg.com/@turf/turf@6/turf.min.js"></script>
     <script src="{{ url_for('static', filename='welcome-popup.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/client-filtering.js') }}"></script>
     <script src="{{ url_for('static', filename='js/client-scoring.js') }}"></script>
     <style>
         * {
@@ -1501,10 +1503,10 @@
             'hbrn_z': 'Burn Score (Quantile)'
         };
 
-        // Update scores function with client-side scoring
+        // Enhanced update scores function with comprehensive client-side processing
         async function updateScores(isFilterChange = false) {
             const overallStartTime = performance.now();
-            console.log(`=== ${isFilterChange ? 'FULL LOAD' : 'CLIENT SCORING'} STARTED ===`);
+            console.log(`=== ${isFilterChange ? 'FULL LOAD' : 'CLIENT PROCESSING'} STARTED ===`);
             
             document.getElementById('spinner').style.display = 'block';
             
@@ -1521,18 +1523,31 @@
             });
             
             const maxParcels = parseInt(document.getElementById('max-parcels').value);
+            const filters = getCurrentFilters();
             
             try {
-                // If we have data stored and this is just a weight change, use client-side scoring
-                if (!isFilterChange && window.fireRiskScoring.getParcelCount() > 0) {
-                    console.log('Using client-side scoring for weight change');
+                // Check if we have complete dataset stored and can use client-side processing
+                if (window.fireRiskScoring.getCompleteDatasetCount() > 0) {
+                    console.log('Using comprehensive client-side processing (filtering + scoring)');
                     
-                    const clientResult = window.fireRiskScoring.calculateScores(weights, maxParcels);
+                    // Use the new processData method for everything client-side
+                    const clientResult = window.fireRiskScoring.processData(
+                        weights, 
+                        filters, 
+                        maxParcels,
+                        filters.use_local_normalization,
+                        filters.use_quantile,
+                        filters.use_quantiled_scores
+                    );
+                    
                     if (clientResult) {
                         // Update current data
                         currentData = clientResult;
                         updateMap();
                         updateStatistics();
+                        
+                        // Update normalization display with client-side stats
+                        updateNormalizationDisplay(filters);
                         
                         // Auto-refresh score distribution plot if the modal is open
                         if (modal.style.display === 'block') {
@@ -1540,14 +1555,13 @@
                         }
                         
                         const totalTime = performance.now() - overallStartTime;
-                        console.log(`=== CLIENT SCORING COMPLETED in ${totalTime.toFixed(1)}ms ===`);
+                        console.log(`=== CLIENT PROCESSING COMPLETED in ${totalTime.toFixed(1)}ms ===`);
                         return;
                     }
                 }
                 
-                // Otherwise, fetch fresh data from server
-                console.log('Loading fresh data from server');
-                const filters = getCurrentFilters();
+                // First time load: fetch complete dataset from server
+                console.log('Loading complete dataset from server (first time)');
                 
                 const responseData = await window.apiClient.prepareData({
                     weights,
@@ -1559,8 +1573,8 @@
                     ...filters
                 });
                 
-                // Store data for client-side scoring
-                window.fireRiskScoring.storeParcelData(responseData);
+                // Store complete dataset for future client-side processing
+                window.fireRiskScoring.storeCompleteData(responseData);
                 
                 // Update current data and map
                 currentData = responseData;
@@ -1589,13 +1603,32 @@
                 }
                 
                 const totalTime = performance.now() - overallStartTime;
-                console.log(`=== FULL LOAD COMPLETED in ${totalTime.toFixed(1)}ms ===`);
+                console.log(`=== INITIAL LOAD COMPLETED in ${totalTime.toFixed(1)}ms ===`);
                 
             } catch (error) {
                 console.error('Error updating scores:', error);
                 alert('Error loading data. Please try again.');
             } finally {
                 document.getElementById('spinner').style.display = 'none';
+            }
+        }
+
+        // Helper function to update normalization display with client-side data
+        function updateNormalizationDisplay(filters) {
+            const filterStats = window.clientFilterManager.getFilterStats();
+            if (filterStats) {
+                document.getElementById('normalization-row').style.display = 'flex';
+                if (filters.use_local_normalization) {
+                    document.getElementById('normalization-mode').textContent = 
+                        `Local (${filterStats.total_parcels_after_filter} parcels)`;
+                    document.getElementById('local-norm-info').style.display = 'block';
+                    document.getElementById('local-norm-status').textContent = 
+                        `✓ Scores renormalized on ${filterStats.total_parcels_after_filter} filtered parcels`;
+                } else {
+                    document.getElementById('normalization-mode').textContent = 
+                        `Global (${filterStats.total_parcels_after_filter} of ${filterStats.total_parcels_before_filter} parcels)`;
+                    document.getElementById('local-norm-info').style.display = 'none';
+                }
             }
         }
 
@@ -1635,7 +1668,7 @@
             measurePoints = [];
             document.getElementById('distance').textContent = '';
         }
-
+ 
         async function showDistribution(variable) {
             // Always fetch distribution with current filters
             const filters = getCurrentFilters();
@@ -1748,58 +1781,54 @@
             });
         });
 
-        // Calculate button now handles both weight changes and filter changes
+        // Calculate button - all processing is now client-side after initial load
         document.getElementById('calculate-btn').addEventListener('click', () => {
-            // Determine if this is a filter change or just weight change based on stored data
-            const hasStoredData = window.fireRiskScoring.getParcelCount() > 0;
-            updateScores(!hasStoredData); // Filter change if no stored data
+            updateScores(); // Always use client-side processing
         });
         document.getElementById('budget').addEventListener('change', () => {
             updateMaxParcels();
+            // Clear complete dataset to force reload with new parcel count
             window.fireRiskScoring.clear();
-            updateScores(true);
+            updateScores();
         });
         document.getElementById('cost-per-parcel').addEventListener('change', () => {
             updateMaxParcels();
+            // Clear complete dataset to force reload with new parcel count
             window.fireRiskScoring.clear();
-            updateScores(true);
+            updateScores();
         });
         document.getElementById('max-parcels').addEventListener('change', () => {
-            window.fireRiskScoring.clear();
-            updateScores(true);
+            // Max parcels change only affects ranking, no need to clear complete dataset
+            updateScores();
         });
 
-        // Add score type toggles to filters that trigger recalculation and clear stored data
+        // Filter and normalization controls - all use client-side processing
         const filters = ['filter-yearbuilt-enabled', 'filter-neigh1d-enabled', 'filter-yearbuilt-exclude-unknown', 
                         'filter-strcnt-enabled', 'filter-wui-min30-enabled', 'filter-vhsz-min10-enabled', 
                         'filter-brns-enabled', 'use-basic-scores', 'use-quantiled-scores', 'use-quantile',
                         'use-local-normalization'];
         filters.forEach(id => {
             document.getElementById(id).addEventListener('change', () => {
-                window.fireRiskScoring.clear(); // Clear stored data on filter change
-                updateScores(true); // Force full reload
+                updateScores(); // Client-side processing handles all changes
             });
         });
 
         ['filter-yearbuilt', 'filter-neigh1d', 'filter-strcnt'].forEach(id => {
             const element = document.getElementById(id);
             element.addEventListener('change', () => {
-                window.fireRiskScoring.clear();
-                updateScores(true);
+                updateScores();
             });
             element.addEventListener('keypress', (e) => {
                 if (e.key === 'Enter') {
                     e.preventDefault();
-                    window.fireRiskScoring.clear();
-                    updateScores(true);
+                    updateScores();
                 }
             });
         });
 
         aspectExcludeCheckboxes.forEach(cb => {
             cb.addEventListener('change', () => {
-                window.fireRiskScoring.clear();
-                updateScores(true);
+                updateScores();
             });
         });
 
@@ -1870,9 +1899,8 @@
             // Clear any drawn shapes
             draw.deleteAll();
             
-            // Clear stored data and automatically recalculate to show all parcels again
-            window.fireRiskScoring.clear();
-            updateScores(true);  // This is a filter change
+            // Use client-side processing to remove spatial filter
+            updateScores();
         });
 
         document.getElementById('filter-parcels').addEventListener('click', () => {
@@ -1884,9 +1912,8 @@
                 // Clear the drawn shape from the map after filtering
                 draw.deleteAll();
                 
-                // Clear stored data for filter change
-                window.fireRiskScoring.clear();
-                updateScores(true);  // This is a filter change
+                // Use client-side processing for spatial filtering
+                updateScores();
             } else {
                 console.log('No features or subsetArea to filter with. Features:', features.length, 'subsetArea:', subsetArea);
             }

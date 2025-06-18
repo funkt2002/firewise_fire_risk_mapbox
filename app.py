@@ -299,7 +299,7 @@ def calculate_initial_scores(raw_results, weights, use_local_normalization, use_
         
         row_dict['score'] = composite_score
         raw_results[i] = row_dict
-    
+     
     # Sort by score and add ranking
     raw_results.sort(key=lambda x: dict(x)['score'], reverse=True)
     
