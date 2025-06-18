@@ -246,9 +246,10 @@ class ClientNormalizationManager {
                 if (rawValue !== null && rawValue !== undefined) {
                     rawValue = parseFloat(rawValue);
                     
-                    // Cap and transform neigh1d
+                    // Cap and transform neigh1d with log
                     if (varBase === 'neigh1d') {
-                        rawValue = Math.sqrt(Math.min(rawValue, 5280));
+                        const cappedValue = Math.min(rawValue, 5280);
+                        rawValue = Math.log(1 + cappedValue);
                     }
                     
                     values.push(rawValue);
@@ -312,9 +313,10 @@ class ClientNormalizationManager {
                 if (rawValue !== null && rawValue !== undefined && varBase in normData) {
                     rawValue = parseFloat(rawValue);
                     
-                    // Apply neigh1d transformation
+                    // Apply neigh1d log transformation
                     if (varBase === 'neigh1d') {
-                        rawValue = Math.sqrt(Math.min(rawValue, 5280));
+                        const cappedValue = Math.min(rawValue, 5280);
+                        rawValue = Math.log(1 + cappedValue);
                     }
 
                     const normInfo = normData[varBase];
