@@ -616,21 +616,21 @@ def generate_solution_files(include_vars, best_weights, weights_pct, total_score
 # ====================
 
 def score_fast_internal(session_id, weights, max_parcels):
-    """Internal fast scoring logic that can be called from both endpoints"""
+    """Internal fast scoring logic - only recalculates scores, no geometry reload"""
     timings = {}
     start_time = time.time()
     
     try:
-        # Get cached data
+        # Get cached scoring data (lightweight, no geometries)
         cache_start = time.time()
-        cache_key_data = get_cache_key(session_id, 'raw_data')
-        raw_results = get_cache(cache_key_data)
+        cache_key_scoring = get_cache_key(session_id, 'scoring_data')
+        scoring_data = get_cache(cache_key_scoring)
         
-        if not raw_results:
-            return {"error": "No cached data found. Please call /api/prepare first"}
+        if not scoring_data:
+            return {"error": "No cached scoring data found. Please call /api/prepare first"}
         
         timings['cache_retrieval'] = time.time() - cache_start
-        logger.info(f"Retrieved {len(raw_results)} parcels from cache in {timings['cache_retrieval']:.3f}s")
+        logger.info(f"Retrieved scoring data for {len(scoring_data['parcels'])} parcels in {timings['cache_retrieval']:.3f}s")
         
         # Normalize weights
         weight_norm_start = time.time()
@@ -640,125 +640,109 @@ def score_fast_internal(session_id, weights, max_parcels):
         timings['weight_normalization'] = time.time() - weight_norm_start
         
         # Get normalization data if using local normalization
-        cache_key_norm = get_cache_key(session_id, 'normalization')
-        norm_data = get_cache(cache_key_norm)
+        norm_data = scoring_data.get('normalization_data')
         
         scoring_start = time.time()
+        
+        # Calculate scores only - no geometry processing
+        scored_parcels = []
         
         if norm_data:
             # Local normalization scoring
             logger.info("Using cached local normalization data")
-            features = []
             
-            for i, row in enumerate(raw_results):
+            for i, parcel in enumerate(scoring_data['parcels']):
                 if i % 10000 == 0 and i > 0:
-                    logger.info(f"  - Processed {i}/{len(raw_results)} parcels ({i/len(raw_results)*100:.1f}%)")
+                    logger.info(f"  - Processed {i}/{len(scoring_data['parcels'])} parcels ({i/len(scoring_data['parcels'])*100:.1f}%)")
                 
                 score, score_components = calculate_parcel_score(
-                    row, weights, norm_data['raw_data'], 
+                    parcel, weights, norm_data['raw_data'], 
                     norm_data['use_quantile'], norm_data['use_quantiled_scores']
                 )
                 
-                # Get all score vars from row
-                all_score_vars = {}
-                for var_base in WEIGHT_VARS_BASE:
-                    for suffix in ['_s', '_q', '_z']:
-                        var_name = var_base + suffix
-                        if var_name in row:
-                            all_score_vars[var_name] = row[var_name]
-                
-                properties = {
-                    "id": row['id'],
-                    "score": score,
-                    "rank": 0,
-                    "top500": False,
-                    **all_score_vars,
-                    **{k: row[k] for k in row.keys() if k not in ['id', 'geometry'] and not k.endswith(('_s', '_q', '_z'))},
-                    **score_components
-                }
-                
-                features.append({
-                    "type": "Feature",
-                    "id": row['id'],
-                    "geometry": row['geometry'],
-                    "properties": properties
+                scored_parcels.append({
+                    'id': parcel['id'],
+                    'score': score,
+                    'score_components': score_components,
+                    'properties': parcel  # Include all other properties
                 })
-            
-            normalization_info = {
-                "mode": "local",
-                "total_parcels_before_filter": len(raw_results),
-                "total_parcels_after_filter": len(features),
-                "note": f"Scores renormalized using {'quantile' if norm_data['use_quantile'] else 'robust min-max' if norm_data['use_quantiled_scores'] else 'min-max'} on filtered subset"
-            }
         else:
             # Global normalization scoring
             logger.info("Using global normalization")
-            features = []
             score_vars = get_score_vars(use_quantiled_scores=False, use_quantile=False)
             
-            for row in raw_results:
+            for parcel in scoring_data['parcels']:
                 score = 0.0
                 for i, var_base in enumerate(WEIGHT_VARS_BASE):
                     score_var = score_vars[i]
                     weight_key = var_base + '_s'
                     weight = weights.get(weight_key, 0)
-                    score += weight * (float(row[score_var]) if row[score_var] else 0)
+                    score += weight * (float(parcel[score_var]) if parcel[score_var] else 0)
                 
-                # Get all score vars from row
-                all_score_vars = {}
-                for var_base in WEIGHT_VARS_BASE:
-                    for suffix in ['_s', '_q', '_z']:
-                        var_name = var_base + suffix
-                        if var_name in row:
-                            all_score_vars[var_name] = row[var_name]
-                
-                properties = {
-                    "id": row['id'],
-                    "score": score,
-                    "rank": 0,
-                    "top500": False,
-                    **all_score_vars,
-                    **{k: row[k] for k in row.keys() if k not in ['id', 'geometry'] and not k.endswith(('_s', '_q', '_z'))}
-                }
-                
-                features.append({
-                    "type": "Feature",
-                    "id": row['id'],
-                    "geometry": row['geometry'],
-                    "properties": properties
+                scored_parcels.append({
+                    'id': parcel['id'],
+                    'score': score,
+                    'properties': parcel  # Include all other properties
                 })
-            
-            normalization_info = {
-                "mode": "global",
-                "total_parcels_before_filter": len(raw_results),
-                "total_parcels_after_filter": len(features),
-                "note": "Using predefined score columns"
-            }
         
         timings['score_calculation'] = time.time() - scoring_start
         
-        # Rank features
+        # Rank parcels
         ranking_start = time.time()
-        features.sort(key=lambda f: f['properties']['score'], reverse=True)
-        for i, feature in enumerate(features):
-            feature['properties']['rank'] = i + 1
-            feature['properties']['top500'] = i < max_parcels
+        scored_parcels.sort(key=lambda p: p['score'], reverse=True)
+        for i, parcel in enumerate(scored_parcels):
+            parcel['rank'] = i + 1
+            parcel['top500'] = i < max_parcels
         
         timings['ranking'] = time.time() - ranking_start
         
         total_time = time.time() - start_time
         
         return {
-            "type": "FeatureCollection",
-            "features": features,
-            "normalization": normalization_info,
+            "scored_parcels": scored_parcels,
+            "total_parcels": len(scored_parcels),
+            "selected_count": sum(1 for p in scored_parcels if p['top500']),
             "timings": timings,
-            "total_time": total_time
+            "total_time": total_time,
+            "scoring_only": True  # Flag to indicate this is scores-only update
         }
         
     except Exception as e:
         logger.error(f"Error in score_fast_internal: {str(e)}")
         return {"error": str(e), "traceback": traceback.format_exc()}
+
+def prepare_scoring_cache(raw_results, use_local_normalization, use_quantile, use_quantiled_scores):
+    """Prepare lightweight scoring cache without geometries"""
+    # Extract just the data needed for scoring (no geometries)
+    scoring_parcels = []
+    
+    for row in raw_results:
+        parcel_data = {
+            'id': row['id'],
+            # Include all score variables
+            **{k: row[k] for k in row.keys() if k.endswith(('_s', '_q', '_z'))},
+            # Include raw variables for local normalization
+            **{k: row[k] for k in row.keys() if k in RAW_VAR_MAP.values()},
+            # Include other properties (no geometry)
+            **{k: row[k] for k in row.keys() if k not in ['geometry', 'geom']}
+        }
+        scoring_parcels.append(parcel_data)
+    
+    scoring_data = {
+        'parcels': scoring_parcels,
+        'use_local_normalization': use_local_normalization
+    }
+    
+    # Add normalization data if needed
+    if use_local_normalization:
+        raw_data = apply_local_normalization(raw_results, use_quantile, use_quantiled_scores)
+        scoring_data['normalization_data'] = {
+            'raw_data': raw_data,
+            'use_quantile': use_quantile,
+            'use_quantiled_scores': use_quantiled_scores
+        }
+    
+    return scoring_data
 
 # ====================
 # ROUTES - MAIN ENDPOINTS
@@ -920,27 +904,18 @@ def prepare_data():
         if len(raw_results) < 10:
             return jsonify({"error": "Not enough data for analysis"}), 400
         
-        # Cache the raw results
-        cache_key_data = get_cache_key(session_id, 'raw_data')
-        set_cache(cache_key_data, raw_results)
-        
-        # Apply local normalization if requested
+        # Prepare and cache lightweight scoring data (no geometries)
+        cache_prep_start = time.time()
         use_local_normalization = data.get('use_local_normalization', False)
         use_quantile = data.get('use_quantile', False)
         use_quantiled_scores = data.get('use_quantiled_scores', False)
         
-        if use_local_normalization:
-            norm_start = time.time()
-            raw_data = apply_local_normalization(raw_results, use_quantile, use_quantiled_scores)
-            timings['normalization_calculation'] = time.time() - norm_start
-            
-            # Cache normalization data
-            cache_key_norm = get_cache_key(session_id, 'normalization')
-            set_cache(cache_key_norm, {
-                'raw_data': raw_data,
-                'use_quantile': use_quantile,
-                'use_quantiled_scores': use_quantiled_scores
-            })
+        scoring_data = prepare_scoring_cache(raw_results, use_local_normalization, use_quantile, use_quantiled_scores)
+        
+        cache_key_scoring = get_cache_key(session_id, 'scoring_data')
+        set_cache(cache_key_scoring, scoring_data)
+        
+        timings['cache_preparation'] = time.time() - cache_prep_start
         
         # Get initial weights from request or use defaults
         weights = data.get('weights', {
@@ -956,20 +931,74 @@ def prepare_data():
         
         total_time = time.time() - start_time
         
-        # Return response with session info
+        # Calculate initial scores and create full GeoJSON with geometries
+        initial_scoring_start = time.time()
+        max_parcels = data.get('max_parcels', 500)
+        
+        # Get initial scores
+        score_result = score_fast_internal(session_id, weights, max_parcels)
+        if 'error' in score_result:
+            return jsonify(score_result), 400
+        
+        # Create full GeoJSON features with geometries for initial load
+        features = []
+        scored_parcels_dict = {p['id']: p for p in score_result['scored_parcels']}
+        
+        for row in raw_results:
+            row_dict = dict(row)
+            parcel_id = row_dict['id']
+            scored_parcel = scored_parcels_dict.get(parcel_id, {})
+            
+            # Get all score vars from row
+            all_score_vars = {}
+            for var_base in WEIGHT_VARS_BASE:
+                for suffix in ['_s', '_q', '_z']:
+                    var_name = var_base + suffix
+                    if var_name in row_dict:
+                        all_score_vars[var_name] = row_dict[var_name]
+            
+            properties = {
+                "id": parcel_id,
+                "score": scored_parcel.get('score', 0),
+                "rank": scored_parcel.get('rank', 0),
+                "top500": scored_parcel.get('top500', False),
+                **all_score_vars,
+                **{k: row_dict[k] for k in row_dict.keys() if k not in ['id', 'geometry'] and not k.endswith(('_s', '_q', '_z'))},
+                **scored_parcel.get('score_components', {})
+            }
+            
+            features.append({
+                "type": "Feature",
+                "id": parcel_id,
+                "geometry": row_dict['geometry'],
+                "properties": properties
+            })
+        
+        timings['initial_scoring'] = time.time() - initial_scoring_start
+        
+        # Normalization info
+        normalization_info = {
+            "mode": "local" if use_local_normalization else "global",
+            "total_parcels_before_filter": total_parcels_before_filter,
+            "total_parcels_after_filter": len(raw_results),
+            "note": f"Scores calculated using {'local' if use_local_normalization else 'global'} normalization"
+        }
+        
+        total_time = time.time() - start_time
+        
+        # Return full GeoJSON response for initial load
         response_data = {
+            "type": "FeatureCollection",
+            "features": features,
             "session_id": session_id,
             "status": "prepared",
             "total_parcels_before_filter": total_parcels_before_filter,
             "total_parcels_after_filter": len(raw_results),
             "use_local_normalization": use_local_normalization,
+            "normalization": normalization_info,
             "timings": timings,
             "total_time": total_time
         }
-        
-        # Automatically trigger fast scoring with initial weights
-        score_response = score_fast_internal(session_id, weights, data.get('max_parcels', 500))
-        response_data.update(score_response)
         
         logger.info(f"Prepare completed in {total_time:.2f}s")
         return jsonify(response_data)

@@ -1551,42 +1551,63 @@
                     throw new Error(`HTTP error! status: ${response.status}, details: ${JSON.stringify(errorData)}`);
                 }
                 
-                currentData = await response.json();
+                const responseData = await response.json();
                 
                 // Store session ID if returned from prepare
-                if (currentData.session_id) {
-                    currentSessionId = currentData.session_id;
+                if (responseData.session_id) {
+                    currentSessionId = responseData.session_id;
                     console.log('Session ID:', currentSessionId);
                 }
                 
-                updateMap();
-                
-                const totalParcels = currentData.features.length;
-                const selectedCount = currentData.features.filter(f => f.properties.top500).length;
-                const totalRisk = currentData.features
-                    .filter(f => f.properties.top500)
-                    .reduce((sum, f) => sum + f.properties.score, 0);
-                const avgRisk = selectedCount > 0 ? totalRisk / selectedCount : 0;
-                
-                document.getElementById('total-parcels').textContent = totalParcels.toLocaleString();
-                document.getElementById('selected-parcels').textContent = selectedCount.toLocaleString();
-                document.getElementById('total-risk').textContent = totalRisk.toFixed(2);
-                document.getElementById('avg-risk').textContent = avgRisk.toFixed(2);
-                
-                // Update normalization mode display
-                if (currentData.normalization) {
-                    document.getElementById('normalization-row').style.display = 'flex';
-                    const normMode = currentData.normalization.mode;
-                    if (normMode === 'local') {
-                        document.getElementById('normalization-mode').textContent = 
-                            `Local (${currentData.normalization.total_parcels_after_filter} parcels)`;
-                        document.getElementById('local-norm-info').style.display = 'block';
-                        document.getElementById('local-norm-status').textContent = 
-                            `✓ Scores renormalized on ${currentData.normalization.total_parcels_after_filter} filtered parcels`;
-                    } else {
-                        document.getElementById('normalization-mode').textContent = 
-                            `Global (${currentData.normalization.total_parcels_after_filter} of ${currentData.normalization.total_parcels_before_filter} parcels)`;
-                        document.getElementById('local-norm-info').style.display = 'none';
+                // Handle different response types
+                if (responseData.scoring_only) {
+                    // Fast scoring response - update existing map features with new scores
+                    updateMapScores(responseData.scored_parcels);
+                    
+                    const totalParcels = responseData.total_parcels;
+                    const selectedCount = responseData.selected_count;
+                    const totalRisk = responseData.scored_parcels
+                        .filter(p => p.top500)
+                        .reduce((sum, p) => sum + p.score, 0);
+                    const avgRisk = selectedCount > 0 ? totalRisk / selectedCount : 0;
+                    
+                    document.getElementById('total-parcels').textContent = totalParcels.toLocaleString();
+                    document.getElementById('selected-parcels').textContent = selectedCount.toLocaleString();
+                    document.getElementById('total-risk').textContent = totalRisk.toFixed(2);
+                    document.getElementById('avg-risk').textContent = avgRisk.toFixed(2);
+                    
+                } else {
+                    // Full prepare response - update with new GeoJSON data
+                    currentData = responseData;
+                    updateMap();
+                    
+                    const totalParcels = currentData.features.length;
+                    const selectedCount = currentData.features.filter(f => f.properties.top500).length;
+                    const totalRisk = currentData.features
+                        .filter(f => f.properties.top500)
+                        .reduce((sum, f) => sum + f.properties.score, 0);
+                    const avgRisk = selectedCount > 0 ? totalRisk / selectedCount : 0;
+                    
+                    document.getElementById('total-parcels').textContent = totalParcels.toLocaleString();
+                    document.getElementById('selected-parcels').textContent = selectedCount.toLocaleString();
+                    document.getElementById('total-risk').textContent = totalRisk.toFixed(2);
+                    document.getElementById('avg-risk').textContent = avgRisk.toFixed(2);
+                    
+                    // Update normalization mode display
+                    if (currentData.normalization) {
+                        document.getElementById('normalization-row').style.display = 'flex';
+                        const normMode = currentData.normalization.mode;
+                        if (normMode === 'local') {
+                            document.getElementById('normalization-mode').textContent = 
+                                `Local (${currentData.normalization.total_parcels_after_filter} parcels)`;
+                            document.getElementById('local-norm-info').style.display = 'block';
+                            document.getElementById('local-norm-status').textContent = 
+                                `✓ Scores renormalized on ${currentData.normalization.total_parcels_after_filter} filtered parcels`;
+                        } else {
+                            document.getElementById('normalization-mode').textContent = 
+                                `Global (${currentData.normalization.total_parcels_after_filter} of ${currentData.normalization.total_parcels_before_filter} parcels)`;
+                            document.getElementById('local-norm-info').style.display = 'none';
+                        }
                     }
                 }
                 
@@ -1611,6 +1632,41 @@
         function updateMap() {
             if (!currentData) return;
             
+            if (map.getSource('parcels')) {
+                map.getSource('parcels').setData(currentData);
+            }
+        }
+        
+        function updateMapScores(scoredParcels) {
+            // Update existing map features with new scores (no geometry reload)
+            if (!currentData || !currentData.features) return;
+            
+            // Create lookup for new scores
+            const scoresById = {};
+            scoredParcels.forEach(parcel => {
+                scoresById[parcel.id] = {
+                    score: parcel.score,
+                    rank: parcel.rank,
+                    top500: parcel.top500,
+                    ...parcel.score_components
+                };
+            });
+            
+            // Update existing features
+            currentData.features.forEach(feature => {
+                const newScoreData = scoresById[feature.id];
+                if (newScoreData) {
+                    // Update score-related properties
+                    feature.properties.score = newScoreData.score;
+                    feature.properties.rank = newScoreData.rank;
+                    feature.properties.top500 = newScoreData.top500;
+                    
+                    // Update score components if available
+                    Object.assign(feature.properties, newScoreData);
+                }
+            });
+            
+            // Update the map source with modified data
             if (map.getSource('parcels')) {
                 map.getSource('parcels').setData(currentData);
             }
