@@ -1898,13 +1898,54 @@
                 }
             }
                 
+                // Determine if this is an inverse risk variable
+                const baseVar = variable.replace(/_[sqz]$/, ''); // Remove score suffixes
+                const isInverseRisk = ['hagri', 'neigh1d', 'hfb'].includes(baseVar);
+                const isScoreVariable = variable.endsWith('_s') || variable.endsWith('_q') || variable.endsWith('_z');
+                
+                // Create chloropleth colors based on risk
+                // For score variables: higher values (towards 1) = higher risk = more red
+                // For raw variables with inverse risk: higher values = lower risk = more white
+                // For raw variables with direct risk: higher values = higher risk = more red
+                
+                const createRiskColors = (values, min, max) => {
+                    return values.map(value => {
+                        // Normalize value to 0-1 range
+                        const normalized = (value - min) / (max - min);
+                        
+                        let riskLevel;
+                        if (isScoreVariable) {
+                            // Score variables: higher score = higher risk
+                            riskLevel = normalized;
+                        } else {
+                            // Raw variables
+                            if (isInverseRisk) {
+                                // Inverse risk: higher raw value = lower risk
+                                riskLevel = 1 - normalized;
+                            } else {
+                                // Direct risk: higher raw value = higher risk
+                                riskLevel = normalized;
+                            }
+                        }
+                        
+                        // Create color from white (low risk) to red (high risk)
+                        const red = Math.round(255 * (0.3 + 0.7 * riskLevel)); // Start from light red
+                        const green = Math.round(255 * (1 - riskLevel * 0.9)); // Fade to red
+                        const blue = Math.round(255 * (1 - riskLevel * 0.9)); // Fade to red
+                        
+                        return `rgb(${red},${green},${blue})`;
+                    });
+                };
+                
+                const binColors = createRiskColors(data.values, data.min, data.max);
+                
                 const trace = {
                     x: data.values,
                     type: 'histogram',
                     marker: {
-                        color: '#4a90e2',
+                        color: binColors,
                         line: {
-                            color: 'rgba(200,200,200,0.3)',
+                            color: 'rgba(100,100,100,0.3)',
                             width: 1
                         }
                     },
