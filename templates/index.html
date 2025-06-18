@@ -1898,40 +1898,23 @@
                 }
             }
                 
-                // Determine if this is an inverse risk variable
+                // Simple chloropleth: white to red based on position
+                // Exception: for raw hagri, hfb, neigh1d - flip so left side (lower values) = red
                 const baseVar = variable.replace(/_[sqz]$/, ''); // Remove score suffixes
-                const isInverseRisk = ['hagri', 'neigh1d', 'hfb'].includes(baseVar);
-                const isScoreVariable = variable.endsWith('_s') || variable.endsWith('_q') || variable.endsWith('_z');
-                
-                // Create chloropleth colors based on risk
-                // For score variables: higher values (towards 1) = higher risk = more red
-                // For raw variables with inverse risk: higher values = lower risk = more white
-                // For raw variables with direct risk: higher values = higher risk = more red
+                const isRawInverseRisk = !variable.includes('_') && ['hagri', 'hfb', 'neigh1d'].includes(baseVar);
                 
                 const createRiskColors = (values, min, max) => {
                     return values.map(value => {
                         // Normalize value to 0-1 range
                         const normalized = (value - min) / (max - min);
                         
-                        let riskLevel;
-                        if (isScoreVariable) {
-                            // Score variables: higher score = higher risk
-                            riskLevel = normalized;
-                        } else {
-                            // Raw variables
-                            if (isInverseRisk) {
-                                // Inverse risk: higher raw value = lower risk
-                                riskLevel = 1 - normalized;
-                            } else {
-                                // Direct risk: higher raw value = higher risk
-                                riskLevel = normalized;
-                            }
-                        }
+                        // For raw inverse risk variables, flip the gradient
+                        const riskLevel = isRawInverseRisk ? (1 - normalized) : normalized;
                         
-                        // Create color from white (low risk) to red (high risk)
-                        const red = Math.round(255 * (0.3 + 0.7 * riskLevel)); // Start from light red
-                        const green = Math.round(255 * (1 - riskLevel * 0.9)); // Fade to red
-                        const blue = Math.round(255 * (1 - riskLevel * 0.9)); // Fade to red
+                        // Simple white to red gradient
+                        const red = 255;
+                        const green = Math.round(255 * (1 - riskLevel));
+                        const blue = Math.round(255 * (1 - riskLevel));
                         
                         return `rgb(${red},${green},${blue})`;
                     });
