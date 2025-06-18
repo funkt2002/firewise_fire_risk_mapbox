@@ -10,6 +10,7 @@
     <link rel='stylesheet' href='https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-draw/v1.4.0/mapbox-gl-draw.css' type='text/css' />
     <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
     <script src="{{ url_for('static', filename='welcome-popup.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/client-scoring.js') }}"></script>
     <style>
         * {
             box-sizing: border-box;
@@ -1487,10 +1488,14 @@
             'hbrn_z': 'Burn Score (Quantile)'
         };
 
-        // Update scores function with session management and fast scoring
+        // Update scores function with client-side scoring
         async function updateScores(isFilterChange = false) {
+            const overallStartTime = performance.now();
+            console.log(`=== ${isFilterChange ? 'FULL LOAD' : 'CLIENT SCORING'} STARTED ===`);
+            
             document.getElementById('spinner').style.display = 'block';
             
+            // Get current weights
             const weights = {};
             const total = Array.from(weightSliders).reduce((sum, slider) => {
                 const isExcluded = document.getElementById(`exclude-${slider.id}`).checked;
@@ -1502,112 +1507,66 @@
                 weights[slider.id] = total > 0 && !isExcluded ? parseFloat(slider.value) / total : 0;
             });
             
-            // Get all current filters
-            const filters = getCurrentFilters();
-            
-            let endpoint;
+            const maxParcels = parseInt(document.getElementById('max-parcels').value);
             
             try {
-                let response;
-                
-                // Use prepare endpoint for initial load or filter changes
-                if (!currentSessionId || isFilterChange) {
-                    endpoint = '/api/prepare';
-                    response = await fetch(endpoint, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                        },
-                        credentials: 'include',  // Important for session cookies
-                        body: JSON.stringify({
-                            weights,
-                            use_quantiled_scores: filters.use_quantiled_scores,
-                            use_quantile: filters.use_quantile,
-                            use_local_normalization: filters.use_local_normalization,
-                            max_parcels: parseInt(document.getElementById('max-parcels').value),
-                            subset_area: filters.subset_area,
-                            ...filters
-                        })
-                    });
-                } else {
-                    // Use fast scoring for weight changes only
-                    endpoint = '/api/score-fast';
-                    response = await fetch(endpoint, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                        },
-                        credentials: 'include',  // Important for session cookies
-                        body: JSON.stringify({
-                            weights,
-                            max_parcels: parseInt(document.getElementById('max-parcels').value)
-                        })
-                    });
-                }
-                
-                if (!response.ok) {
-                    const errorData = await response.json().catch(() => ({}));
-                    console.error('Backend error:', errorData);
-                    throw new Error(`HTTP error! status: ${response.status}, details: ${JSON.stringify(errorData)}`);
-                }
-                
-                const responseData = await response.json();
-                
-                // Store session ID if returned from prepare
-                if (responseData.session_id) {
-                    currentSessionId = responseData.session_id;
-                    console.log('Session ID:', currentSessionId);
-                }
-                
-                // Handle different response types
-                if (responseData.scoring_only) {
-                    // Fast scoring response - update existing map features with new scores
-                    updateMapScores(responseData.scored_parcels);
+                // If we have data stored and this is just a weight change, use client-side scoring
+                if (!isFilterChange && window.fireRiskScoring.getParcelCount() > 0) {
+                    console.log('Using client-side scoring for weight change');
                     
-                    const totalParcels = responseData.total_parcels;
-                    const selectedCount = responseData.selected_count;
-                    const totalRisk = responseData.scored_parcels
-                        .filter(p => p.top500)
-                        .reduce((sum, p) => sum + p.score, 0);
-                    const avgRisk = selectedCount > 0 ? totalRisk / selectedCount : 0;
-                    
-                    document.getElementById('total-parcels').textContent = totalParcels.toLocaleString();
-                    document.getElementById('selected-parcels').textContent = selectedCount.toLocaleString();
-                    document.getElementById('total-risk').textContent = totalRisk.toFixed(2);
-                    document.getElementById('avg-risk').textContent = avgRisk.toFixed(2);
-                    
-                } else {
-                    // Full prepare response - update with new GeoJSON data
-                    currentData = responseData;
-                    updateMap();
-                    
-                    const totalParcels = currentData.features.length;
-                    const selectedCount = currentData.features.filter(f => f.properties.top500).length;
-                    const totalRisk = currentData.features
-                        .filter(f => f.properties.top500)
-                        .reduce((sum, f) => sum + f.properties.score, 0);
-                    const avgRisk = selectedCount > 0 ? totalRisk / selectedCount : 0;
-                    
-                    document.getElementById('total-parcels').textContent = totalParcels.toLocaleString();
-                    document.getElementById('selected-parcels').textContent = selectedCount.toLocaleString();
-                    document.getElementById('total-risk').textContent = totalRisk.toFixed(2);
-                    document.getElementById('avg-risk').textContent = avgRisk.toFixed(2);
-                    
-                    // Update normalization mode display
-                    if (currentData.normalization) {
-                        document.getElementById('normalization-row').style.display = 'flex';
-                        const normMode = currentData.normalization.mode;
-                        if (normMode === 'local') {
-                            document.getElementById('normalization-mode').textContent = 
-                                `Local (${currentData.normalization.total_parcels_after_filter} parcels)`;
-                            document.getElementById('local-norm-info').style.display = 'block';
-                            document.getElementById('local-norm-status').textContent = 
-                                `✓ Scores renormalized on ${currentData.normalization.total_parcels_after_filter} filtered parcels`;
-                        } else {
-                            document.getElementById('normalization-mode').textContent = 
-                                `Global (${currentData.normalization.total_parcels_after_filter} of ${currentData.normalization.total_parcels_before_filter} parcels)`;
-                            document.getElementById('local-norm-info').style.display = 'none';
+                    const clientResult = window.fireRiskScoring.calculateScores(weights, maxParcels);
+                    if (clientResult) {
+                        // Update current data
+                        currentData = clientResult;
+                        updateMap();
+                        updateStatistics();
+                        
+                        // Auto-refresh score distribution plot if the modal is open
+                        if (modal.style.display === 'block') {
+                            refreshScoreDistributionPlot();
                         }
+                        
+                        const totalTime = performance.now() - overallStartTime;
+                        console.log(`=== CLIENT SCORING COMPLETED in ${totalTime.toFixed(1)}ms ===`);
+                        return;
+                    }
+                }
+                
+                // Otherwise, fetch fresh data from server
+                console.log('Loading fresh data from server');
+                const filters = getCurrentFilters();
+                
+                const responseData = await window.apiClient.prepareData({
+                    weights,
+                    use_quantiled_scores: filters.use_quantiled_scores,
+                    use_quantile: filters.use_quantile,
+                    use_local_normalization: filters.use_local_normalization,
+                    max_parcels: maxParcels,
+                    subset_area: filters.subset_area,
+                    ...filters
+                });
+                
+                // Store data for client-side scoring
+                window.fireRiskScoring.storeParcelData(responseData);
+                
+                // Update current data and map
+                currentData = responseData;
+                updateMap();
+                updateStatistics();
+                
+                // Update normalization mode display
+                if (responseData.use_local_normalization !== undefined) {
+                    document.getElementById('normalization-row').style.display = 'flex';
+                    if (responseData.use_local_normalization) {
+                        document.getElementById('normalization-mode').textContent = 
+                            `Local (${responseData.total_parcels_after_filter} parcels)`;
+                        document.getElementById('local-norm-info').style.display = 'block';
+                        document.getElementById('local-norm-status').textContent = 
+                            `✓ Scores renormalized on ${responseData.total_parcels_after_filter} filtered parcels`;
+                    } else {
+                        document.getElementById('normalization-mode').textContent = 
+                            `Global (${responseData.total_parcels_after_filter} of ${responseData.total_parcels_before_filter} parcels)`;
+                        document.getElementById('local-norm-info').style.display = 'none';
                     }
                 }
                 
@@ -1616,17 +1575,31 @@
                     refreshScoreDistributionPlot();
                 }
                 
+                const totalTime = performance.now() - overallStartTime;
+                console.log(`=== FULL LOAD COMPLETED in ${totalTime.toFixed(1)}ms ===`);
+                
             } catch (error) {
                 console.error('Error updating scores:', error);
-                // If it was a score-fast call that failed, try prepare instead
-                if (endpoint === '/api/score-fast') {
-                    console.log('Fast scoring failed, falling back to prepare endpoint');
-                    currentSessionId = null;
-                    return updateScores(true);
-                }
+                alert('Error loading data. Please try again.');
             } finally {
                 document.getElementById('spinner').style.display = 'none';
             }
+        }
+
+        function updateStatistics() {
+            if (!currentData || !currentData.features) return;
+            
+            const totalParcels = currentData.features.length;
+            const selectedCount = currentData.features.filter(f => f.properties.top500).length;
+            const totalRisk = currentData.features
+                .filter(f => f.properties.top500)
+                .reduce((sum, f) => sum + f.properties.score, 0);
+            const avgRisk = selectedCount > 0 ? totalRisk / selectedCount : 0;
+            
+            document.getElementById('total-parcels').textContent = totalParcels.toLocaleString();
+            document.getElementById('selected-parcels').textContent = selectedCount.toLocaleString();
+            document.getElementById('total-risk').textContent = totalRisk.toFixed(2);
+            document.getElementById('avg-risk').textContent = avgRisk.toFixed(2);
         }
         
         function updateMap() {
@@ -1637,40 +1610,7 @@
             }
         }
         
-        function updateMapScores(scoredParcels) {
-            // Update existing map features with new scores (no geometry reload)
-            if (!currentData || !currentData.features) return;
-            
-            // Create lookup for new scores
-            const scoresById = {};
-            scoredParcels.forEach(parcel => {
-                scoresById[parcel.id] = {
-                    score: parcel.score,
-                    rank: parcel.rank,
-                    top500: parcel.top500,
-                    ...parcel.score_components
-                };
-            });
-            
-            // Update existing features
-            currentData.features.forEach(feature => {
-                const newScoreData = scoresById[feature.id];
-                if (newScoreData) {
-                    // Update score-related properties
-                    feature.properties.score = newScoreData.score;
-                    feature.properties.rank = newScoreData.rank;
-                    feature.properties.top500 = newScoreData.top500;
-                    
-                    // Update score components if available
-                    Object.assign(feature.properties, newScoreData);
-                }
-            });
-            
-            // Update the map source with modified data
-            if (map.getSource('parcels')) {
-                map.getSource('parcels').setData(currentData);
-            }
-        }
+
 
         function exitMeasureMode() {
             measureMode = false;
@@ -1791,46 +1731,63 @@
             slider.addEventListener('input', () => {
                 updateSliderFill(slider);
                 normalizeWeights();
-                // Don't call updateScores here - wait for change event
-            });
-            slider.addEventListener('change', () => {
-                updateScores(false);  // Not a filter change
+                // Don't auto-calculate on weight changes - wait for Calculate button
             });
         });
 
-        document.getElementById('calculate-btn').addEventListener('click', () => updateScores(true));
+        // Calculate button now handles both weight changes and filter changes
+        document.getElementById('calculate-btn').addEventListener('click', () => {
+            // Determine if this is a filter change or just weight change based on stored data
+            const hasStoredData = window.fireRiskScoring.getParcelCount() > 0;
+            updateScores(!hasStoredData); // Filter change if no stored data
+        });
         document.getElementById('budget').addEventListener('change', () => {
             updateMaxParcels();
+            window.fireRiskScoring.clear();
             updateScores(true);
         });
         document.getElementById('cost-per-parcel').addEventListener('change', () => {
             updateMaxParcels();
+            window.fireRiskScoring.clear();
             updateScores(true);
         });
-        document.getElementById('max-parcels').addEventListener('change', () => updateScores(true));
+        document.getElementById('max-parcels').addEventListener('change', () => {
+            window.fireRiskScoring.clear();
+            updateScores(true);
+        });
 
-        // Add score type toggles to filters that trigger recalculation
+        // Add score type toggles to filters that trigger recalculation and clear stored data
         const filters = ['filter-yearbuilt-enabled', 'filter-neigh1d-enabled', 'filter-yearbuilt-exclude-unknown', 
                         'filter-strcnt-enabled', 'filter-wui-min30-enabled', 'filter-vhsz-min10-enabled', 
                         'filter-brns-enabled', 'use-basic-scores', 'use-quantiled-scores', 'use-quantile',
                         'use-local-normalization'];
         filters.forEach(id => {
-            document.getElementById(id).addEventListener('change', () => updateScores(true));
+            document.getElementById(id).addEventListener('change', () => {
+                window.fireRiskScoring.clear(); // Clear stored data on filter change
+                updateScores(true); // Force full reload
+            });
         });
 
         ['filter-yearbuilt', 'filter-neigh1d', 'filter-strcnt'].forEach(id => {
             const element = document.getElementById(id);
-            element.addEventListener('change', () => updateScores(true));
+            element.addEventListener('change', () => {
+                window.fireRiskScoring.clear();
+                updateScores(true);
+            });
             element.addEventListener('keypress', (e) => {
                 if (e.key === 'Enter') {
                     e.preventDefault();
+                    window.fireRiskScoring.clear();
                     updateScores(true);
                 }
             });
         });
 
         aspectExcludeCheckboxes.forEach(cb => {
-            cb.addEventListener('change', () => updateScores(true));
+            cb.addEventListener('change', () => {
+                window.fireRiskScoring.clear();
+                updateScores(true);
+            });
         });
 
         // Download .LP file (client-side)
@@ -1900,7 +1857,8 @@
             // Clear any drawn shapes
             draw.deleteAll();
             
-            // Automatically recalculate to show all parcels again
+            // Clear stored data and automatically recalculate to show all parcels again
+            window.fireRiskScoring.clear();
             updateScores(true);  // This is a filter change
         });
 
@@ -1913,6 +1871,8 @@
                 // Clear the drawn shape from the map after filtering
                 draw.deleteAll();
                 
+                // Clear stored data for filter change
+                window.fireRiskScoring.clear();
                 updateScores(true);  // This is a filter change
             } else {
                 console.log('No features or subsetArea to filter with. Features:', features.length, 'subsetArea:', subsetArea);
@@ -1953,24 +1913,14 @@
             document.getElementById('spinner').style.display = 'block';
 
             try {
-                const response = await fetch('/api/infer-weights', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    credentials: 'include',
-                    body: JSON.stringify({
-                        selection: rectangle,
-                        max_parcels: maxParcels,
-                        include_vars: includeVars,
-                        use_quantiled_scores: document.getElementById('use-quantiled-scores').checked,
-                        use_quantile: document.getElementById('use-quantile').checked,
-                        ...getCurrentFilters()
-                    })
+                const data = await window.apiClient.inferWeights({
+                    selection: rectangle,
+                    max_parcels: maxParcels,
+                    include_vars: includeVars,
+                    use_quantiled_scores: document.getElementById('use-quantiled-scores').checked,
+                    use_quantile: document.getElementById('use-quantile').checked,
+                    ...getCurrentFilters()
                 });
-
-                const data = await response.json();
-                if (!response.ok) {
-                    throw new Error(data.error || response.statusText);
-                }
 
                 // Store the solution files content for client-side download
                 currentLpContent = data.lp_file_content;
