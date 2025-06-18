@@ -1670,11 +1670,12 @@
             }
         }
 
-        function addSelectionArea(geometry, type) {
-            const selectionId = `selection_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        function addSelectionArea(geometry, type, featureId = null) {
+            const selectionId = featureId || `selection_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
             
             selectionAreas.push({
                 id: selectionId,
+                featureId: featureId,
                 geometry: geometry,
                 type: type,
                 timestamp: Date.now()
@@ -1687,12 +1688,36 @@
         function removeLastSelectionArea() {
             if (selectionAreas.length > 0) {
                 const removed = selectionAreas.pop();
+                
+                // Remove the corresponding drawn feature if it has a featureId
+                if (removed.featureId) {
+                    const allFeatures = draw.getAll();
+                    const featureToDelete = allFeatures.features.find(f => f.id === removed.featureId);
+                    if (featureToDelete) {
+                        draw.delete(removed.featureId);
+                    }
+                }
+                
                 updateSelectionCount();
                 console.log(`Removed last selection area (${removed.type}). Remaining: ${selectionAreas.length}`);
             }
         }
 
         function clearAllSelectionAreas() {
+            // Clear all drawn features that are part of our selection areas
+            selectionAreas.forEach(area => {
+                if (area.featureId) {
+                    try {
+                        draw.delete(area.featureId);
+                    } catch (e) {
+                        // Feature might already be deleted, ignore
+                    }
+                }
+            });
+            
+            // Also clear any remaining drawn features
+            draw.deleteAll();
+            
             selectionAreas = [];
             updateSelectionCount();
             console.log('Cleared all selection areas');
@@ -1706,18 +1731,25 @@
             }
             
             // For multiple areas, create a union using Turf.js
-            if (window.turf) {
+            if (window.turf && window.turf.union && window.turf.feature) {
                 try {
-                    let combined = selectionAreas[0].geometry;
+                    console.log(`Combining ${selectionAreas.length} selection areas using Turf.js`);
+                    
+                    let combined = window.turf.feature(selectionAreas[0].geometry);
                     
                     for (let i = 1; i < selectionAreas.length; i++) {
-                        combined = window.turf.union(combined, selectionAreas[i].geometry);
+                        const nextFeature = window.turf.feature(selectionAreas[i].geometry);
+                        combined = window.turf.union(combined, nextFeature);
                     }
                     
-                    return combined;
+                    console.log(`Union result type: ${combined.geometry.type}`);
+                    
+                    // Return just the geometry, not the full feature
+                    return combined.geometry;
                 } catch (error) {
-                    console.warn('Failed to union selection areas, using individual areas:', error);
-                    // Fall back to returning all areas as separate features
+                    console.error('Failed to union selection areas:', error);
+                    // Fall back to returning all areas as separate features for backend OR processing
+                    console.log('Falling back to FeatureCollection approach');
                     return {
                         type: "FeatureCollection",
                         features: selectionAreas.map(area => ({
@@ -1727,8 +1759,15 @@
                     };
                 }
             } else {
-                console.warn('Turf.js not available, cannot combine selection areas');
-                return selectionAreas[0].geometry;
+                console.warn('Turf.js not fully available, using FeatureCollection fallback');
+                // Return all areas as separate features for backend OR processing
+                return {
+                    type: "FeatureCollection",
+                    features: selectionAreas.map(area => ({
+                        type: "Feature",
+                        geometry: area.geometry
+                    }))
+                };
             }
         }
 
@@ -2107,6 +2146,9 @@
 
                 normalizeWeights();
                 await updateScores();
+                
+                // Clear the drawn features after successful optimization
+                clearAllSelectionAreas();
                 
             } catch (error) {
                 console.error('Error inferring weights:', error);
@@ -2767,13 +2809,12 @@
                 const drawMode = draw.getMode();
                 const selectionType = drawMode === 'draw_rectangle' ? 'rectangle' : 'lasso';
                 
-                // Add to selection areas
-                addSelectionArea(selection.geometry, selectionType);
+                // Add to selection areas with the feature ID for tracking
+                const featureId = selection.id;
+                addSelectionArea(selection.geometry, selectionType, featureId);
                 
-                // Clear the drawn feature (it's now stored in our selection areas)
-                draw.deleteAll();
-                
-                // Reset selection mode
+                // Keep the drawn feature visible (don't delete)
+                // Reset selection mode to simple_select so user can draw more
                 isAddingSelection = false;
                 draw.changeMode('simple_select');
                 

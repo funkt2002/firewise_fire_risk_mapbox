@@ -849,25 +849,38 @@ def get_parcel_scores_for_optimization(data, include_vars):
     # Add selection area filter - the frontend combines multiple areas via Turf.js union
     selection_geom = data['selection']
     
+    # Log the selection geometry for debugging
+    logger.info(f"Selection geometry type: {selection_geom.get('type', 'unknown') if isinstance(selection_geom, dict) else type(selection_geom)}")
+    
     # Check if this is a FeatureCollection (multiple areas) or single geometry
     if isinstance(selection_geom, dict) and selection_geom.get('type') == 'FeatureCollection':
         # Handle multiple areas - create union condition
         geom_conditions = []
-        for feature in selection_geom['features']:
+        for i, feature in enumerate(selection_geom['features']):
             geom_conditions.append(
                 "ST_Intersects(geom, ST_Transform(ST_SetSRID(ST_GeomFromGeoJSON(%s), 4326), 3857))"
             )
             params.append(json.dumps(feature['geometry']))
+            logger.info(f"Added area {i+1} geometry: {feature['geometry']['type']}")
         
         # Use OR to combine multiple area conditions
         multi_area_condition = "(" + " OR ".join(geom_conditions) + ")"
         conditions.append(multi_area_condition)
     else:
-        # Single area selection
+        # Single area selection - handle both raw geometry and Feature objects
+        if isinstance(selection_geom, dict) and selection_geom.get('type') == 'Feature':
+            # Extract geometry from Feature object
+            actual_geom = selection_geom['geometry']
+            logger.info(f"Extracted geometry from Feature: {actual_geom['type']}")
+        else:
+            # Already a geometry object
+            actual_geom = selection_geom
+            logger.info(f"Using direct geometry: {actual_geom.get('type', 'unknown')}")
+        
         conditions.append(
             "ST_Intersects(geom, ST_Transform(ST_SetSRID(ST_GeomFromGeoJSON(%s), 4326), 3857))"
         )
-        params.append(json.dumps(selection_geom))
+        params.append(json.dumps(actual_geom))
     
     filter_sql = ' AND '.join(conditions) if conditions else 'TRUE'
     
