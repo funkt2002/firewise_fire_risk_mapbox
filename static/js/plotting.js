@@ -44,23 +44,44 @@ class PlottingManager {
 
     // Show variable correlation matrix
     async showCorrelationMatrix() {
-        if (!window.currentData || !window.currentData.features) {
+        // Try to get data from multiple sources
+        let features = null;
+        
+        if (window.fireRiskScoring && window.fireRiskScoring.currentDataset && window.fireRiskScoring.currentDataset.features) {
+            features = window.fireRiskScoring.currentDataset.features;
+        } else if (window.currentData && window.currentData.features) {
+            features = window.currentData.features;
+        }
+        
+        if (!features || features.length === 0) {
             alert('No data available. Please load data first.');
             return;
         }
-
-        const features = window.currentData.features;
         const variables = Object.keys(this.rawVarMap);
         const rawVars = Object.values(this.rawVarMap);
         
-        // Extract data for each variable
+        // Extract data for each variable with log transformations
         const variableData = {};
         for (const varBase of variables) {
             const rawVar = this.rawVarMap[varBase];
             variableData[varBase] = features
-                .map(f => f.properties[rawVar])
-                .filter(v => v !== null && v !== undefined && !isNaN(v))
-                .map(v => parseFloat(v));
+                .map(f => {
+                    let rawValue = f.properties[rawVar];
+                    if (rawValue === null || rawValue === undefined || isNaN(rawValue)) {
+                        return null;
+                    }
+                    rawValue = parseFloat(rawValue);
+                    
+                    // Apply log transformations like in scoring system
+                    if (varBase === 'neigh1d') {
+                        const cappedValue = Math.min(rawValue, 5280);
+                        return Math.log(1 + cappedValue);
+                    } else if (varBase === 'hagri' || varBase === 'hfb') {
+                        return Math.log(1 + rawValue);
+                    }
+                    return rawValue;
+                })
+                .filter(v => v !== null);
         }
 
         // Calculate correlation matrix
@@ -152,12 +173,19 @@ class PlottingManager {
         const filters = window.getCurrentFilters();
         
         // Check if we should use client-side data (for local normalization or already processed data)
-        const useClientSide = filters.use_local_normalization || window.currentData;
+        let clientData = null;
+        if (window.fireRiskScoring && window.fireRiskScoring.currentDataset) {
+            clientData = window.fireRiskScoring.currentDataset;
+        } else if (window.currentData) {
+            clientData = window.currentData;
+        }
+        
+        const useClientSide = filters.use_local_normalization || clientData;
         
         let data;
         let mean;
         
-        if (useClientSide && window.currentData) {
+        if (useClientSide && clientData) {
             // Use client-side processed data
             console.log('Using client-side data for distribution of:', variable);
             
@@ -167,15 +195,32 @@ class PlottingManager {
             if (variable.endsWith('_s') || variable.endsWith('_q') || variable.endsWith('_z')) {
                 // Score variable - extract from client-side calculated scores
                 const baseVar = variable.slice(0, -2); // Remove _s, _q, or _z
-                values = window.currentData.features
+                values = clientData.features
                     .map(f => f.properties[baseVar + '_s']) // Client always uses _s suffix for calculated scores
                     .filter(v => v !== null && v !== undefined && !isNaN(v));
             } else {
-                // Raw variable - extract from properties
+                // Raw variable - extract from properties with log transformations
                 const rawVar = this.rawVarMap[variable] || variable;
-                values = window.currentData.features
-                    .map(f => f.properties[rawVar])
-                    .filter(v => v !== null && v !== undefined && !isNaN(v));
+                const baseVar = Object.keys(this.rawVarMap).find(key => this.rawVarMap[key] === rawVar) || variable;
+                
+                values = clientData.features
+                    .map(f => {
+                        let rawValue = f.properties[rawVar];
+                        if (rawValue === null || rawValue === undefined || isNaN(rawValue)) {
+                            return null;
+                        }
+                        rawValue = parseFloat(rawValue);
+                        
+                        // Apply log transformations like in scoring system
+                        if (baseVar === 'neigh1d' || rawVar === 'neigh1_d') {
+                            const cappedValue = Math.min(rawValue, 5280);
+                            return Math.log(1 + cappedValue);
+                        } else if (baseVar === 'hagri' || baseVar === 'hfb' || rawVar === 'hlfmi_agri' || rawVar === 'hlfmi_fb') {
+                            return Math.log(1 + rawValue);
+                        }
+                        return rawValue;
+                    })
+                    .filter(v => v !== null);
             }
             
             if (values.length === 0) {
@@ -233,8 +278,8 @@ class PlottingManager {
             
         // Simple chloropleth: white to red based on bin position
         // Exception: for raw hagri, hfb, neigh1d - flip so left side = red
-        const baseVar = variable.replace(/_[sqz]$/, ''); // Remove score suffixes
-        const isRawInverseRisk = !variable.includes('_') && ['hagri', 'hfb', 'neigh1d'].includes(baseVar);
+        const baseVarForColor = variable.replace(/_[sqz]$/, ''); // Remove score suffixes
+        const isRawInverseRisk = !variable.includes('_') && ['hagri', 'hfb', 'neigh1d'].includes(baseVarForColor);
         
         // Create gradient colors for histogram bins (not individual values)
         const numBins = 30;
@@ -271,8 +316,16 @@ class PlottingManager {
         // Create annotation for statistics
         const statsText = `Min: ${data.min.toFixed(2)}<br>Max: ${data.max.toFixed(2)}<br>Mean: ${mean.toFixed(2)}<br>Count: ${data.count}<br>Source: ${data.normalization || 'server'}`;
         
+        // Check if this variable uses log transformation
+        const baseVarForTitle = Object.keys(this.rawVarMap).find(key => this.rawVarMap[key] === variable) || variable;
+        const usesLogTransform = ['neigh1d', 'hagri', 'hfb'].includes(baseVarForTitle) || 
+                                ['neigh1_d', 'hlfmi_agri', 'hlfmi_fb'].includes(variable);
+        
+        const logSuffix = usesLogTransform && !variable.includes('_') ? ' (Log Transformed)' : '';
+        const normSuffix = data.normalization === 'local_client' ? ' (Local Normalization)' : '';
+        
         const layout = {
-            title: `${this.varNameMap[variable] || variable} Distribution ${data.normalization === 'local_client' ? '(Local Normalization)' : ''}`,
+            title: `${this.varNameMap[variable] || variable} Distribution${logSuffix}${normSuffix}`,
             paper_bgcolor: '#1a1a1a',
             plot_bgcolor: '#1a1a1a',
             font: {
