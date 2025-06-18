@@ -258,8 +258,12 @@
             background: #45a049;
             border-color: #45a049;
         }
-        
 
+        .button.small {
+            padding: 4px 8px;
+            font-size: 10px;
+            font-weight: 500;
+        }
         
         /* Input styling */
         .input-group {
@@ -649,14 +653,25 @@
 
         <div class="control-section">
             <h2>Weight Inference</h2>
-            <p style="font-size: 11px; color: #aaa; margin-bottom: 10px;">Draw an area to optimize weights for selected parcels</p>
-            <button class="button" id="draw-rectangle">Draw Rectangle</button>
-            <button class="button" id="draw-lasso">Draw Lasso</button>
-            <button class="button" id="clear-selection">Clear Selection</button>
-            <button class="button" id="infer-weights" disabled>Infer Weights from Selection</button>
+            <p style="font-size: 11px; color: #aaa; margin-bottom: 10px;">Draw multiple areas to optimize weights for combined selection</p>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 5px;">
+                <button class="button" id="draw-rectangle">Add Rectangle</button>
+                <button class="button" id="draw-lasso">Add Lasso</button>
+            </div>
+            <div style="margin: 8px 0; padding: 8px; background: rgba(255,255,255,0.05); border-radius: 3px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
+                    <span style="font-size: 11px; color: #aaa;">Selection Areas:</span>
+                    <span style="font-size: 11px; color: #fff;" id="selection-count">0</span>
+                </div>
+                <div style="display: flex; gap: 5px;">
+                    <button class="button small" id="clear-last-selection" disabled>Remove Last</button>
+                    <button class="button small" id="clear-all-selections" disabled>Clear All</button>
+                </div>
+            </div>
+            <button class="button" id="infer-weights" disabled>Infer Weights from Multi-Selection</button>
             <button class="button" id="download-lp-btn" disabled>Download .LP File</button>
             <button class="button" id="view-solution-btn" disabled>View Solution Report</button>
-            <p style="font-size: 10px; color: #888; margin: 5px 0;">↑ Maximizes total risk score within selection</p>
+            <p style="font-size: 10px; color: #888; margin: 5px 0;">↑ Maximizes total risk score across all selected areas</p>
             
             <div style="margin-top: 15px; border-top: 1px solid #444; padding-top: 10px;">
                 <h3 style="font-size: 12px; color: #aaa; margin-bottom: 8px;">Exclude Variables from Scoring & Weight Inference:</h3>
@@ -1440,6 +1455,10 @@
         let measureLine = null;
         let subsetArea = null;
         
+        // Multi-area selection for weight inference
+        let selectionAreas = [];
+        let isAddingSelection = false;
+        
         // Variables to store solution files content
         let currentLpContent = null;
         let currentTxtContent = null;
@@ -1629,6 +1648,87 @@
                         `Global (${filterStats.total_parcels_after_filter} of ${filterStats.total_parcels_before_filter} parcels)`;
                     document.getElementById('local-norm-info').style.display = 'none';
                 }
+            }
+        }
+
+        // Multi-area selection management
+        function updateSelectionCount() {
+            document.getElementById('selection-count').textContent = selectionAreas.length;
+            
+            // Update button states
+            const hasSelections = selectionAreas.length > 0;
+            document.getElementById('clear-last-selection').disabled = !hasSelections;
+            document.getElementById('clear-all-selections').disabled = !hasSelections;
+            document.getElementById('infer-weights').disabled = !hasSelections;
+            
+            // Clear solution files when selections change
+            if (hasSelections) {
+                currentLpContent = null;
+                currentTxtContent = null;
+                document.getElementById('download-lp-btn').disabled = true;
+                document.getElementById('view-solution-btn').disabled = true;
+            }
+        }
+
+        function addSelectionArea(geometry, type) {
+            const selectionId = `selection_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+            
+            selectionAreas.push({
+                id: selectionId,
+                geometry: geometry,
+                type: type,
+                timestamp: Date.now()
+            });
+            
+            updateSelectionCount();
+            console.log(`Added ${type} selection area. Total areas: ${selectionAreas.length}`);
+        }
+
+        function removeLastSelectionArea() {
+            if (selectionAreas.length > 0) {
+                const removed = selectionAreas.pop();
+                updateSelectionCount();
+                console.log(`Removed last selection area (${removed.type}). Remaining: ${selectionAreas.length}`);
+            }
+        }
+
+        function clearAllSelectionAreas() {
+            selectionAreas = [];
+            updateSelectionCount();
+            console.log('Cleared all selection areas');
+        }
+
+        function combineSelectionAreas() {
+            if (selectionAreas.length === 0) return null;
+            
+            if (selectionAreas.length === 1) {
+                return selectionAreas[0].geometry;
+            }
+            
+            // For multiple areas, create a union using Turf.js
+            if (window.turf) {
+                try {
+                    let combined = selectionAreas[0].geometry;
+                    
+                    for (let i = 1; i < selectionAreas.length; i++) {
+                        combined = window.turf.union(combined, selectionAreas[i].geometry);
+                    }
+                    
+                    return combined;
+                } catch (error) {
+                    console.warn('Failed to union selection areas, using individual areas:', error);
+                    // Fall back to returning all areas as separate features
+                    return {
+                        type: "FeatureCollection",
+                        features: selectionAreas.map(area => ({
+                            type: "Feature",
+                            geometry: area.geometry
+                        }))
+                    };
+                }
+            } else {
+                console.warn('Turf.js not available, cannot combine selection areas');
+                return selectionAreas[0].geometry;
             }
         }
 
@@ -1868,14 +1968,26 @@
             document.getElementById('solution-modal').style.display = 'block';
         });
 
+        // Multi-area selection handlers - Add Rectangle
         document.getElementById('draw-rectangle').addEventListener('click', () => {
-            draw.deleteAll();
+            isAddingSelection = true;
             draw.changeMode('draw_rectangle');
         });
 
+        // Multi-area selection handlers - Add Lasso
         document.getElementById('draw-lasso').addEventListener('click', () => {
-            draw.deleteAll();
+            isAddingSelection = true;
             draw.changeMode('draw_lasso');
+        });
+
+        // Multi-area selection handlers - Remove Last
+        document.getElementById('clear-last-selection').addEventListener('click', () => {
+            removeLastSelectionArea();
+        });
+
+        // Multi-area selection handlers - Clear All
+        document.getElementById('clear-all-selections').addEventListener('click', () => {
+            clearAllSelectionAreas();
         });
         
         // Subset selection event handlers
@@ -1919,28 +2031,19 @@
             }
         });
         
-        document.getElementById('clear-selection').addEventListener('click', () => {
-            draw.deleteAll();
-            selectedParcels = [];
-            
-            // Reset infer weights UI
-            document.getElementById('infer-weights').disabled = true;
-            document.getElementById('download-lp-btn').disabled = true;
-            document.getElementById('view-solution-btn').disabled = true;
-            
-            // Clear stored solution content
-            currentLpContent = null;
-            currentTxtContent = null;
-        });
-
+        // Multi-area infer weights handler
         document.getElementById('infer-weights').addEventListener('click', async () => {
-            const features = draw.getAll().features;
-            if (!features.length) {
-                alert('Draw a rectangle first!');
+            if (selectionAreas.length === 0) {
+                alert('Please draw at least one selection area first!');
                 return;
             }
 
-            const rectangle = features[0].geometry;
+            const combinedSelection = combineSelectionAreas();
+            if (!combinedSelection) {
+                alert('Error combining selection areas. Please try again.');
+                return;
+            }
+
             const maxParcels = parseInt(document.getElementById('max-parcels').value);
 
             const includeVars = Array.from(weightSliders)
@@ -1953,8 +2056,12 @@
             document.getElementById('spinner').style.display = 'block';
 
             try {
+                console.log(`Optimizing weights for ${selectionAreas.length} selection areas:`, 
+                    selectionAreas.map(area => area.type));
+
                 const data = await window.apiClient.inferWeights({
-                    selection: rectangle,
+                    selection: combinedSelection,
+                    selection_areas: selectionAreas, // Send all individual areas for reference
                     max_parcels: maxParcels,
                     include_vars: includeVars,
                     use_quantiled_scores: document.getElementById('use-quantiled-scores').checked,
@@ -2654,8 +2761,27 @@
                 // Reset modes
                 document.getElementById('subset-rectangle').dataset.mode = '';
                 document.getElementById('subset-lasso').dataset.mode = '';
-            } else {
-                // Regular selection for weight inference
+            } 
+            // Check if this is multi-area selection for weight inference
+            else if (isAddingSelection) {
+                const drawMode = draw.getMode();
+                const selectionType = drawMode === 'draw_rectangle' ? 'rectangle' : 'lasso';
+                
+                // Add to selection areas
+                addSelectionArea(selection.geometry, selectionType);
+                
+                // Clear the drawn feature (it's now stored in our selection areas)
+                draw.deleteAll();
+                
+                // Reset selection mode
+                isAddingSelection = false;
+                draw.changeMode('simple_select');
+                
+                console.log(`Added ${selectionType} to selection areas. Total: ${selectionAreas.length}`);
+            } 
+            // Legacy single selection (kept for compatibility)
+            else {
+                // Regular single selection for weight inference (legacy mode)
                 document.getElementById('infer-weights').disabled = false;
                 
                 if (currentData && window.turf) {
@@ -2973,6 +3099,7 @@
             initializeLayers();
             normalizeWeights();
             updateMaxParcels();
+            updateSelectionCount(); // Initialize multi-area selection UI
             updateScores(true);  // Initial load is like a filter change
             
             document.querySelectorAll('input[type="range"]').forEach(slider => {

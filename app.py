@@ -825,7 +825,7 @@ def prepare_data():
 # ====================
 
 def get_parcel_scores_for_optimization(data, include_vars):
-    """Get parcel scores within selection area for optimization"""
+    """Get parcel scores within selection area(s) for optimization"""
     # Process variable names
     include_vars_base = [var.replace('_s', '').replace('_q', '').replace('_z', '') 
                         for var in include_vars]
@@ -846,11 +846,28 @@ def get_parcel_scores_for_optimization(data, include_vars):
     # Build filters
     conditions, params = build_filter_conditions(data)
     
-    # Add selection area filter
-    conditions.append(
-        "ST_Intersects(geom, ST_Transform(ST_SetSRID(ST_GeomFromGeoJSON(%s), 4326), 3857))"
-    )
-    params.append(json.dumps(data['selection']))
+    # Add selection area filter - the frontend combines multiple areas via Turf.js union
+    selection_geom = data['selection']
+    
+    # Check if this is a FeatureCollection (multiple areas) or single geometry
+    if isinstance(selection_geom, dict) and selection_geom.get('type') == 'FeatureCollection':
+        # Handle multiple areas - create union condition
+        geom_conditions = []
+        for feature in selection_geom['features']:
+            geom_conditions.append(
+                "ST_Intersects(geom, ST_Transform(ST_SetSRID(ST_GeomFromGeoJSON(%s), 4326), 3857))"
+            )
+            params.append(json.dumps(feature['geometry']))
+        
+        # Use OR to combine multiple area conditions
+        multi_area_condition = "(" + " OR ".join(geom_conditions) + ")"
+        conditions.append(multi_area_condition)
+    else:
+        # Single area selection
+        conditions.append(
+            "ST_Intersects(geom, ST_Transform(ST_SetSRID(ST_GeomFromGeoJSON(%s), 4326), 3857))"
+        )
+        params.append(json.dumps(selection_geom))
     
     filter_sql = ' AND '.join(conditions) if conditions else 'TRUE'
     
@@ -880,6 +897,14 @@ def get_parcel_scores_for_optimization(data, include_vars):
             'id': dict(row)['id'],
             'scores': parcel_scores
         })
+    
+    # Log selection area info
+    selection_areas = data.get('selection_areas', [])
+    if selection_areas:
+        area_types = [area.get('type', 'unknown') for area in selection_areas]
+        logger.info(f"Multi-area optimization: {len(selection_areas)} areas ({', '.join(area_types)}) containing {len(parcel_data)} parcels")
+    else:
+        logger.info(f"Single-area optimization containing {len(parcel_data)} parcels")
     
     return parcel_data
 
@@ -962,11 +987,19 @@ def generate_solution_files(include_vars, best_weights, weights_pct, total_score
     }
     
     txt_lines = []
+    # Get selection area info for reporting
+    selection_areas = request_data.get('selection_areas', [])
+    if selection_areas:
+        area_info = f"Selection Areas: {len(selection_areas)} areas ({', '.join([area.get('type', 'unknown') for area in selection_areas])})"
+    else:
+        area_info = "Selection Area: Single area"
+    
     txt_lines.extend([
         "=" * 50,
-        "OPTIMIZATION RESULTS",
+        "MULTI-AREA OPTIMIZATION RESULTS" if selection_areas else "OPTIMIZATION RESULTS",
         "=" * 50,
         "",
+        area_info,
         f"Total Score: {total_score:.2f}",
         f"Parcels: {len(parcel_data):,}",
         f"Average Score: {total_score/len(parcel_data):.3f}",
