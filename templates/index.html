@@ -224,6 +224,62 @@
             cursor: pointer;
             accent-color: #4CAF50;
         }
+
+        /* Variable enable/disable styling */
+        .variable-container {
+            margin: 12px 0;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 4px;
+            padding: 8px;
+            transition: all 0.3s ease;
+        }
+
+        .variable-header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+
+        .variable-enable-checkbox {
+            width: 16px;
+            height: 16px;
+            margin-right: 10px;
+            cursor: pointer;
+            accent-color: #4CAF50;
+        }
+
+        .variable-name {
+            font-size: 12px;
+            color: #ccc;
+            font-weight: 500;
+            flex: 1;
+        }
+
+        .variable-controls {
+            transition: all 0.3s ease;
+            overflow: hidden;
+        }
+
+        .variable-controls.collapsed {
+            max-height: 0;
+            opacity: 0;
+            margin: 0;
+            padding: 0;
+        }
+
+        .variable-controls.expanded {
+            max-height: 200px;
+            opacity: 1;
+        }
+
+        .variable-container.disabled {
+            opacity: 0.6;
+            background: rgba(255, 255, 255, 0.02);
+        }
+
+        .variable-container.disabled .variable-name {
+            color: #888;
+        }
         
         /* Button styling */
         .button {
@@ -571,190 +627,183 @@
         <div class="control-section">
             <h2>Risk Factor Weights</h2>
             <div id="weight-sliders">
-                <div class="slider-container">
-                    <div class="slider-label">
-                        <span>Number of Structures Within Window (1/4 mile)</span>
-                        <span class="slider-value" id="qtrmi_s-value">30%</span>
+                <div class="variable-container" data-variable="qtrmi_s">
+                    <div class="variable-header">
+                        <input type="checkbox" class="variable-enable-checkbox" id="enable-qtrmi_s" checked>
+                        <span class="variable-name">Number of Structures Within Window (1/4 mile)</span>
                     </div>
-                    <input type="range" class="slider weight-slider" id="qtrmi_s" min="0" max="100" value="30">
-                </div>
-                <div class="slider-container">
-                    <div class="slider-label">
-                        <span>Distance to Nearest Neighbor</span>
-                        <span class="slider-value" id="neigh1d_s-value">0%</span>
+                    <div class="variable-controls expanded">
+                        <div class="slider-container">
+                            <div class="slider-label">
+                                <span>Weight</span>
+                                <span class="slider-value" id="qtrmi_s-value">30%</span>
+                            </div>
+                            <input type="range" class="slider weight-slider" id="qtrmi_s" min="0" max="100" value="30">
+                            <div class="dist-buttons">
+                                <button class="dist-button" onclick="window.plottingManager.showDistribution('qtrmi_cnt')">Raw Distribution</button>
+                                <button class="dist-button" onclick="window.plottingManager.showDistribution('qtrmi_s')">Score Distribution</button>
+                            </div>
+                        </div>
                     </div>
-                    <div style="font-size: 10px; color: #888; margin-bottom: 3px;">Only Includes Parcels with Structure Data</div>
-                    <input type="range" class="slider weight-slider" id="neigh1d_s" min="0" max="100" value="0">
                 </div>
-                <div class="slider-container">
-                    <div class="slider-label">
-                        <span>WUI coverage percentage (1/2 mile)</span>
-                        <span class="slider-value" id="hwui_s-value">10%</span>
+
+                <div class="variable-container" data-variable="neigh1d_s">
+                    <div class="variable-header">
+                        <input type="checkbox" class="variable-enable-checkbox" id="enable-neigh1d_s" checked>
+                        <span class="variable-name">Distance to Nearest Neighbor</span>
                     </div>
-                    <input type="range" class="slider weight-slider" id="hwui_s" min="0" max="100" value="10">
-                </div>
-                <div class="slider-container">
-                    <div class="slider-label">
-                        <span>Very High Fire Hazard Zone coverage (1/2 mile)</span>
-                        <span class="slider-value" id="hvhsz_s-value">30%</span>
+                    <div class="variable-controls expanded">
+                        <div style="font-size: 10px; color: #888; margin-bottom: 3px;">Only Includes Parcels with Structure Data</div>
+                        <div class="slider-container">
+                            <div class="slider-label">
+                                <span>Weight</span>
+                                <span class="slider-value" id="neigh1d_s-value">0%</span>
+                            </div>
+                            <input type="range" class="slider weight-slider" id="neigh1d_s" min="0" max="100" value="0">
+                            <div class="dist-buttons">
+                                <button class="dist-button" onclick="window.plottingManager.showDistribution('neigh1_d')">Raw Distribution</button>
+                                <button class="dist-button" onclick="window.plottingManager.showDistribution('neigh1d_s')">Score Distribution</button>
+                            </div>
+                        </div>
                     </div>
-                    <input type="range" class="slider weight-slider" id="hvhsz_s" min="0" max="100" value="30">
                 </div>
-                <div class="slider-container">
-                    <div class="slider-label">
-                        <span>Agricultural Coverage (1/2 Mile)</span>
-                        <span class="slider-value" id="hagri_s-value">11%</span>
+
+                <div class="variable-container" data-variable="hwui_s">
+                    <div class="variable-header">
+                        <input type="checkbox" class="variable-enable-checkbox" id="enable-hwui_s" checked>
+                        <span class="variable-name">WUI coverage percentage (1/2 mile)</span>
                     </div>
-                    <input type="range" class="slider weight-slider" id="hagri_s" min="0" max="100" value="11">
-                </div>
-                <div class="slider-container">
-                    <div class="slider-label">
-                        <span>Fuel Break coverage (1/2 mile)</span>
-                        <span class="slider-value" id="hfb_s-value">10%</span>
+                    <div class="variable-controls expanded">
+                        <div class="slider-container">
+                            <div class="slider-label">
+                                <span>Weight</span>
+                                <span class="slider-value" id="hwui_s-value">10%</span>
+                            </div>
+                            <input type="range" class="slider weight-slider" id="hwui_s" min="0" max="100" value="10">
+                            <div class="dist-buttons">
+                                <button class="dist-button" onclick="window.plottingManager.showDistribution('hlfmi_wui')">Raw Distribution</button>
+                                <button class="dist-button" onclick="window.plottingManager.showDistribution('hwui_s')">Score Distribution</button>
+                            </div>
+                        </div>
                     </div>
-                    <input type="range" class="slider weight-slider" id="hfb_s" min="0" max="100" value="10">
                 </div>
-                <div class="slider-container">
-                    <div class="slider-label">
-                        <span>Mean Parcel Slope</span>
-                        <span class="slider-value" id="slope_s-value">0%</span>
+
+                <div class="variable-container" data-variable="hvhsz_s">
+                    <div class="variable-header">
+                        <input type="checkbox" class="variable-enable-checkbox" id="enable-hvhsz_s" checked>
+                        <span class="variable-name">Very High Fire Hazard Zone coverage (1/2 mile)</span>
                     </div>
-                    <input type="range" class="slider weight-slider" id="slope_s" min="0" max="100" value="0">
-                </div>
-                <div class="slider-container">
-                    <div class="slider-label">
-                        <span>Burn Scar Coverage (1/2 mile)</span>
-                        <span class="slider-value" id="hbrn_s-value">9%</span>
+                    <div class="variable-controls expanded">
+                        <div class="slider-container">
+                            <div class="slider-label">
+                                <span>Weight</span>
+                                <span class="slider-value" id="hvhsz_s-value">30%</span>
+                            </div>
+                            <input type="range" class="slider weight-slider" id="hvhsz_s" min="0" max="100" value="30">
+                            <div class="dist-buttons">
+                                <button class="dist-button" onclick="window.plottingManager.showDistribution('hlfmi_vhsz')">Raw Distribution</button>
+                                <button class="dist-button" onclick="window.plottingManager.showDistribution('hvhsz_s')">Score Distribution</button>
+                            </div>
+                        </div>
                     </div>
-                    <input type="range" class="slider weight-slider" id="hbrn_s" min="0" max="100" value="9">
                 </div>
-                <div style="text-align: right; margin-top: 5px;">
+
+                <div class="variable-container" data-variable="hagri_s">
+                    <div class="variable-header">
+                        <input type="checkbox" class="variable-enable-checkbox" id="enable-hagri_s" checked>
+                        <span class="variable-name">Agricultural Coverage (1/2 Mile)</span>
+                    </div>
+                    <div class="variable-controls expanded">
+                        <div class="slider-container">
+                            <div class="slider-label">
+                                <span>Weight</span>
+                                <span class="slider-value" id="hagri_s-value">11%</span>
+                            </div>
+                            <input type="range" class="slider weight-slider" id="hagri_s" min="0" max="100" value="11">
+                            <div class="dist-buttons">
+                                <button class="dist-button" onclick="window.plottingManager.showDistribution('hlfmi_agri')">Raw Distribution</button>
+                                <button class="dist-button" onclick="window.plottingManager.showDistribution('hagri_s')">Score Distribution</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="variable-container" data-variable="hfb_s">
+                    <div class="variable-header">
+                        <input type="checkbox" class="variable-enable-checkbox" id="enable-hfb_s" checked>
+                        <span class="variable-name">Fuel Break coverage (1/2 mile)</span>
+                    </div>
+                    <div class="variable-controls expanded">
+                        <div class="slider-container">
+                            <div class="slider-label">
+                                <span>Weight</span>
+                                <span class="slider-value" id="hfb_s-value">10%</span>
+                            </div>
+                            <input type="range" class="slider weight-slider" id="hfb_s" min="0" max="100" value="10">
+                            <div class="dist-buttons">
+                                <button class="dist-button" onclick="window.plottingManager.showDistribution('hlfmi_fb')">Raw Distribution</button>
+                                <button class="dist-button" onclick="window.plottingManager.showDistribution('hfb_s')">Score Distribution</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="variable-container" data-variable="slope_s">
+                    <div class="variable-header">
+                        <input type="checkbox" class="variable-enable-checkbox" id="enable-slope_s" checked>
+                        <span class="variable-name">Mean Parcel Slope</span>
+                    </div>
+                    <div class="variable-controls expanded">
+                        <div class="slider-container">
+                            <div class="slider-label">
+                                <span>Weight</span>
+                                <span class="slider-value" id="slope_s-value">0%</span>
+                            </div>
+                            <input type="range" class="slider weight-slider" id="slope_s" min="0" max="100" value="0">
+                            <div class="dist-buttons">
+                                <button class="dist-button" onclick="window.plottingManager.showDistribution('slope_s')">Raw Distribution</button>
+                                <button class="dist-button" onclick="window.plottingManager.showDistribution('slope_s')">Score Distribution</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="variable-container" data-variable="hbrn_s">
+                    <div class="variable-header">
+                        <input type="checkbox" class="variable-enable-checkbox" id="enable-hbrn_s" checked>
+                        <span class="variable-name">Burn Scar Coverage (1/2 mile)</span>
+                    </div>
+                    <div class="variable-controls expanded">
+                        <div class="slider-container">
+                            <div class="slider-label">
+                                <span>Weight</span>
+                                <span class="slider-value" id="hbrn_s-value">9%</span>
+                            </div>
+                            <input type="range" class="slider weight-slider" id="hbrn_s" min="0" max="100" value="9">
+                            <div class="dist-buttons">
+                                <button class="dist-button" onclick="window.plottingManager.showDistribution('hlfmi_brn')">Raw Distribution</button>
+                                <button class="dist-button" onclick="window.plottingManager.showDistribution('hbrn_s')">Score Distribution</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div style="text-align: right; margin-top: 15px;">
                     <span style="font-size: 11px; color: #888;">Max Parcels: <span id="max-parcels-value">500</span></span>
                 </div>
             </div>
         </div>
         
         <div class="control-section">
-            <h2>Budget Settings</h2>
-            <div class="input-group">
-                <label>Budget ($)</label>
-                <input type="number" class="number-input" id="budget" value="500000" min="0" step="10000">
+            <h2>Spatial Filter</h2>
+            <p style="font-size: 11px; color: #aaa; margin-bottom: 10px;">Draw an area to only show parcels within that boundary</p>
+            <button class="button" id="subset-rectangle">Draw Rectangle</button>
+            <button class="button" id="subset-lasso">Draw Lasso</button>
+            <button class="button" id="clear-subset">Clear Filter</button>
+            <button class="button primary" id="filter-parcels" disabled>Filter Parcels</button>
+            <div id="subset-indicator" style="font-size: 11px; color: #4CAF50; margin-top: 8px; display: none;">
+                ✓ Spatial filter active
             </div>
-            <div class="input-group">
-                <label>Cost/Parcel ($)</label>
-                <input type="number" class="number-input" id="cost-per-parcel" value="1000" min="0" step="100">
-            </div>
-            <div class="input-group">
-                <label>Max Parcels</label>
-                <input type="number" class="number-input" id="max-parcels" value="500" min="1" max="5000">
-            </div>
-            <button class="button primary" id="calculate-btn">Calculate</button>
-            <button class="button" id="score-distribution-btn" style="margin-top: 8px;">Calculated Risk Score Distribution</button>
-            <button class="button" id="show-correlation-matrix" style="margin-top: 8px;">Variable Correlation Matrix</button>
-        </div>
-
-        <div class="control-section">
-            <h2>Weight Inference</h2>
-            <p style="font-size: 11px; color: #aaa; margin-bottom: 10px;">Draw multiple areas to optimize weights for combined selection</p>
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 5px;">
-                <button class="button" id="draw-rectangle">Add Rectangle</button>
-                <button class="button" id="draw-lasso">Add Lasso</button>
-            </div>
-            <div style="margin: 8px 0; padding: 8px; background: rgba(255,255,255,0.05); border-radius: 3px;">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
-                    <span style="font-size: 11px; color: #aaa;">Selection Areas:</span>
-                    <span style="font-size: 11px; color: #fff;" id="selection-count">0</span>
-                </div>
-                <div style="display: flex; gap: 5px;">
-                    <button class="button small" id="clear-last-selection" disabled>Remove Last</button>
-                    <button class="button small" id="clear-all-selections" disabled>Clear All</button>
-                </div>
-            </div>
-            <button class="button" id="infer-weights" disabled>Infer Weights from Multi-Selection</button>
-            <button class="button" id="download-lp-btn" disabled>Download .LP File</button>
-            <button class="button" id="view-solution-btn" disabled>View Solution Report</button>
-            <p style="font-size: 10px; color: #888; margin: 5px 0;">↑ Maximizes total risk score across all selected areas</p>
-            
-            <div style="margin-top: 15px; border-top: 1px solid #444; padding-top: 10px;">
-                <h3 style="font-size: 12px; color: #aaa; margin-bottom: 8px;">Exclude Variables from Scoring & Weight Inference:</h3>
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 5px; font-size: 11px;">
-                    <div class="toggle-container">
-                        <label class="toggle-label">
-                            <input type="checkbox" class="exclude-weight" id="exclude-qtrmi_s" title="Exclude from calculation">
-                            Quarter Mile Incidents
-                        </label>
-                    </div>
-                    <div class="toggle-container">
-                        <label class="toggle-label">
-                            <input type="checkbox" class="exclude-weight" id="exclude-neigh1d_s" title="Exclude from calculation">
-                            Nearest Neighbor Distance
-                        </label>
-                    </div>
-                    <div class="toggle-container">
-                        <label class="toggle-label">
-                            <input type="checkbox" class="exclude-weight" id="exclude-hwui_s" title="Exclude from calculation">
-                            WUI Coverage
-                        </label>
-                    </div>
-                    <div class="toggle-container">
-                        <label class="toggle-label">
-                            <input type="checkbox" class="exclude-weight" id="exclude-hvhsz_s" title="Exclude from calculation">
-                            Fire Hazard Zone Coverage
-                        </label>
-                    </div>
-                    <div class="toggle-container">
-                        <label class="toggle-label">
-                            <input type="checkbox" class="exclude-weight" id="exclude-hagri_s" title="Exclude from calculation">
-                            Agricultural Coverage
-                        </label>
-                    </div>
-                    <div class="toggle-container">
-                        <label class="toggle-label">
-                            <input type="checkbox" class="exclude-weight" id="exclude-hfb_s" title="Exclude from calculation">
-                            Fuel Break Coverage
-                        </label>
-                    </div>
-                    <div class="toggle-container">
-                        <label class="toggle-label">
-                            <input type="checkbox" class="exclude-weight" id="exclude-slope_s" title="Exclude from calculation">
-                            Mean Parcel Slope
-                        </label>
-                    </div>
-                    <div class="toggle-container">
-                        <label class="toggle-label">
-                            <input type="checkbox" class="exclude-weight" id="exclude-hbrn_s" title="Exclude from calculation">
-                            Burn Scar Coverage
-                        </label>
-                    </div>
-                </div>
-            </div>
-        </div>
-        
-        <div class="control-section">
-            <h2>Results</h2>
-            <div class="stats">
-                <div class="stats-row">
-                    <span>Total Parcels:</span>
-                    <span class="stats-value" id="total-parcels">56308</span>
-                </div>
-                <div class="stats-row">
-                    <span>Selected:</span>
-                    <span class="stats-value" id="selected-parcels">500</span>
-                </div>
-                <div class="stats-row">
-                    <span>Total Risk:</span>
-                    <span class="stats-value" id="total-risk">408.88</span>
-                </div>
-                <div class="stats-row">
-                    <span>Avg Risk:</span>
-                    <span class="stats-value" id="avg-risk">0.82</span>
-                </div>
-                <div class="stats-row" id="normalization-row" style="display: none;">
-                    <span>Normalization:</span>
-                    <span class="stats-value" id="normalization-mode">Global</span>
-                </div>
-            </div>
-            <button class="button" id="export-shapefile">Export Shapefile</button>
         </div>
         
         <div class="control-section">
@@ -889,17 +938,77 @@
         </div>
         
         <div class="control-section">
-            <h2>Spatial Filter</h2>
-            <p style="font-size: 11px; color: #aaa; margin-bottom: 10px;">Draw an area to only show parcels within that boundary</p>
-            <button class="button" id="subset-rectangle">Draw Rectangle</button>
-            <button class="button" id="subset-lasso">Draw Lasso</button>
-            <button class="button" id="clear-subset">Clear Filter</button>
-            <button class="button primary" id="filter-parcels" disabled>Filter Parcels</button>
-            <div id="subset-indicator" style="font-size: 11px; color: #4CAF50; margin-top: 8px; display: none;">
-                ✓ Spatial filter active
+            <h2>Budget Settings</h2>
+            <div class="input-group">
+                <label>Budget ($)</label>
+                <input type="number" class="number-input" id="budget" value="500000" min="0" step="10000">
             </div>
+            <div class="input-group">
+                <label>Cost/Parcel ($)</label>
+                <input type="number" class="number-input" id="cost-per-parcel" value="1000" min="0" step="100">
+            </div>
+            <div class="input-group">
+                <label>Max Parcels</label>
+                <input type="number" class="number-input" id="max-parcels" value="500" min="1" max="5000">
+            </div>
+            <button class="button primary" id="calculate-btn">Calculate</button>
+            <button class="button" id="score-distribution-btn" style="margin-top: 8px;">Calculated Risk Score Distribution</button>
+            <button class="button" id="show-correlation-matrix" style="margin-top: 8px;">Variable Correlation Matrix</button>
+        </div>
+
+        <div class="control-section">
+            <h2>Weight Inference</h2>
+            <p style="font-size: 11px; color: #aaa; margin-bottom: 10px;">Draw multiple areas to optimize weights for combined selection</p>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 5px;">
+                <button class="button" id="draw-rectangle">Add Rectangle</button>
+                <button class="button" id="draw-lasso">Add Lasso</button>
+            </div>
+            <div style="margin: 8px 0; padding: 8px; background: rgba(255,255,255,0.05); border-radius: 3px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px;">
+                    <span style="font-size: 11px; color: #aaa;">Selection Areas:</span>
+                    <span style="font-size: 11px; color: #fff;" id="selection-count">0</span>
+                </div>
+                <div style="display: flex; gap: 5px;">
+                    <button class="button small" id="clear-last-selection" disabled>Remove Last</button>
+                    <button class="button small" id="clear-all-selections" disabled>Clear All</button>
+                </div>
+            </div>
+            <button class="button" id="infer-weights" disabled>Infer Weights from Multi-Selection</button>
+            <button class="button" id="download-lp-btn" disabled>Download .LP File</button>
+            <button class="button" id="view-solution-btn" disabled>View Solution Report</button>
+            <p style="font-size: 10px; color: #888; margin: 5px 0;">↑ Maximizes total risk score across all selected areas</p>
+            
+
         </div>
         
+        <div class="control-section">
+            <h2>Results</h2>
+            <div class="stats">
+                <div class="stats-row">
+                    <span>Total Parcels:</span>
+                    <span class="stats-value" id="total-parcels">56308</span>
+                </div>
+                <div class="stats-row">
+                    <span>Selected:</span>
+                    <span class="stats-value" id="selected-parcels">500</span>
+                </div>
+                <div class="stats-row">
+                    <span>Total Risk:</span>
+                    <span class="stats-value" id="total-risk">408.88</span>
+                </div>
+                <div class="stats-row">
+                    <span>Avg Risk:</span>
+                    <span class="stats-value" id="avg-risk">0.82</span>
+                </div>
+                <div class="stats-row" id="normalization-row" style="display: none;">
+                    <span>Normalization:</span>
+                    <span class="stats-value" id="normalization-mode">Global</span>
+                </div>
+            </div>
+            <button class="button" id="export-shapefile">Export Shapefile</button>
+        </div>
+        
+
         <div class="control-section">
             <h2>Map Layers</h2>
             <div class="toggle-container">
@@ -1035,18 +1144,6 @@
     </div>
 
     <script>
-        document.addEventListener('DOMContentLoaded', () => {
-            const cp = document.querySelector('.control-panel');
-            const sections = Array.from(cp.querySelectorAll('.control-section'));
-            const weightsIdx = sections.findIndex(sec => sec.querySelector('h2')?.innerText.trim() === 'Risk Factor Weights');
-            const spatialSec = sections.find(sec => sec.querySelector('h2')?.innerText.trim() === 'Spatial Filter');
-            const filtersSec = sections.find(sec => sec.querySelector('h2')?.innerText.trim() === 'Filters');
-            if (weightsIdx !== -1 && spatialSec && filtersSec) {
-                cp.insertBefore(spatialSec, sections[weightsIdx + 1]);
-                cp.insertBefore(filtersSec, sections[weightsIdx + 2]);
-            }
-        });
-
         // Custom rectangle drawing mode
         const DrawRectangle = {
             onSetup(opts) {
@@ -1284,13 +1381,13 @@
 
         function normalizeWeights() {
             const total = Array.from(weightSliders).reduce((sum, slider) => {
-                const isExcluded = document.getElementById(`exclude-${slider.id}`).checked;
-                return sum + (isExcluded ? 0 : parseFloat(slider.value));
+                const isEnabled = document.getElementById(`enable-${slider.id}`).checked;
+                return sum + (isEnabled ? parseFloat(slider.value) : 0);
             }, 0);
             
             weightSliders.forEach(slider => {
-                const isExcluded = document.getElementById(`exclude-${slider.id}`).checked;
-                const normalized = total > 0 && !isExcluded ? (parseFloat(slider.value) / total * 100).toFixed(0) : 0;
+                const isEnabled = document.getElementById(`enable-${slider.id}`).checked;
+                const normalized = total > 0 && isEnabled ? (parseFloat(slider.value) / total * 100).toFixed(0) : 0;
                 document.getElementById(slider.id + '-value').textContent = normalized + '%';
             });
         }
@@ -1561,13 +1658,13 @@
             // Get current weights
             const weights = {};
             const total = Array.from(weightSliders).reduce((sum, slider) => {
-                const isExcluded = document.getElementById(`exclude-${slider.id}`).checked;
-                return sum + (isExcluded ? 0 : parseFloat(slider.value));
+                const isEnabled = document.getElementById(`enable-${slider.id}`).checked;
+                return sum + (isEnabled ? parseFloat(slider.value) : 0);
             }, 0);
             
             weightSliders.forEach(slider => {
-                const isExcluded = document.getElementById(`exclude-${slider.id}`).checked;
-                weights[slider.id] = total > 0 && !isExcluded ? parseFloat(slider.value) / total : 0;
+                const isEnabled = document.getElementById(`enable-${slider.id}`).checked;
+                weights[slider.id] = total > 0 && isEnabled ? parseFloat(slider.value) / total : 0;
             });
             
             const maxParcels = parseInt(document.getElementById('max-parcels').value);
@@ -2024,8 +2121,8 @@
             const includeVars = Array.from(weightSliders)
                 .map(slider => slider.id)
                 .filter(varName => {
-                    const cb = document.getElementById(`exclude-${varName}`);
-                    return cb && !cb.checked;
+                    const cb = document.getElementById(`enable-${varName}`);
+                    return cb && cb.checked;
                 });
 
             document.getElementById('spinner').style.display = 'block';
@@ -3099,29 +3196,7 @@
             });
         });
 
-        // Add distribution buttons to sliders
-        document.querySelectorAll('.slider-container').forEach(container => {
-            const slider = container.querySelector('.slider');
-            const variable = slider.id;
-            const rawVariable = rawVarMap[variable] || variable.replace('_s', '');
-            
-            const buttonContainer = document.createElement('div');
-            buttonContainer.className = 'dist-buttons';
-            
-            const rawButton = document.createElement('button');
-            rawButton.className = 'dist-button';
-            rawButton.textContent = 'Raw Distribution';
-            rawButton.onclick = () => window.plottingManager.showDistribution(rawVariable);
-            
-            const scoreButton = document.createElement('button');
-            scoreButton.className = 'dist-button';
-            scoreButton.textContent = 'Score Distribution';
-            scoreButton.onclick = () => window.plottingManager.showDistribution(variable);
-            
-            buttonContainer.appendChild(rawButton);
-            buttonContainer.appendChild(scoreButton);
-            container.appendChild(buttonContainer);
-        });
+
 
         // Global keyboard handler
         document.addEventListener('keydown', (e) => {
@@ -3143,43 +3218,59 @@
             }
         });
 
-        // Add event listeners for exclude checkboxes
-        document.querySelectorAll('.exclude-weight').forEach(checkbox => {
+        // Variable enable/disable functionality
+        function toggleVariable(variableId, enabled) {
+            const container = document.querySelector(`[data-variable="${variableId}"]`);
+            const controls = container.querySelector('.variable-controls');
+            const slider = document.getElementById(variableId);
+            const valueDisplay = document.getElementById(`${variableId}-value`);
+            
+            if (enabled) {
+                // Enable variable
+                container.classList.remove('disabled');
+                controls.classList.remove('collapsed');
+                controls.classList.add('expanded');
+                
+                // Restore the previous value if it exists
+                const previousValue = slider.dataset.previousValue || slider.value;
+                slider.value = previousValue;
+                slider.classList.remove('disabled');
+                updateSliderFill(slider);
+            } else {
+                // Disable variable
+                container.classList.add('disabled');
+                controls.classList.remove('expanded');
+                controls.classList.add('collapsed');
+                
+                // Store the current value before setting to 0
+                slider.dataset.previousValue = slider.value;
+                slider.value = 0;
+                slider.classList.add('disabled');
+                valueDisplay.textContent = '0%';
+            }
+            
+            // Always renormalize weights
+            normalizeWeights();
+            
+            // Check if there's an active weight inference selection
+            const inferWeightsBtn = document.getElementById('infer-weights');
+            const hasActiveSelection = !inferWeightsBtn.disabled;
+            
+            if (hasActiveSelection && draw.getAll().features.length > 0) {
+                // Automatically rerun weight inference with updated exclude settings
+                console.log('Rerunning weight inference due to variable enable/disable change');
+                inferWeightsBtn.click();
+            } else {
+                // No active weight inference selection, just update scores normally
+                updateScores(false);  // Weight change, not filter change
+            }
+        }
+
+        // Add event listeners for variable enable checkboxes
+        document.querySelectorAll('.variable-enable-checkbox').forEach(checkbox => {
             checkbox.addEventListener('change', (e) => {
-                const sliderId = e.target.id.replace('exclude-', '');
-                const slider = document.getElementById(sliderId);
-                const valueDisplay = document.getElementById(`${sliderId}-value`);
-                
-                if (e.target.checked) {
-                    // Store the current value before setting to 0
-                    slider.dataset.previousValue = slider.value;
-                    slider.value = 0;
-                    slider.classList.add('disabled');
-                    valueDisplay.textContent = '0%';
-                } else {
-                    // Restore the previous value
-                    const previousValue = slider.dataset.previousValue || 0;
-                    slider.value = previousValue;
-                    slider.classList.remove('disabled');
-                    // Update the slider fill visual
-                    updateSliderFill(slider);
-                }
-                
-                // Always renormalize weights
-                normalizeWeights();
-                
-                // Check if there's an active weight inference selection
-                const inferWeightsBtn = document.getElementById('infer-weights');
-                const hasActiveSelection = !inferWeightsBtn.disabled;
-                
-                if (hasActiveSelection && draw.getAll().features.length > 0) {
-                    // Automatically rerun weight inference with updated exclude settings
-                    console.log('Rerunning weight inference due to exclude variable change');
-                    inferWeightsBtn.click();
-                } else {
-                    // No active weight inference selection, just update scores normally
-                    updateScores(false);  // Weight change, not filter change
-                }
+                const variableId = e.target.id.replace('enable-', '');
+                toggleVariable(variableId, e.target.checked);
             });
         });
 
