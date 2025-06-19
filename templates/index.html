@@ -1035,6 +1035,18 @@
     </div>
 
     <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const cp = document.querySelector('.control-panel');
+            const sections = Array.from(cp.querySelectorAll('.control-section'));
+            const weightsIdx = sections.findIndex(sec => sec.querySelector('h2')?.innerText.trim() === 'Risk Factor Weights');
+            const spatialSec = sections.find(sec => sec.querySelector('h2')?.innerText.trim() === 'Spatial Filter');
+            const filtersSec = sections.find(sec => sec.querySelector('h2')?.innerText.trim() === 'Filters');
+            if (weightsIdx !== -1 && spatialSec && filtersSec) {
+                cp.insertBefore(spatialSec, sections[weightsIdx + 1]);
+                cp.insertBefore(filtersSec, sections[weightsIdx + 2]);
+            }
+        });
+
         // Custom rectangle drawing mode
         const DrawRectangle = {
             onSetup(opts) {
