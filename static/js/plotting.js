@@ -165,21 +165,26 @@ class PlottingManager {
             margin: { l: 150, r: 50, t: 80, b: 150 }
         };
 
-        // Clear and show plot, then add text annotations
+        // Add text annotations for each cell
+        const annotations = [];
+        for (let i = 0; i < correlationMatrix.length; i++) {
+            for (let j = 0; j < correlationMatrix[i].length; j++) {
+                annotations.push({
+                    xref: 'x1',
+                    yref: 'y1',
+                    x: labels[j],
+                    y: labels[i],
+                    text: correlationMatrix[i][j].toFixed(2),
+                    showarrow: false,
+                    font: { color: 'black', size: 12 }
+                });
+            }
+        }
+        layout.annotations = annotations;
+
+        // Clear and show plot
         document.getElementById('correlation-plot').innerHTML = '';
-        Plotly.newPlot('correlation-plot', [trace], layout).then(() => {
-            // Update traces to add text annotations using the modern approach
-            Plotly.update('correlation-plot', {
-                text: [correlationMatrix.map(row => 
-                    row.map(val => val.toFixed(2))
-                )],
-                texttemplate: '%{text}',
-                textfont: {
-                    color: 'black',
-                    size: 12
-                }
-            });
-        });
+        Plotly.newPlot('correlation-plot', [trace], layout);
         document.getElementById('correlation-modal').style.display = 'block';
     }
 
