@@ -91,6 +91,8 @@ class ParcelDataLoader:
                     qtrpct_s FLOAT,
                     maxslp_s FLOAT,
                     hbrn_s FLOAT,
+                    par_buf_sl_s FLOAT,
+                    hlfmi_agfb_s FLOAT,
                     
                     -- Quantile score columns
                     qtrmi_q FLOAT,
@@ -106,6 +108,8 @@ class ParcelDataLoader:
                     qtrpct_q FLOAT,
                     maxslp_q FLOAT,
                     hbrn_q FLOAT,
+                    par_buf_sl_q FLOAT,
+                    hlfmi_agfb_q FLOAT,
                     
                     -- Z-score columns
                     qtrmi_z FLOAT,
@@ -121,6 +125,8 @@ class ParcelDataLoader:
                     qtrpct_z FLOAT,
                     maxslp_z FLOAT,
                     hbrn_z FLOAT,
+                    par_buf_sl_z FLOAT,
+                    hlfmi_agfb_z FLOAT,
                     
                     -- Raw data columns
                     yearbuilt INTEGER,
@@ -139,8 +145,10 @@ class ParcelDataLoader:
                     par_elev_m FLOAT,
                     avg_slope FLOAT,
                     max_slope FLOAT,
-                    par_aspe_1 TEXT,
+                    par_asp_dr TEXT,
                     str_slope FLOAT,
+                    par_buf_sl FLOAT,
+                    hlfmi_agfb FLOAT,
                     pixel_coun INTEGER,
                     num_brns INTEGER,
                     
@@ -178,6 +186,8 @@ class ParcelDataLoader:
                 "CREATE INDEX IF NOT EXISTS parcels_hfb_s_idx ON parcels (hfb_s);",
                 "CREATE INDEX IF NOT EXISTS parcels_uphill_s_idx ON parcels (uphill_s);",
                 "CREATE INDEX IF NOT EXISTS parcels_hbrn_s_idx ON parcels (hbrn_s);",
+                "CREATE INDEX IF NOT EXISTS parcels_par_buf_sl_s_idx ON parcels (par_buf_sl_s);",
+                "CREATE INDEX IF NOT EXISTS parcels_hlfmi_agfb_s_idx ON parcels (hlfmi_agfb_s);",
                 # Add indices for quantile columns
                 "CREATE INDEX IF NOT EXISTS parcels_neigh1d_q_idx ON parcels (neigh1d_q);",
                 "CREATE INDEX IF NOT EXISTS parcels_qtrmi_q_idx ON parcels (qtrmi_q);",
@@ -187,6 +197,8 @@ class ParcelDataLoader:
                 "CREATE INDEX IF NOT EXISTS parcels_hfb_q_idx ON parcels (hfb_q);",
                 "CREATE INDEX IF NOT EXISTS parcels_uphill_q_idx ON parcels (uphill_q);",
                 "CREATE INDEX IF NOT EXISTS parcels_hbrn_q_idx ON parcels (hbrn_q);",
+                "CREATE INDEX IF NOT EXISTS parcels_par_buf_sl_q_idx ON parcels (par_buf_sl_q);",
+                "CREATE INDEX IF NOT EXISTS parcels_hlfmi_agfb_q_idx ON parcels (hlfmi_agfb_q);",
                 # Add indices for z-score columns
                 "CREATE INDEX IF NOT EXISTS parcels_neigh1d_z_idx ON parcels (neigh1d_z);",
                 "CREATE INDEX IF NOT EXISTS parcels_qtrmi_z_idx ON parcels (qtrmi_z);",
@@ -196,9 +208,11 @@ class ParcelDataLoader:
                 "CREATE INDEX IF NOT EXISTS parcels_hfb_z_idx ON parcels (hfb_z);",
                 "CREATE INDEX IF NOT EXISTS parcels_uphill_z_idx ON parcels (uphill_z);",
                 "CREATE INDEX IF NOT EXISTS parcels_hbrn_z_idx ON parcels (hbrn_z);",
+                "CREATE INDEX IF NOT EXISTS parcels_par_buf_sl_z_idx ON parcels (par_buf_sl_z);",
+                "CREATE INDEX IF NOT EXISTS parcels_hlfmi_agfb_z_idx ON parcels (hlfmi_agfb_z);",
                 "CREATE INDEX IF NOT EXISTS parcels_num_brns_idx ON parcels (num_brns);",
                 "CREATE INDEX IF NOT EXISTS parcels_geom_type_idx ON parcels (geom_type);",
-                "CREATE INDEX IF NOT EXISTS parcels_par_aspe_1_idx ON parcels (par_aspe_1);"
+                "CREATE INDEX IF NOT EXISTS parcels_par_asp_dr_idx ON parcels (par_asp_dr);"
             ]
             
             for idx in indices:
@@ -238,20 +252,23 @@ class ParcelDataLoader:
                 # Score-related columns
                 'qtrmi_s', 'hwui_s', 'hagri_s', 'hvhsz_s', 'hfb_s', 'slope_s', 
                 'neigh1d_s', 'uphill_s', 'strdens_s', 'neigh2d_s', 'qtrpct_s', 'maxslp_s', 'hbrn_s',
+                'par_buf_sl_s', 'hlfmi_agfb_s',
                 
                 # Quantile score columns
                 'qtrmi_q', 'hwui_q', 'hagri_q', 'hvhsz_q', 'hfb_q', 'slope_q', 
                 'neigh1d_q', 'uphill_q', 'strdens_q', 'neigh2d_q', 'qtrpct_q', 'maxslp_q', 'hbrn_q',
+                'par_buf_sl_q', 'hlfmi_agfb_q',
                 
                 # Z-score columns
                 'qtrmi_z', 'hwui_z', 'hagri_z', 'hvhsz_z', 'hfb_z', 'slope_z', 
                 'neigh1d_z', 'uphill_z', 'strdens_z', 'neigh2d_z', 'qtrpct_z', 'maxslp_z', 'hbrn_z',
+                'par_buf_sl_z', 'hlfmi_agfb_z',
                 
                 # Raw data columns
                 'yearbuilt', 'qtrmi_cnt', 'hlfmi_agri', 'hlfmi_wui', 'hlfmi_vhsz', 
                 'hlfmi_fb', 'hlfmi_brn', 'num_neighb', 'strcnt', 'neigh1_d', 'neigh2_d',
                 'perimeter', 'par_elev', 'par_elev_m', 'avg_slope', 'max_slope',
-                'par_aspe_1', 'str_slope', 'pixel_coun', 'num_brns',
+                'par_asp_dr', 'str_slope', 'par_buf_sl', 'hlfmi_agfb', 'pixel_coun', 'num_brns',
                 
                 # Identification columns
                 'parcel_id', 'apn', 'all_ids', 'direct_ids', 'across_ids',
@@ -292,14 +309,14 @@ class ParcelDataLoader:
                 INSERT INTO parcels (
                     geom, geom_type,
                     qtrmi_s, hwui_s, hagri_s, hvhsz_s, hfb_s, slope_s, neigh1d_s, uphill_s,
-                    strdens_s, neigh2d_s, qtrpct_s, maxslp_s, hbrn_s,
+                    strdens_s, neigh2d_s, qtrpct_s, maxslp_s, hbrn_s, par_buf_sl_s, hlfmi_agfb_s,
                     qtrmi_q, hwui_q, hagri_q, hvhsz_q, hfb_q, slope_q, neigh1d_q, uphill_q,
-                    strdens_q, neigh2d_q, qtrpct_q, maxslp_q, hbrn_q,
+                    strdens_q, neigh2d_q, qtrpct_q, maxslp_q, hbrn_q, par_buf_sl_q, hlfmi_agfb_q,
                     qtrmi_z, hwui_z, hagri_z, hvhsz_z, hfb_z, slope_z, neigh1d_z, uphill_z,
-                    strdens_z, neigh2d_z, qtrpct_z, maxslp_z, hbrn_z,
+                    strdens_z, neigh2d_z, qtrpct_z, maxslp_z, hbrn_z, par_buf_sl_z, hlfmi_agfb_z,
                     yearbuilt, qtrmi_cnt, hlfmi_agri, hlfmi_wui, hlfmi_vhsz, hlfmi_fb, hlfmi_brn,
                     num_neighb, strcnt, neigh1_d, neigh2_d, perimeter, par_elev, par_elev_m,
-                    avg_slope, max_slope, par_aspe_1, str_slope, pixel_coun, num_brns,
+                    avg_slope, max_slope, par_asp_dr, str_slope, par_buf_sl, hlfmi_agfb, pixel_coun, num_brns,
                     parcel_id, apn, all_ids, direct_ids, across_ids,
                     area_sqft, str_dens, landval, bedrooms, baths, landuse,
                     direct_cou, across_cou, all_count
@@ -307,14 +324,14 @@ class ParcelDataLoader:
                 VALUES (
                     ST_GeomFromText(%s, 3857), %s,
                     %s, %s, %s, %s, %s, %s, %s, %s,
-                    %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s, %s, %s, %s,
                     %s, %s, %s, %s, %s, %s, %s, %s,
-                    %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s, %s, %s, %s,
                     %s, %s, %s, %s, %s, %s, %s, %s,
-                    %s, %s, %s, %s, %s,
                     %s, %s, %s, %s, %s, %s, %s,
                     %s, %s, %s, %s, %s, %s, %s,
-                    %s, %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s, %s, %s, %s, %s,
                     %s, %s, %s, %s, %s,
                     %s, %s, %s, %s, %s, %s,
                     %s, %s, %s
@@ -354,20 +371,23 @@ class ParcelDataLoader:
                 # Score-related columns
                 'qtrmi_s', 'hwui_s', 'hagri_s', 'hvhsz_s', 'hfb_s', 'slope_s', 
                 'neigh1d_s', 'uphill_s', 'strdens_s', 'neigh2d_s', 'qtrpct_s', 'maxslp_s', 'hbrn_s',
+                'par_buf_sl_s', 'hlfmi_agfb_s',
                 
                 # Quantile score columns
                 'qtrmi_q', 'hwui_q', 'hagri_q', 'hvhsz_q', 'hfb_q', 'slope_q', 
                 'neigh1d_q', 'uphill_q', 'strdens_q', 'neigh2d_q', 'qtrpct_q', 'maxslp_q', 'hbrn_q',
+                'par_buf_sl_q', 'hlfmi_agfb_q',
                 
                 # Z-score columns
                 'qtrmi_z', 'hwui_z', 'hagri_z', 'hvhsz_z', 'hfb_z', 'slope_z', 
                 'neigh1d_z', 'uphill_z', 'strdens_z', 'neigh2d_z', 'qtrpct_z', 'maxslp_z', 'hbrn_z',
+                'par_buf_sl_z', 'hlfmi_agfb_z',
                 
                 # Raw data columns
                 'yearbuilt', 'qtrmi_cnt', 'hlfmi_agri', 'hlfmi_wui', 'hlfmi_vhsz', 
                 'hlfmi_fb', 'hlfmi_brn', 'num_neighb', 'strcnt', 'neigh1_d', 'neigh2_d',
                 'perimeter', 'par_elev', 'par_elev_m', 'avg_slope', 'max_slope',
-                'par_aspe_1', 'str_slope', 'pixel_coun', 'num_brns',
+                'par_asp_dr', 'str_slope', 'par_buf_sl', 'hlfmi_agfb', 'pixel_coun', 'num_brns',
                 
                 # Identification columns
                 'parcel_id', 'apn', 'all_ids', 'direct_ids', 'across_ids',
@@ -427,7 +447,7 @@ class ParcelDataLoader:
                         'par_elev_m': feature.get('par_elev_m'),
                         'avg_slope': feature.get('avg_slope'),
                         'max_slope': feature.get('max_slope'),
-                        'par_aspe_1': feature.get('par_aspe_1'),
+                        'par_asp_dr': feature.get('par_asp_dr'),
                         'str_slope': feature.get('str_slope'),
                         'pixel_coun': feature.get('pixel_coun'),
                         'num_brns': feature.get('num_brns'),

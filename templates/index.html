@@ -780,6 +780,44 @@
                     </div>
                 </div>
 
+                <div class="variable-container" data-variable="par_buf_sl_s">
+                    <div class="variable-header">
+                        <input type="checkbox" class="variable-enable-checkbox" id="enable-par_buf_sl_s" checked>
+                        <span class="variable-name">Slope within 100 ft of structure</span>
+                    </div>
+                    <div class="variable-controls expanded">
+                        <div class="slider-container">
+                            <div class="slider-label">
+                                <span class="slider-value" id="par_buf_sl_s-value">0%</span>
+                            </div>
+                            <input type="range" class="slider weight-slider" id="par_buf_sl_s" min="0" max="100" value="0">
+                            <div class="dist-buttons">
+                                <button class="dist-button" onclick="window.plottingManager.showDistribution('par_buf_sl')">Raw</button>
+                                <button class="dist-button" onclick="window.plottingManager.showDistribution('par_buf_sl_s')">Score</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="variable-container" data-variable="hlfmi_agfb_s">
+                    <div class="variable-header">
+                        <input type="checkbox" class="variable-enable-checkbox" id="enable-hlfmi_agfb_s" checked>
+                        <span class="variable-name">Agriculture & Fuelbreaks (1/2 mile)</span>
+                    </div>
+                    <div class="variable-controls expanded">
+                        <div class="slider-container">
+                            <div class="slider-label">
+                                <span class="slider-value" id="hlfmi_agfb_s-value">0%</span>
+                            </div>
+                            <input type="range" class="slider weight-slider" id="hlfmi_agfb_s" min="0" max="100" value="0">
+                            <div class="dist-buttons">
+                                <button class="dist-button" onclick="window.plottingManager.showDistribution('hlfmi_agfb')">Raw</button>
+                                <button class="dist-button" onclick="window.plottingManager.showDistribution('hlfmi_agfb_s')">Score</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
                 <div style="text-align: right; margin-top: 15px;">
                     <span style="font-size: 11px; color: #888;">Max Parcels: <span id="max-parcels-value">500</span></span>
                 </div>
@@ -1449,11 +1487,13 @@
                         <p><strong>Agricultural % (1/2 mi):</strong> ${props.hlfmi_agri?.toFixed(2) || 'N/A'}%</p>
                         <p><strong>Firebreak % (1/2 mi):</strong> ${props.hlfmi_fb?.toFixed(2) || 'N/A'}%</p>
                         <p><strong>Burn Scar % (1/2 mi):</strong> ${props.hlfmi_brn?.toFixed(2) || 'N/A'}%</p>
+                        <p><strong>Slope within 100 ft:</strong> ${props.par_buf_sl?.toFixed(2) || 'N/A'}°</p>
+                        <p><strong>Agriculture & Fuelbreaks (1/2 mi):</strong> ${props.hlfmi_agfb?.toFixed(2) || 'N/A'}%</p>
                         <p><strong>Number of Neighbors:</strong> ${props.num_neighb || 'N/A'}</p>
                         <p><strong>Parcel Slope:</strong> ${props.avg_slope?.toFixed(2) || 'N/A'}°</p>
                         <p><strong>Max Slope:</strong> ${props.max_slope?.toFixed(2) || 'N/A'}°</p>
                         <p><strong>Elevation:</strong> ${props.par_elev?.toFixed(2) || 'N/A'} ft</p>
-                        <p><strong>Aspect:</strong> ${props.par_aspe_1 || 'N/A'}</p>
+                        <p><strong>Aspect:</strong> ${props.par_asp_dr || 'N/A'}</p>
                     </div>
 
                     <div style="margin: 10px 0;">
@@ -1466,6 +1506,8 @@
                         <p><strong>Slope Score:</strong> ${props['slope' + suffix]?.toFixed(3) || 'N/A'}</p>
                         <p><strong>Neighbor Distance Score:</strong> ${props['neigh1d' + suffix]?.toFixed(3) || 'N/A'}</p>
                         <p><strong>Burn Scar Coverage (1/2 mi):</strong> ${props['hbrn' + suffix]?.toFixed(3) || 'N/A'}</p>
+                        <p><strong>Slope within 100 ft Score:</strong> ${props['par_buf_sl' + suffix]?.toFixed(3) || 'N/A'}</p>
+                        <p><strong>Agriculture & Fuelbreaks Score:</strong> ${props['hlfmi_agfb' + suffix]?.toFixed(3) || 'N/A'}</p>
                     </div>
                 </div>
             `;
@@ -1589,7 +1631,9 @@
             'hfb': 'hlfmi_fb',
             'slope': 'slope_s',
             'neigh1d': 'neigh1_d',
-            'hbrn': 'hlfmi_brn'
+            'hbrn': 'hlfmi_brn',
+            'par_buf_sl': 'par_buf_sl',
+            'hlfmi_agfb': 'hlfmi_agfb'
         };
 
         // Variable name mapping for readable titles
@@ -1625,7 +1669,15 @@
             'neigh1d_z': 'Neighbor Distance Score (Quantile)',
             'hbrn_s': 'Burn Score',
             'hbrn_q': 'Burn Score (Robust Min-Max)',
-            'hbrn_z': 'Burn Score (Quantile)'
+            'hbrn_z': 'Burn Score (Quantile)',
+            'par_buf_sl': 'Slope within 100 ft',
+            'par_buf_sl_s': 'Slope within 100 ft Score',
+            'par_buf_sl_q': 'Slope within 100 ft Score (Robust Min-Max)',
+            'par_buf_sl_z': 'Slope within 100 ft Score (Quantile)',
+            'hlfmi_agfb': 'Agriculture & Fuelbreaks',
+            'hlfmi_agfb_s': 'Agriculture & Fuelbreaks Score',
+            'hlfmi_agfb_q': 'Agriculture & Fuelbreaks Score (Robust Min-Max)',
+            'hlfmi_agfb_z': 'Agriculture & Fuelbreaks Score (Quantile)'
         };
 
         // Enhanced update scores function with comprehensive client-side processing

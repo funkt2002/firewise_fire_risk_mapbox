@@ -52,8 +52,8 @@ app.config['MAPBOX_TOKEN'] = os.environ.get('MAPBOX_TOKEN', 'pk.eyJ1IjoidGhlbzEx
 # CONSTANTS
 # ====================
 
-WEIGHT_VARS_BASE = ['qtrmi', 'hwui', 'hagri', 'hvhsz', 'hfb', 'slope', 'neigh1d', 'hbrn']
-INVERT_VARS = {'hagri', 'neigh1d', 'hfb'}
+WEIGHT_VARS_BASE = ['qtrmi', 'hwui', 'hagri', 'hvhsz', 'hfb', 'slope', 'neigh1d', 'hbrn', 'par_buf_sl', 'hlfmi_agfb']
+INVERT_VARS = {'hagri', 'neigh1d', 'hfb', 'hlfmi_agfb'}
 RAW_VAR_MAP = {
     'qtrmi': 'qtrmi_cnt',
     'hwui': 'hlfmi_wui',
@@ -62,7 +62,9 @@ RAW_VAR_MAP = {
     'hfb': 'hlfmi_fb',
     'slope': 'slope_s',
     'neigh1d': 'neigh1_d',
-    'hbrn': 'hlfmi_brn'
+    'hbrn': 'hlfmi_brn',
+    'par_buf_sl': 'par_buf_sl',
+    'hlfmi_agfb': 'hlfmi_agfb'
 }
 
 LAYER_TABLE_MAP = {
@@ -193,8 +195,8 @@ def apply_local_normalization(raw_results, use_quantile, use_quantiled_scores):
                         # Log first few transformations for debugging
                         if len(values) < 3:
                             logger.info(f"neigh1d transformation: {capped_value} -> {raw_value:.3f}")
-                    elif var_base in ['hagri', 'hfb']:
-                        # Apply log transformation to agriculture and fuel breaks
+                    elif var_base in ['hagri', 'hfb', 'hlfmi_agfb']:
+                        # Apply log transformation to agriculture, fuel breaks, and combined agriculture & fuelbreaks
                         raw_value = math.log(1 + float(raw_value))
                         # Log first few transformations for debugging
                         if len(values) < 3:
@@ -246,8 +248,8 @@ def apply_local_normalization(raw_results, use_quantile, use_quantiled_scores):
                     # Apply log transformation: log(1 + capped_distance)
                     capped_value = min(float(raw_value), 5280)
                     raw_value = math.log(1 + capped_value)
-                elif var_base in ['hagri', 'hfb']:
-                    # Apply log transformation to agriculture and fuel breaks
+                elif var_base in ['hagri', 'hfb', 'hlfmi_agfb']:
+                    # Apply log transformation to agriculture, fuel breaks, and combined agriculture & fuelbreaks
                     raw_value = math.log(1 + float(raw_value))
                 else:
                     raw_value = float(raw_value)
@@ -697,7 +699,7 @@ def prepare_data():
         other_columns = ['yearbuilt', 'qtrmi_cnt', 'hlfmi_agri', 'hlfmi_wui', 'hlfmi_vhsz', 
                         'hlfmi_fb', 'hlfmi_brn', 'num_neighb', 'parcel_id', 'strcnt', 
                         'neigh1_d', 'apn', 'all_ids', 'perimeter', 'par_elev', 'avg_slope',
-                        'par_aspe_1', 'max_slope', 'num_brns']
+                        'par_asp_dr', 'max_slope', 'num_brns']
         
         raw_var_columns = [RAW_VAR_MAP[var_base] for var_base in WEIGHT_VARS_BASE]
         
@@ -750,7 +752,9 @@ def prepare_data():
             'hagri_s': 0.11,
             'hfb_s': 0.1,
             'slope_s': 0.0,
-            'hbrn_s': 0.09
+            'hbrn_s': 0.09,
+            'par_buf_sl_s': 0.0,
+            'hlfmi_agfb_s': 0.0
         })
         
         # Normalize weights
@@ -1016,7 +1020,9 @@ def generate_solution_files(include_vars, best_weights, weights_pct, total_score
         'hfb': 'Fuel Breaks (1/2 mile)',
         'slope': 'Slope',
         'neigh1d': 'Neighbor Distance',
-        'hbrn': 'Burn Scars (1/2 mile)'
+        'hbrn': 'Burn Scars (1/2 mile)',
+        'par_buf_sl': 'Slope within 100 ft of structure',
+        'hlfmi_agfb': 'Agriculture & Fuelbreaks (1/2 mile)'
     }
     
     txt_lines = []
