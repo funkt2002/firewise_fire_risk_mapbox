@@ -1618,9 +1618,8 @@
                 if (responseData.requires_client_processing) {
                     console.log('Raw data received, performing client-side normalization and scoring...');
                     
-                    // Store complete raw dataset in both managers
+                    // Store complete raw dataset
                     window.clientFilterManager.storeCompleteDataset(responseData);
-                    window.fireRiskScoring.storeCompleteData(responseData);
                     
                     // Perform client-side processing with current weights and filters
                     const processedData = window.fireRiskScoring.processData(
@@ -1644,9 +1643,8 @@
                     // Fallback: treat any data from /api/prepare as raw data for client-side processing
                     console.log('Treating server data as raw for client-side processing');
                     
-                    // Store raw dataset in both managers
+                    // Store raw dataset for filtering
                     window.clientFilterManager.storeCompleteDataset(responseData);
-                    window.fireRiskScoring.storeCompleteData(responseData);
                     
                     // Process with current weights and filters
                     const processedData = window.fireRiskScoring.processData(
