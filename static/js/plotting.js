@@ -140,17 +140,7 @@ class PlottingManager {
                 titleside: 'right'
             },
             hoverongaps: false,
-            hoverinfo: 'none',
-            // Add text annotations showing correlation values
-            text: correlationMatrix.map(row => 
-                row.map(val => val.toFixed(2))
-            ),
-            texttemplate: '%{text}',
-            textfont: {
-                color: 'black',
-                size: 10
-            },
-            showscale: true
+            hoverinfo: 'none'
         };
 
         const layout = {
@@ -172,9 +162,21 @@ class PlottingManager {
             margin: { l: 150, r: 50, t: 80, b: 150 }
         };
 
-        // Clear and show plot
+        // Clear and show plot, then add text annotations
         document.getElementById('correlation-plot').innerHTML = '';
-        Plotly.newPlot('correlation-plot', [trace], layout);
+        Plotly.newPlot('correlation-plot', [trace], layout).then(() => {
+            // Update traces to add text annotations using the modern approach
+            Plotly.update('correlation-plot', {
+                text: [correlationMatrix.map(row => 
+                    row.map(val => val.toFixed(2))
+                )],
+                texttemplate: '%{text}',
+                textfont: {
+                    color: 'black',
+                    size: 12
+                }
+            });
+        });
         document.getElementById('correlation-modal').style.display = 'block';
     }
 
