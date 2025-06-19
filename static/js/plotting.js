@@ -120,7 +120,7 @@ class PlottingManager {
             }
         }
 
-        // Create heatmap
+        // Create heatmap with text annotations
         const trace = {
             z: correlationMatrix,
             x: labels,
@@ -140,7 +140,17 @@ class PlottingManager {
                 titleside: 'right'
             },
             hoverongaps: false,
-            hovertemplate: '%{y} vs %{x}<br>Correlation: %{z:.3f}<extra></extra>'
+            hovertemplate: '%{y} vs %{x}<br>Correlation: %{z:.3f}<extra></extra>',
+            // Add text annotations showing correlation values
+            text: correlationMatrix.map(row => 
+                row.map(val => val.toFixed(2))
+            ),
+            texttemplate: '%{text}',
+            textfont: {
+                color: 'black',
+                size: 10
+            },
+            showscale: true
         };
 
         const layout = {
