@@ -20,6 +20,11 @@ import geopandas as gpd
 from shapely.geometry import shape
 from pulp import LpProblem, LpMaximize, LpVariable, lpSum, LpStatus, COIN_CMD, value, listSolvers
 
+# ====================
+# CONFIGURATION & SETUP
+# ====================
+# Updated schema with new variables: par_buf_sl, hlfmi_agfb, and par_asp_dr
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO, 
