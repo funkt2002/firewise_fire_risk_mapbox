@@ -114,14 +114,14 @@
         
         /* Slider styling */
         .slider-container {
-            margin: 12px 0;
+            margin: 6px 0;
         }
         
         .slider-label {
             display: flex;
-            justify-content: space-between;
+            justify-content: flex-end;
             align-items: center;
-            margin-bottom: 5px;
+            margin-bottom: 3px;
             font-size: 12px;
             color: #ccc;
         }
@@ -227,29 +227,29 @@
 
         /* Variable enable/disable styling */
         .variable-container {
-            margin: 12px 0;
+            margin: 6px 0;
             border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 4px;
-            padding: 8px;
+            border-radius: 3px;
+            padding: 6px;
             transition: all 0.3s ease;
         }
 
         .variable-header {
             display: flex;
             align-items: center;
-            margin-bottom: 8px;
+            margin-bottom: 4px;
         }
 
         .variable-enable-checkbox {
-            width: 16px;
-            height: 16px;
-            margin-right: 10px;
+            width: 14px;
+            height: 14px;
+            margin-right: 8px;
             cursor: pointer;
             accent-color: #4CAF50;
         }
 
         .variable-name {
-            font-size: 12px;
+            font-size: 11px;
             color: #ccc;
             font-weight: 500;
             flex: 1;
@@ -268,7 +268,7 @@
         }
 
         .variable-controls.expanded {
-            max-height: 200px;
+            max-height: 120px;
             opacity: 1;
         }
 
@@ -635,13 +635,12 @@
                     <div class="variable-controls expanded">
                         <div class="slider-container">
                             <div class="slider-label">
-                                <span>Weight</span>
                                 <span class="slider-value" id="qtrmi_s-value">30%</span>
                             </div>
                             <input type="range" class="slider weight-slider" id="qtrmi_s" min="0" max="100" value="30">
                             <div class="dist-buttons">
-                                <button class="dist-button" onclick="window.plottingManager.showDistribution('qtrmi_cnt')">Raw Distribution</button>
-                                <button class="dist-button" onclick="window.plottingManager.showDistribution('qtrmi_s')">Score Distribution</button>
+                                <button class="dist-button" onclick="window.plottingManager.showDistribution('qtrmi_cnt')">Raw</button>
+                                <button class="dist-button" onclick="window.plottingManager.showDistribution('qtrmi_s')">Score</button>
                             </div>
                         </div>
                     </div>
@@ -656,13 +655,12 @@
                         <div style="font-size: 10px; color: #888; margin-bottom: 3px;">Only Includes Parcels with Structure Data</div>
                         <div class="slider-container">
                             <div class="slider-label">
-                                <span>Weight</span>
                                 <span class="slider-value" id="neigh1d_s-value">0%</span>
                             </div>
                             <input type="range" class="slider weight-slider" id="neigh1d_s" min="0" max="100" value="0">
                             <div class="dist-buttons">
-                                <button class="dist-button" onclick="window.plottingManager.showDistribution('neigh1_d')">Raw Distribution</button>
-                                <button class="dist-button" onclick="window.plottingManager.showDistribution('neigh1d_s')">Score Distribution</button>
+                                <button class="dist-button" onclick="window.plottingManager.showDistribution('neigh1_d')">Raw</button>
+                                <button class="dist-button" onclick="window.plottingManager.showDistribution('neigh1d_s')">Score</button>
                             </div>
                         </div>
                     </div>
@@ -676,13 +674,12 @@
                     <div class="variable-controls expanded">
                         <div class="slider-container">
                             <div class="slider-label">
-                                <span>Weight</span>
                                 <span class="slider-value" id="hwui_s-value">10%</span>
                             </div>
                             <input type="range" class="slider weight-slider" id="hwui_s" min="0" max="100" value="10">
                             <div class="dist-buttons">
-                                <button class="dist-button" onclick="window.plottingManager.showDistribution('hlfmi_wui')">Raw Distribution</button>
-                                <button class="dist-button" onclick="window.plottingManager.showDistribution('hwui_s')">Score Distribution</button>
+                                <button class="dist-button" onclick="window.plottingManager.showDistribution('hlfmi_wui')">Raw</button>
+                                <button class="dist-button" onclick="window.plottingManager.showDistribution('hwui_s')">Score</button>
                             </div>
                         </div>
                     </div>
@@ -696,13 +693,12 @@
                     <div class="variable-controls expanded">
                         <div class="slider-container">
                             <div class="slider-label">
-                                <span>Weight</span>
                                 <span class="slider-value" id="hvhsz_s-value">30%</span>
                             </div>
                             <input type="range" class="slider weight-slider" id="hvhsz_s" min="0" max="100" value="30">
                             <div class="dist-buttons">
-                                <button class="dist-button" onclick="window.plottingManager.showDistribution('hlfmi_vhsz')">Raw Distribution</button>
-                                <button class="dist-button" onclick="window.plottingManager.showDistribution('hvhsz_s')">Score Distribution</button>
+                                <button class="dist-button" onclick="window.plottingManager.showDistribution('hlfmi_vhsz')">Raw</button>
+                                <button class="dist-button" onclick="window.plottingManager.showDistribution('hvhsz_s')">Score</button>
                             </div>
                         </div>
                     </div>
@@ -716,13 +712,12 @@
                     <div class="variable-controls expanded">
                         <div class="slider-container">
                             <div class="slider-label">
-                                <span>Weight</span>
                                 <span class="slider-value" id="hagri_s-value">11%</span>
                             </div>
                             <input type="range" class="slider weight-slider" id="hagri_s" min="0" max="100" value="11">
                             <div class="dist-buttons">
-                                <button class="dist-button" onclick="window.plottingManager.showDistribution('hlfmi_agri')">Raw Distribution</button>
-                                <button class="dist-button" onclick="window.plottingManager.showDistribution('hagri_s')">Score Distribution</button>
+                                <button class="dist-button" onclick="window.plottingManager.showDistribution('hlfmi_agri')">Raw</button>
+                                <button class="dist-button" onclick="window.plottingManager.showDistribution('hagri_s')">Score</button>
                             </div>
                         </div>
                     </div>
@@ -736,13 +731,12 @@
                     <div class="variable-controls expanded">
                         <div class="slider-container">
                             <div class="slider-label">
-                                <span>Weight</span>
                                 <span class="slider-value" id="hfb_s-value">10%</span>
                             </div>
                             <input type="range" class="slider weight-slider" id="hfb_s" min="0" max="100" value="10">
                             <div class="dist-buttons">
-                                <button class="dist-button" onclick="window.plottingManager.showDistribution('hlfmi_fb')">Raw Distribution</button>
-                                <button class="dist-button" onclick="window.plottingManager.showDistribution('hfb_s')">Score Distribution</button>
+                                <button class="dist-button" onclick="window.plottingManager.showDistribution('hlfmi_fb')">Raw</button>
+                                <button class="dist-button" onclick="window.plottingManager.showDistribution('hfb_s')">Score</button>
                             </div>
                         </div>
                     </div>
@@ -756,13 +750,12 @@
                     <div class="variable-controls expanded">
                         <div class="slider-container">
                             <div class="slider-label">
-                                <span>Weight</span>
                                 <span class="slider-value" id="slope_s-value">0%</span>
                             </div>
                             <input type="range" class="slider weight-slider" id="slope_s" min="0" max="100" value="0">
                             <div class="dist-buttons">
-                                <button class="dist-button" onclick="window.plottingManager.showDistribution('slope_s')">Raw Distribution</button>
-                                <button class="dist-button" onclick="window.plottingManager.showDistribution('slope_s')">Score Distribution</button>
+                                <button class="dist-button" onclick="window.plottingManager.showDistribution('slope_s')">Raw</button>
+                                <button class="dist-button" onclick="window.plottingManager.showDistribution('slope_s')">Score</button>
                             </div>
                         </div>
                     </div>
@@ -776,13 +769,12 @@
                     <div class="variable-controls expanded">
                         <div class="slider-container">
                             <div class="slider-label">
-                                <span>Weight</span>
                                 <span class="slider-value" id="hbrn_s-value">9%</span>
                             </div>
                             <input type="range" class="slider weight-slider" id="hbrn_s" min="0" max="100" value="9">
                             <div class="dist-buttons">
-                                <button class="dist-button" onclick="window.plottingManager.showDistribution('hlfmi_brn')">Raw Distribution</button>
-                                <button class="dist-button" onclick="window.plottingManager.showDistribution('hbrn_s')">Score Distribution</button>
+                                <button class="dist-button" onclick="window.plottingManager.showDistribution('hlfmi_brn')">Raw</button>
+                                <button class="dist-button" onclick="window.plottingManager.showDistribution('hbrn_s')">Score</button>
                             </div>
                         </div>
                     </div>
