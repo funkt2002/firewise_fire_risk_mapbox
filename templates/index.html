@@ -890,43 +890,7 @@
                 </div>
             </div>
 
-            <div class="input-group" id="aspect-exclude-list" style="display: flex; flex-direction: column; align-items: flex-start; margin-top: 8px; font-size: 12px;">
-                <label style="font-weight: bold; margin-bottom: 4px;">Exclude Aspect Directions</label>
-                <div style="display: flex; flex-direction: row; gap: 18px; justify-content: flex-start; width: 100%;">
-                    <div style="display: flex; flex-direction: column; align-items: center;">
-                        <input type="checkbox" class="aspect-exclude" id="aspect-N" value="N" style="vertical-align: middle;">
-                        <label for="aspect-N" style="font-size: 11px; color: #ccc; margin-top: 2px;">N</label>
-                    </div>
-                    <div style="display: flex; flex-direction: column; align-items: center;">
-                        <input type="checkbox" class="aspect-exclude" id="aspect-NE" value="NE" style="vertical-align: middle;">
-                        <label for="aspect-NE" style="font-size: 11px; color: #ccc; margin-top: 2px;">NE</label>
-                    </div>
-                    <div style="display: flex; flex-direction: column; align-items: center;">
-                        <input type="checkbox" class="aspect-exclude" id="aspect-E" value="E" style="vertical-align: middle;">
-                        <label for="aspect-E" style="font-size: 11px; color: #ccc; margin-top: 2px;">E</label>
-                    </div>
-                    <div style="display: flex; flex-direction: column; align-items: center;">
-                        <input type="checkbox" class="aspect-exclude" id="aspect-SE" value="SE" style="vertical-align: middle;">
-                        <label for="aspect-SE" style="font-size: 11px; color: #ccc; margin-top: 2px;">SE</label>
-                    </div>
-                    <div style="display: flex; flex-direction: column; align-items: center;">
-                        <input type="checkbox" class="aspect-exclude" id="aspect-S" value="S" style="vertical-align: middle;">
-                        <label for="aspect-S" style="font-size: 11px; color: #ccc; margin-top: 2px;">S</label>
-                    </div>
-                    <div style="display: flex; flex-direction: column; align-items: center;">
-                        <input type="checkbox" class="aspect-exclude" id="aspect-SW" value="SW" style="vertical-align: middle;">
-                        <label for="aspect-SW" style="font-size: 11px; color: #ccc; margin-top: 2px;">SW</label>
-                    </div>
-                    <div style="display: flex; flex-direction: column; align-items: center;">
-                        <input type="checkbox" class="aspect-exclude" id="aspect-W" value="W" style="vertical-align: middle;">
-                        <label for="aspect-W" style="font-size: 11px; color: #ccc; margin-top: 2px;">W</label>
-                    </div>
-                    <div style="display: flex; flex-direction: column; align-items: center;">
-                        <input type="checkbox" class="aspect-exclude" id="aspect-NW" value="NW" style="vertical-align: middle;">
-                        <label for="aspect-NW" style="font-size: 11px; color: #ccc; margin-top: 2px;">NW</label>
-                    </div>
-                </div>
-            </div>
+
         </div>
         
         <div class="control-section">
@@ -1392,11 +1356,7 @@
             document.getElementById('max-parcels-value').textContent = maxParcels;
         }
 
-        function getSelectedAspectDirections() {
-            return Array.from(aspectExcludeCheckboxes)
-                .filter(cb => cb.checked)
-                .map(cb => cb.value);
-        }
+
 
         function getCurrentFilters() {
             return {
@@ -1583,7 +1543,6 @@
 
         // Get DOM elements
         const weightSliders = document.querySelectorAll('.weight-slider');
-        const aspectExcludeCheckboxes = document.querySelectorAll('.aspect-exclude');
         const modal = document.getElementById('dist-modal');
         const closeModal = document.getElementsByClassName('close-modal')[0];
         const measureButton = document.createElement('button');
@@ -1990,11 +1949,7 @@
             });
         });
 
-        aspectExcludeCheckboxes.forEach(cb => {
-            cb.addEventListener('change', () => {
-                updateScores();
-            });
-        });
+
 
         // Download .LP file (client-side)
         document.getElementById('download-lp-btn').addEventListener('click', () => {
