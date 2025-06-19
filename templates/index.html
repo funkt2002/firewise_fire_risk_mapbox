@@ -800,6 +800,8 @@
         
         <div class="control-section">
             <h2>Filters</h2>
+            <!-- ARCHIVED: Score Type Selection - Now defaults to Basic Min-Max Scores -->
+            <!--
             <div style="margin-bottom: 15px;">
                 <h3 style="font-size: 12px; color: #aaa; margin-bottom: 8px;">Score Type:</h3>
                 <div class="toggle-container">
@@ -821,6 +823,7 @@
                     </label>
                 </div>
             </div>
+            -->
             
             <div style="margin-bottom: 15px;">
                 <h3 style="font-size: 12px; color: #aaa; margin-bottom: 8px;">Normalization:</h3>
@@ -1367,35 +1370,32 @@
                     parseInt(document.getElementById('filter-neigh1d').value) : null,
                 strcnt_min: document.getElementById('filter-strcnt-enabled').checked ? 
                     parseInt(document.getElementById('filter-strcnt').value) : null,
-                            exclude_wui_zero: document.getElementById('filter-wui-zero-enabled').checked,
-            exclude_vhsz_zero: document.getElementById('filter-vhsz-zero-enabled').checked,
-            exclude_no_brns: document.getElementById('filter-brns-enabled').checked,
-            exclude_agri_protection: document.getElementById('filter-agri-protection-enabled').checked,
-
-                use_quantiled_scores: document.getElementById('use-quantiled-scores').checked,
-                use_quantile: document.getElementById('use-quantile').checked,
+                exclude_wui_zero: document.getElementById('filter-wui-zero-enabled').checked,
+                exclude_vhsz_zero: document.getElementById('filter-vhsz-zero-enabled').checked,
+                exclude_no_brns: document.getElementById('filter-brns-enabled').checked,
+                exclude_agri_protection: document.getElementById('filter-agri-protection-enabled').checked,
+                // ARCHIVED: Score type controls - now defaults to basic min-max scores
+                use_quantiled_scores: false, // document.getElementById('use-quantiled-scores').checked,
+                use_quantile: false, // document.getElementById('use-quantile').checked,
                 use_local_normalization: document.getElementById('use-local-normalization').checked,
                 subset_area: subsetArea
             };
         }
 
         function getActiveScoreVariable(baseVar) {
-            const useQuantile = document.getElementById('use-quantile').checked;
-            const useQuantiled = document.getElementById('use-quantiled-scores').checked;
-            if (useQuantile) {
-                return baseVar + '_z';
-            } else if (useQuantiled) {
-                return baseVar + '_q';
-            } else {
-                return baseVar + '_s';
-            }
+            // ARCHIVED: Score type selection - now defaults to basic min-max scores
+            // const useQuantile = document.getElementById('use-quantile').checked;
+            // const useQuantiled = document.getElementById('use-quantiled-scores').checked;
+            // Always return basic min-max scores
+            return baseVar + '_s';
         }
 
         function createPopupContent(props) {
-            const useQuantile = document.getElementById('use-quantile').checked;
-            const useQuantiled = document.getElementById('use-quantiled-scores').checked;
-            const suffix = useQuantile ? '_z' : (useQuantiled ? '_q' : '_s');
-            const scoreType = useQuantile ? 'Quantile' : (useQuantiled ? 'Robust Min-Max' : 'Basic Min-Max');
+            // ARCHIVED: Score type selection - now defaults to basic min-max scores
+            // const useQuantile = document.getElementById('use-quantile').checked;
+            // const useQuantiled = document.getElementById('use-quantiled-scores').checked;
+            const suffix = '_s'; // Always use basic min-max scores
+            const scoreType = 'Basic Min-Max';
             
             return `
                 <div style="max-height: 300px; overflow-y: auto; padding-right: 10px;">
@@ -1928,8 +1928,9 @@
         // Filter and normalization controls - all use client-side processing
         const filters = ['filter-yearbuilt-enabled', 'filter-neigh1d-enabled', 'filter-yearbuilt-exclude-unknown', 
                         'filter-strcnt-enabled', 'filter-wui-zero-enabled', 'filter-vhsz-zero-enabled', 
-                        'filter-brns-enabled', 'filter-agri-protection-enabled', 'use-basic-scores', 'use-quantiled-scores', 'use-quantile',
+                        'filter-brns-enabled', 'filter-agri-protection-enabled', 
                         'use-local-normalization'];
+        // ARCHIVED: Removed score type filters - 'use-basic-scores', 'use-quantiled-scores', 'use-quantile' - now defaults to basic min-max
         filters.forEach(id => {
             document.getElementById(id).addEventListener('change', () => {
                 updateScores(); // Client-side processing handles all changes
