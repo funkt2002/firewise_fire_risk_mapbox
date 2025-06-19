@@ -33,9 +33,16 @@ class WelcomePopup {
                     <div class="welcome-popup-body">
                         <div id="welcome-popup-content">
                             <div class="development-note">
-                                <p><strong>NOTE: This application is still under development. There are bugs. If you find one or things begin working poorly, just refresh the page.</strong></p>
-                                <p><strong>This app can also be slow to run. For faster results, please begin by using the spatial filters below to subset to a region of interest.</strong></p>
-                                <p><strong>Thank you!</strong></p>
+                                <p><strong>UPDATE: Recent Improvements</strong></p>
+                                <ul style="margin: 10px 0; padding-left: 20px;">
+                                    <li>Improved client-side calculations for faster operation after initial data load</li>
+                                    <li>Cleaner, simpler, and more user-friendly interface</li>
+                                    <li>Enhanced infer weights tool now supports multiple discontiguous regions</li>
+                                    <li>Fixed several bugs and improved overall stability</li>
+                                    <li>Added collapsible sections for better organization</li>
+                                </ul>
+                                <p><strong>NOTE: Initial data load takes a few seconds. For faster results, use spatial filters to subset to your region of interest.</strong></p>
+                                <p><strong>This application is still under development. If you encounter issues, please refresh the page. Thank you!</strong></p>
                             </div>
                             
                             <p> This tool is intended to assess the risk of wildfire and fire spread between parcels.</p>
