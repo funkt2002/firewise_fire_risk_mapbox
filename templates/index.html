@@ -1563,8 +1563,13 @@
             
             try {
                 // Check if we have complete dataset stored and can use client-side processing
-                if (window.fireRiskScoring.getCompleteDatasetCount() > 0) {
+                if (window.clientFilterManager.getCompleteDataset()) {
                     console.log('Using comprehensive client-side processing (filtering + scoring)');
+                    
+                    // Ensure the fire risk scoring manager also has the complete dataset
+                    if (!window.fireRiskScoring.getCompleteDatasetCount()) {
+                        window.fireRiskScoring.storeCompleteData(window.clientFilterManager.getCompleteDataset());
+                    }
                     
                     // Use the new processData method for everything client-side
                     const clientResult = window.fireRiskScoring.processData(
@@ -1596,8 +1601,8 @@
                     }
                 }
                 
-                // First time load: fetch complete dataset from server
-                console.log('Loading complete dataset from server (first time)');
+                // First time load: fetch raw dataset from server for dynamic normalization
+                console.log('Loading raw dataset from server for client-side processing');
                 
                 const responseData = await window.apiClient.prepareData({
                     weights,
@@ -1609,13 +1614,61 @@
                     ...filters
                 });
                 
-                // Store complete dataset for future client-side processing
-                window.fireRiskScoring.storeCompleteData(responseData);
-                
-                // Update current data and map
-                currentData = responseData;
-                updateMap();
-                updateStatistics();
+                // Check if we got raw data that requires client-side processing
+                if (responseData.requires_client_processing) {
+                    console.log('Raw data received, performing client-side normalization and scoring...');
+                    
+                    // Store complete raw dataset
+                    window.clientFilterManager.storeCompleteDataset(responseData);
+                    
+                    // Perform client-side processing with current weights and filters
+                    const processedData = window.fireRiskScoring.processData(
+                        weights, 
+                        filters, 
+                        maxParcels,
+                        filters.use_local_normalization,
+                        filters.use_quantile,
+                        filters.use_quantiled_scores
+                    );
+                    
+                    if (processedData) {
+                        currentData = processedData;
+                        updateMap();
+                        updateStatistics();
+                        console.log('Client-side processing completed successfully');
+                    } else {
+                        throw new Error('Client-side processing failed');
+                    }
+                } else {
+                    // Fallback: treat any data from /api/prepare as raw data for client-side processing
+                    console.log('Treating server data as raw for client-side processing');
+                    
+                    // Store raw dataset for filtering
+                    window.clientFilterManager.storeCompleteDataset(responseData);
+                    
+                    // Process with current weights and filters
+                    const processedData = window.fireRiskScoring.processData(
+                        weights, 
+                        filters, 
+                        maxParcels,
+                        filters.use_local_normalization,
+                        filters.use_quantile,
+                        filters.use_quantiled_scores
+                    );
+                    
+                    if (processedData) {
+                        currentData = processedData;
+                        updateMap();
+                        updateStatistics();
+                        console.log('Fallback client-side processing completed');
+                    } else {
+                        // Last resort - use raw data directly (should not happen)
+                        currentData = responseData;
+                        updateMap();
+                        updateStatistics();
+                        console.warn('Using raw data directly without scoring');
+                    }
+                }
                 
                 // Update normalization mode display
                 if (responseData.use_local_normalization !== undefined) {

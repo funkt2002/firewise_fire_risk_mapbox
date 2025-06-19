@@ -688,15 +688,11 @@ def prepare_data():
         total_parcels_before_filter = dict(result)['total_count'] if result else 0
         timings['count_query'] = time.time() - count_start
         
-        # Prepare columns - get all score variables and raw variables
+        # Prepare columns - get only raw variables (no precomputed scores for dynamic normalization)
         col_prep_start = time.time()
-        all_score_vars = []
-        for var_base in WEIGHT_VARS_BASE:
-            all_score_vars.extend([var_base + '_s', var_base + '_q', var_base + '_z'])
         
-        other_columns = ['yearbuilt', 'qtrmi_cnt', 'hlfmi_agri', 'hlfmi_wui', 'hlfmi_vhsz', 
-                        'hlfmi_fb', 'hlfmi_brn', 'num_neighb', 'parcel_id', 'strcnt', 
-                        'neigh1_d', 'apn', 'all_ids', 'perimeter', 'par_elev', 'avg_slope',
+        other_columns = ['yearbuilt', 'num_neighb', 'parcel_id', 'strcnt', 
+                        'apn', 'all_ids', 'perimeter', 'par_elev', 'avg_slope',
                         'par_aspe_1', 'max_slope', 'num_brns']
         
         raw_var_columns = [RAW_VAR_MAP[var_base] for var_base in WEIGHT_VARS_BASE]
@@ -709,7 +705,7 @@ def prepare_data():
             else:
                 capped_raw_columns.append(raw_var)
         
-        all_columns = capped_raw_columns + all_score_vars + other_columns
+        all_columns = capped_raw_columns + other_columns
         timings['column_preparation'] = time.time() - col_prep_start
         
         # Query data from database
@@ -760,53 +756,21 @@ def prepare_data():
             weights = {k: v/total_weight for k, v in weights.items()}
         timings['weight_normalization'] = time.time() - weight_norm_start
         
-        # Calculate initial scores (this adds individual factor scores and composite scores)
+        # Skip server-side score calculation - will be done client-side for dynamic normalization
         scoring_start = time.time()
-        scored_results = calculate_initial_scores(
-            raw_results, weights, use_local_normalization, 
-            use_quantile, use_quantiled_scores, max_parcels
-        )
-        timings['score_calculation'] = time.time() - scoring_start
+        timings['score_calculation'] = 0  # No server-side scoring
         
-        # Create GeoJSON features
+        # Create GeoJSON features with only raw data
         feature_creation_start = time.time()
         features = []
         
-        for row in scored_results:
+        for row in raw_results:
             row_dict = dict(row)
             
-            # Include all individual factor scores for client-side calculation
-            factor_scores = {}
-            if use_local_normalization:
-                # Include calculated factor scores
-                for var_base in WEIGHT_VARS_BASE:
-                    score_key = var_base + '_score'
-                    if score_key in row_dict:
-                        factor_scores[var_base + '_s'] = row_dict[score_key]
-            else:
-                # Include global scores
-                if use_quantile:
-                    score_suffix = '_z'
-                elif use_quantiled_scores:
-                    score_suffix = '_q'
-                else:
-                    score_suffix = '_s'
-                
-                for var_base in WEIGHT_VARS_BASE:
-                    score_var = var_base + score_suffix
-                    if score_var in row_dict and row_dict[score_var] is not None:
-                        factor_scores[var_base + '_s'] = float(row_dict[score_var])
-                    else:
-                        factor_scores[var_base + '_s'] = 0.0
-            
-            # Properties for the feature
+            # Properties include only raw data - no pre-computed scores
             properties = {
                 "id": row_dict['id'],
-                "score": row_dict['score'],
-                "rank": row_dict['rank'],
-                "top500": row_dict['top500'],
-                **factor_scores,  # Individual factor scores for client-side calculation
-                **{k: row_dict[k] for k in row_dict.keys() if k not in ['id', 'geometry', 'score', 'rank', 'top500'] and not k.endswith('_score')}
+                **{k: row_dict[k] for k in row_dict.keys() if k not in ['id', 'geometry']}
             }
             
             features.append({
@@ -824,16 +788,17 @@ def prepare_data():
         response_data = {
             "type": "FeatureCollection",
             "features": features,
-            "status": "prepared",
+            "status": "raw_data_loaded",  # Indicate this is raw data for client-side processing
             "total_parcels_before_filter": total_parcels_before_filter,
             "total_parcels_after_filter": len(raw_results),
             "use_local_normalization": use_local_normalization,
             "weights_used": weights,
             "timings": timings,
-            "total_time": total_time
+            "total_time": total_time,
+            "requires_client_processing": True  # Flag to indicate client-side processing needed
         }
         
-        logger.info(f"Prepare completed in {total_time:.2f}s - sent {len(features)} parcels with individual factor scores")
+        logger.info(f"Prepare completed in {total_time:.2f}s - sent {len(features)} parcels with raw data for client-side processing")
         return jsonify(response_data)
         
     except Exception as e:

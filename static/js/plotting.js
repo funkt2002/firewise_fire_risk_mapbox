@@ -146,6 +146,7 @@ class PlottingManager {
                 row.map(val => val.toFixed(2))
             ),
             texttemplate: '%{text}',
+            textinfo: 'text',
             textfont: {
                 color: 'black',
                 size: 10
