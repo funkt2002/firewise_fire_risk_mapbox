@@ -131,6 +131,9 @@ class PlottingManager {
                 [0.5, 'white'], 
                 [1, 'red']
             ],
+            text: correlationMatrix.map(row => row.map(val => val.toFixed(2))),
+            texttemplate: '%{text}',
+            textfont: { color: 'black', size: 12 },
             zmid: 0,
             zmin: -1,
             zmax: 1,
