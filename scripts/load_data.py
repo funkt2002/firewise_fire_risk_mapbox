@@ -64,6 +64,30 @@ class ParcelDataLoader:
             logger.error(f"Failed to drop tables: {e}")
             self.conn.rollback()
             raise
+
+    def drop_parcels_only(self):
+        """Drop only the parcels table, preserving auxiliary layers"""
+        try:
+            self.cur.execute("DROP TABLE IF EXISTS parcels CASCADE;")
+            self.conn.commit()
+            logger.info("Successfully dropped parcels table only")
+            
+        except Exception as e:
+            logger.error(f"Failed to drop parcels table: {e}")
+            self.conn.rollback()
+            raise
+
+    def drop_structures_only(self):
+        """Drop only the structures table, preserving other layers"""
+        try:
+            self.cur.execute("DROP TABLE IF EXISTS structures CASCADE;")
+            self.conn.commit()
+            logger.info("Successfully dropped structures table only")
+            
+        except Exception as e:
+            logger.error(f"Failed to drop structures table: {e}")
+            self.conn.rollback()
+            raise
     
     def create_tables(self):
         """Create necessary tables if they don't exist"""
@@ -753,7 +777,7 @@ class ParcelDataLoader:
                 'perimeter', 'par_elev', 'avg_slope', 'max_slope', 'uphill_s', 'num_brns'
             ]
             
-            text_columns = ['parcel_id', 'apn', 'all_ids', 'par_aspe_1']
+            text_columns = ['parcel_id', 'apn', 'all_ids', 'par_asp_dr']
             
             logger.info("\nColumn Statistics:")
             logger.info("-" * 100)
@@ -828,6 +852,8 @@ def main():
     parser.add_argument('--burnscars', help='Path to burn scars file')
     parser.add_argument('--create-tables', action='store_true', help='Create database tables')
     parser.add_argument('--drop-tables', action='store_true', help='Drop existing tables before creating new ones')
+    parser.add_argument('--drop-parcels-only', action='store_true', help='Drop only the parcels table, preserving auxiliary layers')
+    parser.add_argument('--drop-structures-only', action='store_true', help='Drop only the structures table, preserving other layers')
     parser.add_argument('--verify', action='store_true', help='Verify loaded data')
     
     args = parser.parse_args()
@@ -840,6 +866,10 @@ def main():
         # Drop tables if requested
         if args.drop_tables:
             loader.drop_tables()
+        elif args.drop_parcels_only:
+            loader.drop_parcels_only()
+        elif args.drop_structures_only:
+            loader.drop_structures_only()
         
         # Create tables if requested
         if args.create_tables:
