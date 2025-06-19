@@ -846,49 +846,53 @@
         </div>
         
         <div class="control-section">
-            <h2>Filters</h2>
-            <!-- Advanced Score Options - Expandable -->
-            <div style="margin-bottom: 15px;">
-                <div style="display: flex; align-items: center; cursor: pointer; margin-bottom: 8px;" id="advanced-score-header">
-                    <span style="font-size: 12px; color: #aaa; font-weight: 600;">Advanced Score Options</span>
-                    <span style="margin-left: 8px; font-size: 12px; color: #888;" id="advanced-score-toggle">▶</span>
-                </div>
-                <div id="advanced-score-content" style="display: none; margin-left: 12px; padding-left: 8px; border-left: 2px solid rgba(255,255,255,0.1);">
-                    <div style="margin-bottom: 10px;">
-                        <h4 style="font-size: 11px; color: #aaa; margin-bottom: 6px;">Score Type:</h4>
-                        <div class="toggle-container">
-                            <label class="toggle-label">
-                                <input type="radio" name="score-type" id="use-basic-scores" value="basic" checked>
-                                Basic Min-Max Scores
-                            </label>
-                        </div>
-                        <div class="toggle-container">
-                            <label class="toggle-label">
-                                <input type="radio" name="score-type" id="use-quantiled-scores" value="quantiled">
-                                Robust Min-Max Scores
-                            </label>
-                        </div>
-                        <div class="toggle-container">
-                            <label class="toggle-label">
-                                <input type="radio" name="score-type" id="use-quantile" value="quantile">
-                                Quantile Scores
-                            </label>
-                        </div>
-                    </div>
-                    <div>
-                        <h4 style="font-size: 11px; color: #aaa; margin-bottom: 6px;">Normalization:</h4>
-                        <div class="toggle-container">
-                            <label class="toggle-label">
-                                <input type="checkbox" id="use-local-normalization" checked>
-                                Renormalize scores for filtered data
-                            </label>
-                        </div>
-                        <div id="local-norm-info" style="font-size: 11px; color: #888; margin-top: 4px; display: none;">
-                            <div id="local-norm-status"></div>
-                        </div>
-                    </div>
-                </div>
+            <div style="display: flex; align-items: center; cursor: pointer; margin-bottom: 8px;" id="filters-header">
+                <h2 style="margin: 0;">Filters</h2>
+                <span style="margin-left: 8px; font-size: 12px; color: #888;" id="filters-toggle">▶</span>
             </div>
+            <div id="filters-content" style="display: none; margin-left: 12px; padding-left: 8px; border-left: 2px solid rgba(255,255,255,0.1);">
+                <!-- Advanced Score Options - Expandable -->
+                <div style="margin-bottom: 15px;">
+                    <div style="display: flex; align-items: center; cursor: pointer; margin-bottom: 8px;" id="advanced-score-header">
+                        <span style="font-size: 12px; color: #aaa; font-weight: 600;">Advanced Score Options</span>
+                        <span style="margin-left: 8px; font-size: 12px; color: #888;" id="advanced-score-toggle">▶</span>
+                    </div>
+                    <div id="advanced-score-content" style="display: none; margin-left: 12px; padding-left: 8px; border-left: 2px solid rgba(255,255,255,0.1);">
+                        <div style="margin-bottom: 10px;">
+                            <h4 style="font-size: 11px; color: #aaa; margin-bottom: 6px;">Score Type:</h4>
+                            <div class="toggle-container">
+                                <label class="toggle-label">
+                                    <input type="radio" name="score-type" id="use-basic-scores" value="basic" checked>
+                                    Basic Min-Max Scores
+                                </label>
+                            </div>
+                            <div class="toggle-container">
+                                <label class="toggle-label">
+                                    <input type="radio" name="score-type" id="use-quantiled-scores" value="quantiled">
+                                    Robust Min-Max Scores
+                                </label>
+                            </div>
+                            <div class="toggle-container">
+                                <label class="toggle-label">
+                                    <input type="radio" name="score-type" id="use-quantile" value="quantile">
+                                    Quantile Scores
+                                </label>
+                            </div>
+                        </div>
+                        <div>
+                            <h4 style="font-size: 11px; color: #aaa; margin-bottom: 6px;">Normalization:</h4>
+                            <div class="toggle-container">
+                                <label class="toggle-label">
+                                    <input type="checkbox" id="use-local-normalization" checked>
+                                    Renormalize scores for filtered data
+                                </label>
+                            </div>
+                            <div id="local-norm-info" style="font-size: 11px; color: #888; margin-top: 4px; display: none;">
+                                <div id="local-norm-status"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             
             <div style="margin-bottom: 15px;">
                 <h3 style="font-size: 12px; color: #aaa; margin-bottom: 8px;">Exclude parcels without:</h3>
@@ -945,7 +949,89 @@
                 </div>
             </div>
 
-
+            <!-- Map Layers - Collapsible -->
+            <div style="margin-top: 15px;">
+                <div style="display: flex; align-items: center; cursor: pointer; margin-bottom: 8px;" id="map-layers-header">
+                    <span style="font-size: 12px; color: #aaa; font-weight: 600;">Map Layers</span>
+                    <span style="margin-left: 8px; font-size: 12px; color: #888;" id="map-layers-toggle">▶</span>
+                </div>
+                <div id="map-layers-content" style="display: none; margin-left: 12px; padding-left: 8px; border-left: 2px solid rgba(255,255,255,0.1);">
+                    <div class="toggle-container">
+                        <label class="toggle-label">
+                            <input type="checkbox" class="layer-toggle" data-layer="parcels" checked>
+                            Parcels
+                        </label>
+                    </div>
+                    <div class="toggle-container" style="margin-left: 20px; margin-bottom: 10px;">
+                        <label class="toggle-label" style="font-size: 12px; color: #ccc;">
+                            Opacity:
+                            <input type="range" id="parcels-opacity" min="0" max="100" value="80" style="width: 100px; margin-left: 8px;">
+                        </label>
+                    </div>
+                    <div class="toggle-container">
+                        <label class="toggle-label">
+                            <input type="checkbox" class="layer-toggle" data-layer="agricultural">
+                            Agriculture
+                        </label>
+                    </div>
+                    <div class="toggle-container">
+                        <label class="toggle-label">
+                            <input type="checkbox" class="layer-toggle" data-layer="fuelbreaks">
+                            Fuel Breaks
+                        </label>
+                    </div>
+                    <div class="toggle-container">
+                        <label class="toggle-label">
+                            <input type="checkbox" class="layer-toggle" data-layer="wui">
+                            WUI Zone
+                        </label>
+                    </div>
+                    <div class="toggle-container">
+                        <label class="toggle-label">
+                            <input type="checkbox" class="layer-toggle" data-layer="hazard">
+                            Very High Hazard Zone
+                        </label> 
+                    </div>
+                    <div class="toggle-container">
+                        <label class="toggle-label">
+                            <input type="checkbox" class="layer-toggle" data-layer="structures">
+                            Structures
+                        </label>
+                    </div>
+                    <div class="toggle-container">
+                        <label class="toggle-label">
+                            <input type="checkbox" class="layer-toggle" data-layer="firewise">
+                            Firewise Communities
+                        </label>
+                    </div>
+                    <div class="toggle-container">
+                        <label class="toggle-label">
+                            <input type="checkbox" class="layer-toggle" data-layer="burnscars">
+                            Burn Scars
+                        </label>
+                    </div>
+                    <h3 style="font-size: 12px; color: #aaa; margin: 15px 0 5px 0;">Base Layers</h3>
+                    <div class="toggle-container">
+                        <label class="toggle-label">
+                            <input type="checkbox" class="layer-toggle" data-layer="dark" checked>
+                            Dark
+                        </label>
+                    </div>
+                    <div class="toggle-container">
+                        <label class="toggle-label">
+                            <input type="checkbox" class="layer-toggle" data-layer="light">
+                            Light
+                        </label>
+                    </div> 
+                    <div class="toggle-container">
+                        <label class="toggle-label">
+                            <input type="checkbox" class="layer-toggle" data-layer="satellite">
+                            Satellite
+                        </label>
+                    </div>
+                </div>
+            </div>
+            </div>
         </div>
         
 
@@ -978,82 +1064,7 @@
 
         
 
-        <div class="control-section">
-            <h2>Map Layers</h2>
-            <div class="toggle-container">
-                <label class="toggle-label">
-                    <input type="checkbox" class="layer-toggle" data-layer="parcels" checked>
-                    Parcels
-                </label>
-            </div>
-            <div class="toggle-container" style="margin-left: 20px; margin-bottom: 10px;">
-                <label class="toggle-label" style="font-size: 12px; color: #ccc;">
-                    Opacity:
-                    <input type="range" id="parcels-opacity" min="0" max="100" value="80" style="width: 100px; margin-left: 8px;">
-                </label>
-            </div>
-            <div class="toggle-container">
-                <label class="toggle-label">
-                    <input type="checkbox" class="layer-toggle" data-layer="agricultural">
-                    Agriculture
-                </label>
-            </div>
-            <div class="toggle-container">
-                <label class="toggle-label">
-                    <input type="checkbox" class="layer-toggle" data-layer="fuelbreaks">
-                    Fuel Breaks
-                </label>
-            </div>
-            <div class="toggle-container">
-                <label class="toggle-label">
-                    <input type="checkbox" class="layer-toggle" data-layer="wui">
-                    WUI Zone
-                </label>
-            </div>
-            <div class="toggle-container">
-                <label class="toggle-label">
-                    <input type="checkbox" class="layer-toggle" data-layer="hazard">
-                    Very High Hazard Zone
-                </label> 
-            </div>
-            <div class="toggle-container">
-                <label class="toggle-label">
-                    <input type="checkbox" class="layer-toggle" data-layer="structures">
-                    Structures
-                </label>
-            </div>
-            <div class="toggle-container">
-                <label class="toggle-label">
-                    <input type="checkbox" class="layer-toggle" data-layer="firewise">
-                    Firewise Communities
-                </label>
-            </div>
-            <div class="toggle-container">
-                <label class="toggle-label">
-                    <input type="checkbox" class="layer-toggle" data-layer="burnscars">
-                    Burn Scars
-                </label>
-            </div>
-            <h3 style="font-size: 12px; color: #aaa; margin: 15px 0 5px 0;">Base Layers</h3>
-            <div class="toggle-container">
-                <label class="toggle-label">
-                    <input type="checkbox" class="layer-toggle" data-layer="dark" checked>
-                    Dark
-                </label>
-            </div>
-            <div class="toggle-container">
-                <label class="toggle-label">
-                    <input type="checkbox" class="layer-toggle" data-layer="light">
-                    Light
-                </label>
-            </div> 
-            <div class="toggle-container">
-                <label class="toggle-label">
-                    <input type="checkbox" class="layer-toggle" data-layer="satellite">
-                    Satellite
-                </label>
-            </div>
-        </div>
+
     </div>
     
     <!-- Add measure tool container -->
@@ -1950,6 +1961,34 @@
         document.getElementById('results-header').addEventListener('click', () => {
             const content = document.getElementById('results-content');
             const toggle = document.getElementById('results-toggle');
+            
+            if (content.style.display === 'none') {
+                content.style.display = 'block';
+                toggle.textContent = '▼';
+            } else {
+                content.style.display = 'none';
+                toggle.textContent = '▶';
+            }
+        });
+
+        // Filters expandable dropdown
+        document.getElementById('filters-header').addEventListener('click', () => {
+            const content = document.getElementById('filters-content');
+            const toggle = document.getElementById('filters-toggle');
+            
+            if (content.style.display === 'none') {
+                content.style.display = 'block';
+                toggle.textContent = '▼';
+            } else {
+                content.style.display = 'none';
+                toggle.textContent = '▶';
+            }
+        });
+
+        // Map Layers expandable dropdown
+        document.getElementById('map-layers-header').addEventListener('click', () => {
+            const content = document.getElementById('map-layers-content');
+            const toggle = document.getElementById('map-layers-toggle');
             
             if (content.style.display === 'none') {
                 content.style.display = 'block';
