@@ -789,14 +789,47 @@
         <div class="control-section">
             <h2>Calculations</h2>
             <div class="input-group">
-                <label>Max Parcels</label>
+                <label>Parcels for Selection</label>
                 <input type="number" class="number-input" id="max-parcels" value="500" min="1" max="5000">
             </div>
             <button class="button primary" id="calculate-btn">Calculate</button>
-            <button class="button" id="score-distribution-btn" style="margin-top: 8px;">Calculated Risk Score Distribution</button>
-            <button class="button" id="show-correlation-matrix" style="margin-top: 8px;">Variable Correlation Matrix</button>
             <div style="text-align: right; margin-top: 5px;">
-                <span style="font-size: 11px; color: #888;">Max Parcels: <span id="max-parcels-value">500</span></span>
+                <span style="font-size: 11px; color: #888;">Parcels for Selection: <span id="max-parcels-value">500</span></span>
+            </div>
+            
+            <!-- Results - Collapsible -->
+            <div style="margin-top: 15px;">
+                <div style="display: flex; align-items: center; cursor: pointer; margin-bottom: 8px;" id="results-header">
+                    <span style="font-size: 12px; color: #aaa; font-weight: 600;">Results & Analysis</span>
+                    <span style="margin-left: 8px; font-size: 12px; color: #888;" id="results-toggle">▶</span>
+                </div>
+                <div id="results-content" style="display: none; margin-left: 12px; padding-left: 8px; border-left: 2px solid rgba(255,255,255,0.1);">
+                    <div class="stats">
+                        <div class="stats-row">
+                            <span>Total Parcels:</span>
+                            <span class="stats-value" id="total-parcels">56308</span>
+                        </div>
+                        <div class="stats-row">
+                            <span>Selected:</span>
+                            <span class="stats-value" id="selected-parcels">500</span>
+                        </div>
+                        <div class="stats-row">
+                            <span>Total Risk:</span>
+                            <span class="stats-value" id="total-risk">408.88</span>
+                        </div>
+                        <div class="stats-row">
+                            <span>Avg Risk:</span>
+                            <span class="stats-value" id="avg-risk">0.82</span>
+                        </div>
+                        <div class="stats-row" id="normalization-row" style="display: none;">
+                            <span>Normalization:</span>
+                            <span class="stats-value" id="normalization-mode">Global</span>
+                        </div>
+                    </div>
+                    <button class="button" id="export-shapefile" style="margin: 8px 0;">Export Shapefile</button>
+                    <button class="button" id="score-distribution-btn" style="margin-bottom: 8px;">Calculated Risk Score Distribution</button>
+                    <button class="button" id="show-correlation-matrix" style="margin-bottom: 8px;">Variable Correlation Matrix</button>
+                </div>
             </div>
         </div>
         
@@ -942,32 +975,7 @@
 
         </div>
         
-        <div class="control-section">
-            <h2>Results</h2>
-            <div class="stats">
-                <div class="stats-row">
-                    <span>Total Parcels:</span>
-                    <span class="stats-value" id="total-parcels">56308</span>
-                </div>
-                <div class="stats-row">
-                    <span>Selected:</span>
-                    <span class="stats-value" id="selected-parcels">500</span>
-                </div>
-                <div class="stats-row">
-                    <span>Total Risk:</span>
-                    <span class="stats-value" id="total-risk">408.88</span>
-                </div>
-                <div class="stats-row">
-                    <span>Avg Risk:</span>
-                    <span class="stats-value" id="avg-risk">0.82</span>
-                </div>
-                <div class="stats-row" id="normalization-row" style="display: none;">
-                    <span>Normalization:</span>
-                    <span class="stats-value" id="normalization-mode">Global</span>
-                </div>
-            </div>
-            <button class="button" id="export-shapefile">Export Shapefile</button>
-        </div>
+
         
 
         <div class="control-section">
@@ -1420,6 +1428,25 @@
                     </div>
 
                     <div style="margin: 10px 0;">
+                        <h4 style="margin: 0 0 5px 0; font-size: 12px; color: #aaa;">Raw Values</h4>
+                        <p><strong>Nearest Neighbor:</strong> ${props.neigh1_d?.toFixed(2) || 'N/A'} ft</p>
+                        <p><strong>Year Built:</strong> ${props.yearbuilt || 'Unknown'}</p>
+                        <p><strong>Number of Burn Scars:</strong> ${props.num_brns || 'N/A'}</p>
+                        <p><strong>Structures in 1/4 mi:</strong> ${props.qtrmi_cnt || 'N/A'}</p>
+                        <p><strong>Structure Count:</strong> ${props.strcnt || 'N/A'}</p>
+                        <p><strong>WUI % (1/2 mi):</strong> ${props.hlfmi_wui?.toFixed(2) || 'N/A'}%</p>
+                        <p><strong>Fire VHSZ % (1/2 mi):</strong> ${props.hlfmi_vhsz?.toFixed(2) || 'N/A'}%</p>
+                        <p><strong>Agricultural % (1/2 mi):</strong> ${props.hlfmi_agri?.toFixed(2) || 'N/A'}%</p>
+                        <p><strong>Firebreak % (1/2 mi):</strong> ${props.hlfmi_fb?.toFixed(2) || 'N/A'}%</p>
+                        <p><strong>Burn Scar % (1/2 mi):</strong> ${props.hlfmi_brn?.toFixed(2) || 'N/A'}%</p>
+                        <p><strong>Number of Neighbors:</strong> ${props.num_neighb || 'N/A'}</p>
+                        <p><strong>Parcel Slope:</strong> ${props.avg_slope?.toFixed(2) || 'N/A'}°</p>
+                        <p><strong>Max Slope:</strong> ${props.max_slope?.toFixed(2) || 'N/A'}°</p>
+                        <p><strong>Elevation:</strong> ${props.par_elev?.toFixed(2) || 'N/A'} ft</p>
+                        <p><strong>Aspect:</strong> ${props.par_aspe_1 || 'N/A'}</p>
+                    </div>
+
+                    <div style="margin: 10px 0;">
                         <h4 style="margin: 0 0 5px 0; font-size: 12px; color: #aaa;">Risk Factor Scores (${scoreType})</h4>
                         <p><strong>Structures (1/4 mi):</strong> ${props['qtrmi' + suffix]?.toFixed(3) || 'N/A'}</p>
                         <p><strong>WUI Coverage (1/2 mi):</strong> ${props['hwui' + suffix]?.toFixed(3) || 'N/A'}</p>
@@ -1429,27 +1456,6 @@
                         <p><strong>Slope Score:</strong> ${props['slope' + suffix]?.toFixed(3) || 'N/A'}</p>
                         <p><strong>Neighbor Distance Score:</strong> ${props['neigh1d' + suffix]?.toFixed(3) || 'N/A'}</p>
                         <p><strong>Burn Scar Coverage (1/2 mi):</strong> ${props['hbrn' + suffix]?.toFixed(3) || 'N/A'}</p>
-                    </div>
-
-                    <div style="margin: 10px 0;">
-                        <h4 style="margin: 0 0 5px 0; font-size: 12px; color: #aaa;">Raw Values</h4>
-                        <p><strong>Nearest Neighbor Distance:</strong> ${props.neigh1_d?.toFixed(2) || 'N/A'} ft</p>
-                        <p><strong>Structures in 1/4 mi:</strong> ${props.qtrmi_cnt || 'N/A'}</p>
-                        <p><strong>Number of Burn Scars:</strong> ${props.num_brns || 'N/A'}</p>
-                        <p><strong>Parcel Slope:</strong> ${props.avg_slope?.toFixed(2) || 'N/A'}°</p>
-                        <p><strong>WUI % (1/2 mi):</strong> ${props.hlfmi_wui?.toFixed(2) || 'N/A'}%</p>
-                        <p><strong>Fire VHSZ % (1/2 mi):</strong> ${props.hlfmi_vhsz?.toFixed(2) || 'N/A'}%</p>
-                        <p><strong>Year Built:</strong> ${props.yearbuilt || 'Unknown'}</p>
-                        <p><strong>Max Slope:</strong> ${props.max_slope?.toFixed(2) || 'N/A'}°</p>
-                        <p><strong>Agricultural % (1/2 mi):</strong> ${props.hlfmi_agri?.toFixed(2) || 'N/A'}%</p>
-                        <p><strong>Firebreak % (1/2 mi):</strong> ${props.hlfmi_fb?.toFixed(2) || 'N/A'}%</p>
-                        <p><strong>Burn Scar % (1/2 mi, Raw):</strong> ${props.hlfmi_brn?.toFixed(2) || 'N/A'}%</p>
-                        <p><strong>Number of Neighbors:</strong> ${props.num_neighb || 'N/A'}</p>
-                        <p><strong>Structure Count:</strong> ${props.strcnt || 'N/A'}</p>
-                        <p><strong>Burn Scar % (1/2 mi):</strong> ${props.hbrn_s?.toFixed(2) || 'N/A'}%</p>
-                        <p><strong>Perimeter:</strong> ${props.perimeter?.toFixed(2) || 'N/A'} ft</p>
-                        <p><strong>Elevation:</strong> ${props.par_elev?.toFixed(2) || 'N/A'} ft</p>
-                        <p><strong>Aspect:</strong> ${props.par_aspe_1 || 'N/A'}</p>
                     </div>
                 </div>
             `;
@@ -1930,6 +1936,20 @@
         document.getElementById('advanced-score-header').addEventListener('click', () => {
             const content = document.getElementById('advanced-score-content');
             const toggle = document.getElementById('advanced-score-toggle');
+            
+            if (content.style.display === 'none') {
+                content.style.display = 'block';
+                toggle.textContent = '▼';
+            } else {
+                content.style.display = 'none';
+                toggle.textContent = '▶';
+            }
+        });
+
+        // Results expandable dropdown
+        document.getElementById('results-header').addEventListener('click', () => {
+            const content = document.getElementById('results-content');
+            const toggle = document.getElementById('results-toggle');
             
             if (content.style.display === 'none') {
                 content.style.display = 'block';
