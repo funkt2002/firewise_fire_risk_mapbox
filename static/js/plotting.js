@@ -180,12 +180,16 @@ class PlottingManager {
             clientData = window.currentData;
         }
         
-        const useClientSide = filters.use_local_normalization || clientData;
+        // Always use client-side for local normalization or when we have client data
+        // For score variables with local normalization, we need to force client-side processing
+        const needsClientSide = filters.use_local_normalization || 
+                               (variable.endsWith('_s') || variable.endsWith('_q') || variable.endsWith('_z'));
+        const useClientSide = needsClientSide && clientData;
         
         let data;
         let mean;
         
-        if (useClientSide && clientData) {
+        if (useClientSide) {
             // Use client-side processed data
             console.log('Using client-side data for distribution of:', variable);
             
@@ -193,10 +197,48 @@ class PlottingManager {
             
             // Handle both score variables and raw variables
             if (variable.endsWith('_s') || variable.endsWith('_q') || variable.endsWith('_z')) {
-                // Score variable - extract from client-side calculated scores
+                // Score variable - check if we need to calculate scores
                 const baseVar = variable.slice(0, -2); // Remove _s, _q, or _z
+                const scoreKey = baseVar + '_s';
+                
+                // Check if scores are already calculated
+                const hasScores = clientData.features.some(f => f.properties[scoreKey] !== undefined);
+                
+                if (!hasScores && filters.use_local_normalization && window.fireRiskScoring) {
+                    // Need to calculate scores first
+                    console.log('Triggering client-side score calculation for distribution plot');
+                    
+                    // Get current weights from sliders
+                    const weights = {};
+                    const weightSliders = document.querySelectorAll('.weight-slider');
+                    const total = Array.from(weightSliders).reduce((sum, slider) => {
+                        const cb = document.getElementById(`exclude-${slider.id}`);
+                        const isExcluded = cb && cb.checked;
+                        return sum + (isExcluded ? 0 : parseFloat(slider.value));
+                    }, 0);
+                    
+                    weightSliders.forEach(slider => {
+                        const cb = document.getElementById(`exclude-${slider.id}`);
+                        const isExcluded = cb && cb.checked;
+                        weights[slider.id] = total > 0 && !isExcluded ? parseFloat(slider.value) / total : 0;
+                    });
+                    
+                    const maxParcels = parseInt(document.getElementById('max-parcels')?.value || 500);
+                    
+                    const processedData = window.fireRiskScoring.processData(
+                        weights, filters, maxParcels,
+                        filters.use_local_normalization,
+                        filters.use_quantile,
+                        filters.use_quantiled_scores
+                    );
+                    
+                    if (processedData && processedData.features) {
+                        clientData = processedData;
+                    }
+                }
+                
                 values = clientData.features
-                    .map(f => f.properties[baseVar + '_s']) // Client always uses _s suffix for calculated scores
+                    .map(f => f.properties[scoreKey]) // Client always uses _s suffix for calculated scores
                     .filter(v => v !== null && v !== undefined && !isNaN(v));
             } else {
                 // Raw variable - extract from properties with log transformations
