@@ -633,6 +633,34 @@ def get_columns():
         """)
         columns = cur.fetchall()
         
+        # Test specific columns that are failing
+        column_tests = {}
+        test_columns = ['par_buf_sl', 'hlfmi_agfb', 'par_asp_dr']
+        
+        for col in test_columns:
+            try:
+                cur.execute(f"SELECT {col} FROM parcels LIMIT 1")
+                result = cur.fetchone()
+                column_tests[col] = {"exists": True, "sample_value": dict(result)[col] if result else None}
+            except Exception as e:
+                column_tests[col] = {"exists": False, "error": str(e)}
+        
+        # Test the exact query that's failing
+        try:
+            raw_var_columns = [RAW_VAR_MAP[var_base] for var_base in WEIGHT_VARS_BASE]
+            capped_raw_columns = []
+            for raw_var in raw_var_columns:
+                if raw_var == 'neigh1_d':
+                    capped_raw_columns.append(f"LEAST({raw_var}, 5280) as {raw_var}")
+                else:
+                    capped_raw_columns.append(raw_var)
+            
+            test_query = f"SELECT {', '.join(capped_raw_columns[:3])} FROM parcels LIMIT 1"
+            cur.execute(test_query)
+            query_test = {"success": True, "query": test_query}
+        except Exception as e:
+            query_test = {"success": False, "error": str(e), "query": test_query if 'test_query' in locals() else "Query not built"}
+        
         cur.close()
         conn.close()
         
@@ -649,13 +677,17 @@ def get_columns():
             "all_columns": column_info,
             "score_analysis": score_columns,
             "weight_vars_base": WEIGHT_VARS_BASE,
+            "raw_var_map": RAW_VAR_MAP,
             "expected_s_columns": [var + '_s' for var in WEIGHT_VARS_BASE],
             "expected_q_columns": [var + '_q' for var in WEIGHT_VARS_BASE],
-            "expected_z_columns": [var + '_z' for var in WEIGHT_VARS_BASE]
+            "expected_z_columns": [var + '_z' for var in WEIGHT_VARS_BASE],
+            "column_tests": column_tests,
+            "query_test": query_test,
+            "database_url_hint": app.config.get('DATABASE_URL', 'Not set')[:50] + "..." if app.config.get('DATABASE_URL') else "Not set"
         })
         
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": str(e), "traceback": traceback.format_exc()}), 500
 
 # ====================
 # ROUTES - DATA PREPARATION & SCORING
