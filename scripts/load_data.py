@@ -100,6 +100,7 @@ class ParcelDataLoader:
                 CREATE TABLE IF NOT EXISTS parcels (
                     id SERIAL PRIMARY KEY,
                     geom GEOMETRY(GEOMETRY, 3857),
+                    geom_geojson TEXT,
                     
                     -- Score-related columns
                     qtrmi_s FLOAT,
@@ -236,7 +237,8 @@ class ParcelDataLoader:
                 "CREATE INDEX IF NOT EXISTS parcels_hlfmi_agfb_z_idx ON parcels (hlfmi_agfb_z);",
                 "CREATE INDEX IF NOT EXISTS parcels_num_brns_idx ON parcels (num_brns);",
                 "CREATE INDEX IF NOT EXISTS parcels_geom_type_idx ON parcels (geom_type);",
-                "CREATE INDEX IF NOT EXISTS parcels_par_asp_dr_idx ON parcels (par_asp_dr);"
+                "CREATE INDEX IF NOT EXISTS parcels_par_asp_dr_idx ON parcels (par_asp_dr);",
+                "CREATE INDEX IF NOT EXISTS parcels_geom_geojson_idx ON parcels USING HASH (geom_geojson);"
             ]
             
             for idx in indices:
@@ -325,13 +327,13 @@ class ParcelDataLoader:
                     else:
                         attrs.append(None)
                 
-                values.append((geom_wkt, geom_type) + tuple(attrs))
+                values.append((geom_wkt, geom_wkt, geom_type) + tuple(attrs))
             
             # Batch insert
             logger.info("Inserting parcels into database...")
             insert_query = """
                 INSERT INTO parcels (
-                    geom, geom_type,
+                    geom, geom_geojson, geom_type,
                     qtrmi_s, hwui_s, hagri_s, hvhsz_s, hfb_s, slope_s, neigh1d_s, uphill_s,
                     strdens_s, neigh2d_s, qtrpct_s, maxslp_s, hbrn_s, par_buf_sl_s, hlfmi_agfb_s,
                     qtrmi_q, hwui_q, hagri_q, hvhsz_q, hfb_q, slope_q, neigh1d_q, uphill_q,
@@ -346,7 +348,7 @@ class ParcelDataLoader:
                     direct_cou, across_cou, all_count
                 )
                 VALUES (
-                    ST_GeomFromText(%s, 3857), %s,
+                    ST_GeomFromText(%s, 3857), ST_AsGeoJSON(ST_Transform(ST_GeomFromText(%s, 3857), 4326)), %s,
                     %s, %s, %s, %s, %s, %s, %s, %s,
                     %s, %s, %s, %s, %s, %s, %s,
                     %s, %s, %s, %s, %s, %s, %s, %s,
@@ -522,23 +524,26 @@ class ParcelDataLoader:
                     
                     # Prepare values for insertion
                     values.append((
-                        geom, geom_type,
+                        geom, geom, geom_type,
                         fields['qtrmi_s'], fields['hwui_s'], fields['hagri_s'], fields['hvhsz_s'],
                         fields['hfb_s'], fields['slope_s'], fields['neigh1d_s'], fields['uphill_s'],
                         fields['strdens_s'], fields['neigh2d_s'], fields['qtrpct_s'], fields['maxslp_s'], fields['hbrn_s'],
+                        fields.get('par_buf_sl_s'), fields.get('hlfmi_agfb_s'),
                         fields['qtrmi_q'], fields['hwui_q'], fields['hagri_q'], fields['hvhsz_q'],
                         fields['hfb_q'], fields['slope_q'], fields['neigh1d_q'], fields['uphill_q'],
                         fields['strdens_q'], fields['neigh2d_q'], fields['qtrpct_q'], fields['maxslp_q'], fields['hbrn_q'],
+                        fields.get('par_buf_sl_q'), fields.get('hlfmi_agfb_q'),
                         fields['qtrmi_z'], fields['hwui_z'], fields['hagri_z'], fields['hvhsz_z'],
                         fields['hfb_z'], fields['slope_z'], fields['neigh1d_z'], fields['uphill_z'],
                         fields['strdens_z'], fields['neigh2d_z'], fields['qtrpct_z'], fields['maxslp_z'], fields['hbrn_z'],
+                        fields.get('par_buf_sl_z'), fields.get('hlfmi_agfb_z'),
                         fields['yearbuilt'], fields['qtrmi_cnt'], fields['hlfmi_agri'], fields['hlfmi_wui'],
                         fields['hlfmi_vhsz'], fields['hlfmi_fb'], fields['hlfmi_brn'], fields['num_neighb'], fields['strcnt'],
                         fields['neigh1_d'], fields['neigh2_d'], fields['perimeter'], fields['par_elev'],
-                        fields['par_elev_m'], fields['avg_slope'], fields['max_slope'], fields['par_aspe_1'],
-                        fields['str_slope'], fields['pixel_coun'], fields['num_brns'], fields['parcel_id'], fields['apn'],
-                        fields['all_ids'], fields['direct_ids'], fields['across_ids'], fields['area_sqft'],
-                        fields['str_dens'], fields['landval'], fields['bedrooms'], fields['baths'],
+                        fields['par_elev_m'], fields['avg_slope'], fields['max_slope'], fields['par_asp_dr'],
+                        fields['str_slope'], fields.get('par_buf_sl'), fields.get('hlfmi_agfb'), fields['pixel_coun'], fields['num_brns'], 
+                        fields['parcel_id'], fields['apn'], fields['all_ids'], fields['direct_ids'], fields['across_ids'], 
+                        fields['area_sqft'], fields['str_dens'], fields['landval'], fields['bedrooms'], fields['baths'],
                         fields['landuse'], fields['direct_cou'], fields['across_cou'], fields['all_count']
                     ))
                     
@@ -552,31 +557,31 @@ class ParcelDataLoader:
             logger.info("Inserting features into database...")
             insert_query = """
                 INSERT INTO parcels (
-                    geom, geom_type,
+                    geom, geom_geojson, geom_type,
                     qtrmi_s, hwui_s, hagri_s, hvhsz_s, hfb_s, slope_s, neigh1d_s, uphill_s,
-                    strdens_s, neigh2d_s, qtrpct_s, maxslp_s, hbrn_s,
+                    strdens_s, neigh2d_s, qtrpct_s, maxslp_s, hbrn_s, par_buf_sl_s, hlfmi_agfb_s,
                     qtrmi_q, hwui_q, hagri_q, hvhsz_q, hfb_q, slope_q, neigh1d_q, uphill_q,
-                    strdens_q, neigh2d_q, qtrpct_q, maxslp_q, hbrn_q,
+                    strdens_q, neigh2d_q, qtrpct_q, maxslp_q, hbrn_q, par_buf_sl_q, hlfmi_agfb_q,
                     qtrmi_z, hwui_z, hagri_z, hvhsz_z, hfb_z, slope_z, neigh1d_z, uphill_z,
-                    strdens_z, neigh2d_z, qtrpct_z, maxslp_z, hbrn_z,
+                    strdens_z, neigh2d_z, qtrpct_z, maxslp_z, hbrn_z, par_buf_sl_z, hlfmi_agfb_z,
                     yearbuilt, qtrmi_cnt, hlfmi_agri, hlfmi_wui, hlfmi_vhsz, hlfmi_fb, hlfmi_brn,
                     num_neighb, strcnt, neigh1_d, neigh2_d, perimeter, par_elev, par_elev_m,
-                    avg_slope, max_slope, par_aspe_1, str_slope, pixel_coun, num_brns,
+                    avg_slope, max_slope, par_asp_dr, str_slope, par_buf_sl, hlfmi_agfb, pixel_coun, num_brns,
                     parcel_id, apn, all_ids, direct_ids, across_ids,
                     area_sqft, str_dens, landval, bedrooms, baths, landuse,
                     direct_cou, across_cou, all_count
                 )
                 VALUES (
-                    ST_Transform(ST_GeomFromText(%s, 4326), 3857), %s,
+                    ST_Transform(ST_GeomFromText(%s, 4326), 3857), ST_AsGeoJSON(ST_GeomFromText(%s, 4326)), %s,
                     %s, %s, %s, %s, %s, %s, %s, %s,
-                    %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s, %s, %s, %s,
                     %s, %s, %s, %s, %s, %s, %s, %s,
-                    %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s, %s, %s, %s,
                     %s, %s, %s, %s, %s, %s, %s, %s,
-                    %s, %s, %s, %s, %s,
                     %s, %s, %s, %s, %s, %s, %s,
                     %s, %s, %s, %s, %s, %s, %s,
-                    %s, %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s, %s, %s, %s, %s,
                     %s, %s, %s, %s, %s,
                     %s, %s, %s, %s, %s, %s,
                     %s, %s, %s
