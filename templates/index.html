@@ -948,89 +948,88 @@
                     <input type="number" class="number-input" id="filter-neigh1d" min="0" max="1000" value="50" style="margin-left: 8px; width: 80px; vertical-align: middle;">
                 </div>
             </div>
-
-            <!-- Map Layers - Collapsible -->
-            <div style="margin-top: 15px;">
-                <div style="display: flex; align-items: center; cursor: pointer; margin-bottom: 8px;" id="map-layers-header">
-                    <span style="font-size: 12px; color: #aaa; font-weight: 600;">Map Layers</span>
-                    <span style="margin-left: 8px; font-size: 12px; color: #888;" id="map-layers-toggle">▶</span>
-                </div>
-                <div id="map-layers-content" style="display: none; margin-left: 12px; padding-left: 8px; border-left: 2px solid rgba(255,255,255,0.1);">
-                    <div class="toggle-container">
-                        <label class="toggle-label">
-                            <input type="checkbox" class="layer-toggle" data-layer="parcels" checked>
-                            Parcels
-                        </label>
-                    </div>
-                    <div class="toggle-container" style="margin-left: 20px; margin-bottom: 10px;">
-                        <label class="toggle-label" style="font-size: 12px; color: #ccc;">
-                            Opacity:
-                            <input type="range" id="parcels-opacity" min="0" max="100" value="80" style="width: 100px; margin-left: 8px;">
-                        </label>
-                    </div>
-                    <div class="toggle-container">
-                        <label class="toggle-label">
-                            <input type="checkbox" class="layer-toggle" data-layer="agricultural">
-                            Agriculture
-                        </label>
-                    </div>
-                    <div class="toggle-container">
-                        <label class="toggle-label">
-                            <input type="checkbox" class="layer-toggle" data-layer="fuelbreaks">
-                            Fuel Breaks
-                        </label>
-                    </div>
-                    <div class="toggle-container">
-                        <label class="toggle-label">
-                            <input type="checkbox" class="layer-toggle" data-layer="wui">
-                            WUI Zone
-                        </label>
-                    </div>
-                    <div class="toggle-container">
-                        <label class="toggle-label">
-                            <input type="checkbox" class="layer-toggle" data-layer="hazard">
-                            Very High Hazard Zone
-                        </label> 
-                    </div>
-                    <div class="toggle-container">
-                        <label class="toggle-label">
-                            <input type="checkbox" class="layer-toggle" data-layer="structures">
-                            Structures
-                        </label>
-                    </div>
-                    <div class="toggle-container">
-                        <label class="toggle-label">
-                            <input type="checkbox" class="layer-toggle" data-layer="firewise">
-                            Firewise Communities
-                        </label>
-                    </div>
-                    <div class="toggle-container">
-                        <label class="toggle-label">
-                            <input type="checkbox" class="layer-toggle" data-layer="burnscars">
-                            Burn Scars
-                        </label>
-                    </div>
-                    <h3 style="font-size: 12px; color: #aaa; margin: 15px 0 5px 0;">Base Layers</h3>
-                    <div class="toggle-container">
-                        <label class="toggle-label">
-                            <input type="checkbox" class="layer-toggle" data-layer="dark" checked>
-                            Dark
-                        </label>
-                    </div>
-                    <div class="toggle-container">
-                        <label class="toggle-label">
-                            <input type="checkbox" class="layer-toggle" data-layer="light">
-                            Light
-                        </label>
-                    </div> 
-                    <div class="toggle-container">
-                        <label class="toggle-label">
-                            <input type="checkbox" class="layer-toggle" data-layer="satellite">
-                            Satellite
-                        </label>
-                    </div>
-                </div>
             </div>
+        </div>
+        
+        <div class="control-section">
+            <div style="display: flex; align-items: center; cursor: pointer; margin-bottom: 8px;" id="map-layers-header">
+                <h2 style="margin: 0;">Map Layers</h2>
+                <span style="margin-left: 8px; font-size: 12px; color: #888;" id="map-layers-toggle">▶</span>
+            </div>
+            <div id="map-layers-content" style="display: none; margin-left: 12px; padding-left: 8px; border-left: 2px solid rgba(255,255,255,0.1);">
+                <div class="toggle-container">
+                    <label class="toggle-label">
+                        <input type="checkbox" class="layer-toggle" data-layer="parcels" checked>
+                        Parcels
+                    </label>
+                </div>
+                <div class="toggle-container" style="margin-left: 20px; margin-bottom: 10px;">
+                    <label class="toggle-label" style="font-size: 12px; color: #ccc;">
+                        Opacity:
+                        <input type="range" id="parcels-opacity" min="0" max="100" value="80" style="width: 100px; margin-left: 8px;">
+                    </label>
+                </div>
+                <div class="toggle-container">
+                    <label class="toggle-label">
+                        <input type="checkbox" class="layer-toggle" data-layer="agricultural">
+                        Agriculture
+                    </label>
+                </div>
+                <div class="toggle-container">
+                    <label class="toggle-label">
+                        <input type="checkbox" class="layer-toggle" data-layer="fuelbreaks">
+                        Fuel Breaks
+                    </label>
+                </div>
+                <div class="toggle-container">
+                    <label class="toggle-label">
+                        <input type="checkbox" class="layer-toggle" data-layer="wui">
+                        WUI Zone
+                    </label>
+                </div>
+                <div class="toggle-container">
+                    <label class="toggle-label">
+                        <input type="checkbox" class="layer-toggle" data-layer="hazard">
+                        Very High Hazard Zone
+                    </label> 
+                </div>
+                <div class="toggle-container">
+                    <label class="toggle-label">
+                        <input type="checkbox" class="layer-toggle" data-layer="structures">
+                        Structures
+                    </label>
+                </div>
+                <div class="toggle-container">
+                    <label class="toggle-label">
+                        <input type="checkbox" class="layer-toggle" data-layer="firewise">
+                        Firewise Communities
+                    </label>
+                </div>
+                <div class="toggle-container">
+                    <label class="toggle-label">
+                        <input type="checkbox" class="layer-toggle" data-layer="burnscars">
+                        Burn Scars
+                    </label>
+                </div>
+                <h3 style="font-size: 12px; color: #aaa; margin: 15px 0 5px 0;">Base Layers</h3>
+                <div class="toggle-container">
+                    <label class="toggle-label">
+                        <input type="checkbox" class="layer-toggle" data-layer="dark" checked>
+                        Dark
+                    </label>
+                </div>
+                <div class="toggle-container">
+                    <label class="toggle-label">
+                        <input type="checkbox" class="layer-toggle" data-layer="light">
+                        Light
+                    </label>
+                </div> 
+                <div class="toggle-container">
+                    <label class="toggle-label">
+                        <input type="checkbox" class="layer-toggle" data-layer="satellite">
+                        Satellite
+                    </label>
+                </div>
             </div>
         </div>
         
