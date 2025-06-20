@@ -516,7 +516,15 @@ class ParcelDataLoader:
                         'neigh2d_z': feature.get('neigh2d_z'),
                         'qtrpct_z': feature.get('qtrpct_z'),
                         'maxslp_z': feature.get('maxslp_z'),
-                        'hbrn_z': feature.get('hbrn_z')
+                        'hbrn_z': feature.get('hbrn_z'),
+                        'par_buf_sl_s': feature.get('par_buf_sl_s'),
+                        'par_buf_sl_q': feature.get('par_buf_sl_q'),
+                        'par_buf_sl_z': feature.get('par_buf_sl_z'),
+                        'par_buf_sl': feature.get('par_buf_sl'),
+                        'hlfmi_agfb_s': feature.get('hlfmi_agfb_s'),
+                        'hlfmi_agfb_q': feature.get('hlfmi_agfb_q'),
+                        'hlfmi_agfb_z': feature.get('hlfmi_agfb_z'),
+                        'hlfmi_agfb': feature.get('hlfmi_agfb')
                     }
                     
                     # Convert geometry to WKT
