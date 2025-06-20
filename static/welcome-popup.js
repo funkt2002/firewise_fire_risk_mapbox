@@ -35,8 +35,10 @@ class WelcomePopup {
                             <div class="development-note">
                                 <p><strong>UPDATE: Recent Improvements</strong></p>
                                 <ul style="margin: 10px 0; padding-left: 20px;">
+                                    <li>Reorganized Risk Factor Weights with primary factors at top and secondary factors at bottom</li>
+                                    <li>Added new combined "Agriculture & Fuelbreaks" variable and "Structure Surrounding Slope" metric</li>
                                     <li>Improved client-side calculations for faster operation after initial data load</li>
-                                    <li>Cleaner, simpler, and more user-friendly interface</li>
+                                    <li>Cleaner, simpler, and more user-friendly interface with logical variable grouping</li>
                                     <li>Enhanced infer weights tool now supports multiple discontiguous regions</li>
                                     <li>Fixed several bugs and improved overall stability</li>
                                     <li>Added collapsible sections for better organization</li>
@@ -57,23 +59,33 @@ class WelcomePopup {
                             </ul>
                             
                             <h2>----- RISK FACTOR WEIGHTS -----</h2>
-                            <p>Use the sliders on the left to set the importance of each risk factor:</p>
+                            <p>Use the sliders on the left to set the importance of each risk factor. Variables are organized by priority:</p>
+                            
+                            <p><strong>Primary Risk Factors (Active by Default):</strong></p>
                             <ul>
-                                <li><strong>Quarter Mile Structure Count:</strong> Number of Structures within 1/4 mile</li>
-                                <li><strong>WUI Score:</strong>% Coverage of Wildland-Urban Interface within 1/2 mile</li>
-                                <li><strong>Agricultural Score:</strong> % Coverage of Agricultural Areas within 1/2 mile</li>
-                                <li><strong>Fire Hazard Score:</strong> % Coverage of Very High Fire Hazard Areas within 1/2 mile</li>
-                                <li><strong>Fuel Break Score:</strong> % Coverage of Fuel Breaks within 1/2 mile</li>
-                                <li><strong>Slope Score:</strong> Parcel level Slope</li>
-                                <li><strong>Neighbor Distance:</strong> Distance to nearest structure</li>
-                                <li><strong>Burn Score:</strong> % Coverage of past Burn Areas within 1/2 mile</li>
+                                <li><strong>Number of Structures Within Window (1/4 mile):</strong> Count of structures in surrounding area - higher density = higher risk</li>
+                                <li><strong>Distance to Nearest Neighbor:</strong> Distance to closest structure - closer neighbors = higher risk</li>
+                                <li><strong>WUI Coverage (1/2 mile):</strong> % Coverage of Wildland-Urban Interface areas - more WUI = higher risk</li>
+                                <li><strong>Very High Fire Hazard Zone (1/2 mile):</strong> % Coverage of Very High Fire Hazard areas - more hazard zones = higher risk</li>
+                                <li><strong>Agriculture & Fuelbreaks (1/2 mile):</strong> Combined % coverage of protective areas - more coverage = lower risk</li>
+                                <li><strong>Structure Surrounding Slope (100 foot buffer):</strong> Slope around structures - steeper slopes = higher risk</li>
                             </ul>
+                            
+                            <p><strong>Additional Risk Factors (Turned Off by Default):</strong></p>
+                            <ul>
+                                <li><strong>Agricultural Coverage (1/2 mile):</strong> Individual % coverage of agricultural areas - protective factor</li>
+                                <li><strong>Fuel Break Coverage (1/2 mile):</strong> Individual % coverage of fuel breaks - protective factor</li>
+                                <li><strong>Burn Scar Coverage (1/2 mile):</strong> % coverage of past burn areas - can indicate either risk or protection</li>
+                                <li><strong>Mean Parcel Slope:</strong> Average slope across the entire parcel</li>
+                            </ul>
+                            
+                            <p><em>Note: Individual Agriculture and Fuel Break variables are available for fine-tuning, but the combined variable is recommended for most analyses.</em></p>
                             <p>Weights automatically normalize to 100%.</p>
 
                             <h2>----- CALCULATING RISK SCORES -----</h2>
                             <p>Click <strong>"Calculate Risk Scores"</strong> to:</p>
                             <ul>
-                                <li>Set maximum number of top parcels to select (i.e. 500) via budget settings</li>
+                                <li>Set maximum number of top parcels to select (i.e. 500)</li>
                                 <li>Click Calculate!</li>
                                 <li>Parcels will be ranked on composite risk score, from white (low risk) to red (high risk), and top N will be highlighted in blue</li>
                                 <li>Click on the Score Distribution button to see the distribution of scores for all parcels</li>
