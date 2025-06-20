@@ -43,7 +43,7 @@ class WelcomePopup {
                                     <li>Fixed several bugs and improved overall stability</li>
                                     <li>Added collapsible sections for better organization</li>
                                 </ul>
-                                <p><strong>NOTE: Initial data load takes a few seconds. For faster results, use spatial filters to subset to your region of interest.</strong></p>
+                                <p><strong>NOTE: Initial data load takes a few seconds.</strong></p>
                                 <p><strong>This application is still under development. If you encounter issues, please refresh the page. Thank you!</strong></p>
                             </div>
                             
