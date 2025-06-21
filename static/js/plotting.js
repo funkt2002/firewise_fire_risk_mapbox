@@ -261,9 +261,9 @@ class PlottingManager {
                     .map(f => f.properties[scoreKey]) // Client always uses _s suffix for calculated scores
                     .filter(v => v !== null && v !== undefined && !isNaN(v));
             } else {
-                // Raw variable - extract from properties with log transformations
+                // Raw variable - extract from properties WITHOUT log transformations
+                // Log transformations should only be applied during score calculation, not for raw value display
                 const rawVar = this.rawVarMap[variable] || variable;
-                const baseVar = Object.keys(this.rawVarMap).find(key => this.rawVarMap[key] === rawVar) || variable;
                 
                 values = clientData.features
                     .map(f => {
@@ -273,12 +273,10 @@ class PlottingManager {
                         }
                         rawValue = parseFloat(rawValue);
                         
-                        // Apply log transformations like in scoring system
-                        if (baseVar === 'neigh1d' || rawVar === 'neigh1_d') {
-                            const cappedValue = Math.min(rawValue, 5280);
-                            return Math.log(1 + cappedValue);
-                        } else if (baseVar === 'hagri' || baseVar === 'hfb' || rawVar === 'hlfmi_agri' || rawVar === 'hlfmi_fb') {
-                            return Math.log(1 + rawValue);
+                        // For raw variables, show actual values without transformation
+                        // Exception: apply neigh1_d capping to match server-side behavior
+                        if (rawVar === 'neigh1_d') {
+                            return Math.min(rawValue, 5280); // Cap at 1 mile but don't log transform
                         }
                         return rawValue;
                     })
@@ -378,12 +376,13 @@ class PlottingManager {
         // Create annotation for statistics
         const statsText = `Min: ${data.min.toFixed(2)}<br>Max: ${data.max.toFixed(2)}<br>Mean: ${mean.toFixed(2)}<br>Count: ${data.count}<br>Source: ${data.normalization || 'server'}`;
         
-        // Check if this variable uses log transformation
+        // Check if this variable uses log transformation (only for score variables, not raw)
         const baseVarForTitle = Object.keys(this.rawVarMap).find(key => this.rawVarMap[key] === variable) || variable;
-        const usesLogTransform = ['neigh1d', 'hagri', 'hfb'].includes(baseVarForTitle) || 
-                                ['neigh1_d', 'hlfmi_agri', 'hlfmi_fb'].includes(variable);
+        const isScoreVariable = variable.includes('_s') || variable.includes('_q') || variable.includes('_z');
+        const usesLogTransform = isScoreVariable && (['neigh1d', 'hagri', 'hfb'].includes(baseVarForTitle) || 
+                                ['neigh1_d', 'hlfmi_agri', 'hlfmi_fb'].includes(variable));
         
-        const logSuffix = usesLogTransform && !variable.includes('_') ? ' (Log Transformed)' : '';
+        const logSuffix = usesLogTransform ? ' (Log Transformed)' : '';
         const normSuffix = data.normalization === 'local_client' ? ' (Local Normalization)' : '';
         
         const layout = {
