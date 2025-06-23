@@ -21,6 +21,9 @@ import geopandas as gpd
 from shapely.geometry import shape
 from pulp import LpProblem, LpMaximize, LpVariable, lpSum, LpStatus, COIN_CMD, value, listSolvers
 
+# Redis for caching
+import redis
+
 # ====================
 # CONFIGURATION & SETUP
 # ====================
@@ -56,6 +59,22 @@ Compress(app)
 # Configuration
 app.config['DATABASE_URL'] = os.environ.get('DATABASE_URL', 'postgresql://postgres:postgres@localhost:5432/firedb')
 app.config['MAPBOX_TOKEN'] = os.environ.get('MAPBOX_TOKEN', 'pk.eyJ1IjoidGhlbzExNTgiLCJhIjoiY21iYTU2dzdkMDBqajJub2tmY2c4Z3ltYyJ9.9-DIZmCBjFGIb2TUQ4QyXg')
+app.config['REDIS_URL'] = os.environ.get('REDIS_URL', 'redis://localhost:6379/0')
+
+# ====================
+# REDIS SETUP
+# ====================
+
+def get_redis_client():
+    """Get Redis client with error handling"""
+    try:
+        redis_client = redis.from_url(app.config['REDIS_URL'])
+        # Test connection
+        redis_client.ping()
+        return redis_client
+    except Exception as e:
+        logger.warning(f"Redis connection failed: {e}")
+        return None
 
 # ====================
 # CONSTANTS
@@ -627,6 +646,27 @@ def get_burnscars():
 # ROUTES - DEBUG
 # ====================
 
+@app.route('/api/cache/clear', methods=['POST'])
+def clear_cache():
+    """Clear Redis cache manually"""
+    try:
+        redis_client = get_redis_client()
+        if not redis_client:
+            return jsonify({"error": "Redis not available"}), 500
+        
+        cache_key = "fire_risk:base_dataset:v1"
+        result = redis_client.delete(cache_key)
+        
+        if result:
+            logger.info(f"🗑️ CACHE CLEARED: Removed {cache_key}")
+            return jsonify({"message": "Cache cleared successfully", "keys_removed": result})
+        else:
+            return jsonify({"message": "No cache found to clear"})
+            
+    except Exception as e:
+        logger.error(f"Error clearing cache: {e}")
+        return jsonify({"error": str(e)}), 500
+
 @app.route('/api/debug/columns', methods=['GET'])
 def get_columns():
     """Debug endpoint to check columns"""
@@ -714,6 +754,53 @@ def prepare_data():
         data = request.get_json()
         timings['request_parsing'] = time.time() - request_start
         logger.info(f"🚀 Prepare data called - request parsed in {timings['request_parsing']:.3f}s")
+        
+        # Check Redis cache first (only for unfiltered base dataset)
+        cache_key = "fire_risk:base_dataset:v1"
+        use_filters = any([
+            data.get('yearbuilt_max') is not None,
+            data.get('exclude_yearbuilt_unknown'),
+            data.get('neigh1d_max') is not None,
+            data.get('strcnt_min') is not None,
+            data.get('exclude_wui_zero'),
+            data.get('exclude_vhsz_zero'),
+            data.get('exclude_no_brns'),
+            data.get('exclude_agri_protection'),
+            data.get('subset_area')
+        ])
+        
+        # If no filters are applied, try cache first
+        cached_result = None
+        cache_time = 0
+        if not use_filters:
+            cache_start = time.time()
+            redis_client = get_redis_client()
+            if redis_client:
+                try:
+                    cached_data = redis_client.get(cache_key)
+                    cache_time = time.time() - cache_start
+                    if cached_data:
+                        # Handle Redis response properly
+                        if isinstance(cached_data, bytes):
+                            cached_result = json.loads(cached_data.decode('utf-8'))
+                        else:
+                            cached_result = json.loads(cached_data)
+                        logger.info(f"🟢 CACHE HIT: Retrieved base dataset in {cache_time*1000:.1f}ms")
+                        
+                        # Update response with cache timing
+                        cached_result['cache_used'] = True
+                        cached_result['cache_time'] = cache_time
+                        cached_result['total_time'] = time.time() - start_time
+                        
+                        return jsonify(cached_result)
+                    else:
+                        logger.info(f"🟡 CACHE MISS: Base dataset not cached")
+                except Exception as e:
+                    logger.error(f"🔴 CACHE ERROR: {e}")
+            
+            timings['cache_check'] = cache_time
+        else:
+            logger.info(f"📋 Filters detected - bypassing cache, querying database directly")
         
         # Build filters
         filter_start = time.time()
@@ -886,9 +973,26 @@ def prepare_data():
             "use_quantiled_scores": use_quantiled_scores,
             "max_parcels": max_parcels,
             "timings": timings,
-            "total_time": time.time() - start_time
+            "total_time": time.time() - start_time,
+            "cache_used": False
         }
         timings['response_building'] = time.time() - response_start
+        
+        # Cache the result if no filters were applied (clean base dataset)
+        if not use_filters:
+            cache_save_start = time.time()
+            redis_client = get_redis_client()
+            if redis_client:
+                try:
+                    redis_client.setex(cache_key, 86400, json.dumps(response_data))  # 24 hour TTL
+                    cache_save_time = time.time() - cache_save_start
+                    response_size_mb = len(json.dumps(response_data)) / 1024 / 1024
+                    logger.info(f"🟢 CACHE SET: Stored base dataset ({response_size_mb:.1f}MB) in {cache_save_time*1000:.1f}ms")
+                    timings['cache_save'] = cache_save_time
+                except Exception as e:
+                    logger.error(f"🔴 CACHE ERROR: Failed to save base dataset: {e}")
+            else:
+                logger.warning(f"🟡 CACHE SKIP: Redis not available for saving")
         
         total_time = time.time() - start_time
         
