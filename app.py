@@ -1188,50 +1188,55 @@ def get_parcel_scores_for_optimization(data, include_vars):
     return parcel_data
 
 def solve_weight_optimization(parcel_data, include_vars):
-    """Solve the linear programming optimization problem"""
-    # Process variable names - properly remove only the suffix, not all occurrences
-    include_vars_base = []
-    for var in include_vars:
-        if var.endswith('_s'):
-            base_var = var[:-2]  # Remove last 2 characters (_s)
-        elif var.endswith('_q'):
-            base_var = var[:-2]  # Remove last 2 characters (_q)
-        elif var.endswith('_z'):
-            base_var = var[:-2]  # Remove last 2 characters (_z)
-        else:
-            base_var = var  # No suffix to remove
-        include_vars_base.append(base_var)
+    """Memory-efficient LP solver - aggregates coefficients first"""
+    import gc
     
-    # Create LP problem
+    # Process variable names efficiently
+    include_vars_base = [var[:-2] if var.endswith(('_s', '_q', '_z')) else var for var in include_vars]
+    
+    logger.info(f"🧠 EFFICIENT: Starting optimization for {len(parcel_data):,} parcels, {len(include_vars_base)} variables")
+    
+    # STEP 1: Pre-aggregate coefficients (instead of 500K terms, just 10)
+    coefficients = {}
+    for var_base in include_vars_base:
+        total_score = sum(parcel['scores'][var_base] for parcel in parcel_data)
+        coefficients[var_base] = total_score
+        logger.info(f"🧠 Aggregated {var_base}: {total_score:.2f} (sum of {len(parcel_data):,} parcel scores)")
+    
+    # STEP 2: Create lightweight LP problem (only 10 terms!)
     prob = LpProblem("Maximize_Score", LpMaximize)
-    
-    # Create weight variables
     w_vars = LpVariable.dicts('w', include_vars_base, lowBound=0)
     
-    # Objective function
-    objective_terms = []
-    for parcel in parcel_data:
-        for var_base in include_vars_base:
-            objective_terms.append(w_vars[var_base] * parcel['scores'][var_base])
+    # Create objective with just 10 terms instead of 500,000!
+    objective = lpSum(w_vars[var] * coefficients[var] for var in include_vars_base)
+    prob += objective
     
-    prob += lpSum(objective_terms)
+    logger.info(f"🧠 EFFICIENT: Created LP with {len(include_vars_base)} terms (vs {len(parcel_data) * len(include_vars_base):,} in old method)")
     
-    # Constraint: weights sum to 1
-    prob += lpSum(w_vars[var_base] for var_base in include_vars_base) == 1
+    # STEP 3: Add constraint
+    prob += lpSum(w_vars[var] for var in include_vars_base) == 1
     
-    # Solve
-    solver_result = prob.solve(COIN_CMD(msg=True))
+    # STEP 4: Solve (now much smaller problem for CBC)
+    solver_result = prob.solve(COIN_CMD(msg=False))
     
-    # Extract solution
-    best_weights = {var_base + '_s': value(w_vars[var_base]) 
-                   for var_base in include_vars_base}
+    # STEP 5: Extract solution
+    best_weights = {var + '_s': value(w_vars[var]) for var in include_vars_base}
     
+    # STEP 6: Calculate total score using original method for accuracy
     total_score = sum(
-        best_weights[var_base + '_s'] * parcel['scores'][var_base]
-        for parcel in parcel_data for var_base in include_vars_base
+        best_weights[var + '_s'] * parcel['scores'][var]
+        for parcel in parcel_data for var in include_vars_base
     )
     
-    return best_weights, total_score, LpStatus[prob.status]
+    # STEP 7: Clean up immediately
+    del prob
+    del w_vars
+    del coefficients
+    gc.collect()
+    
+    logger.info(f"🧠 EFFICIENT: LP solved and cleaned up. Memory optimized!")
+    
+    return best_weights, total_score, LpStatus[solver_result]
 
 def generate_solution_files(include_vars, best_weights, weights_pct, total_score, 
                            parcel_data, request_data):
