@@ -8,6 +8,7 @@ class FireRiskScoring {
         this.lastWeights = null;
         this.lastFilters = null;
         this.lastNormalizationSettings = null;
+        this.firstCalculationDone = false;
     }
 
     // Store complete dataset from server (unfiltered)
@@ -42,7 +43,12 @@ class FireRiskScoring {
         }
 
         const start = performance.now();
-        console.log('Starting complete client-side data processing...');
+        const isFirstCalculation = !this.firstCalculationDone;
+        if (isFirstCalculation) {
+            console.log('🔄 FIRST CLIENT-SIDE CALCULATION: Starting complete client-side data processing...');
+        } else {
+            console.log('Starting complete client-side data processing...');
+        }
         
         // Check if we need to reprocess filters
         const filtersChanged = this.filtersChanged(filters) || 
@@ -95,7 +101,12 @@ class FireRiskScoring {
         const totalTime = performance.now() - start;
         this.logTiming('Total Processing', totalTime);
         
-        console.log(`Complete processing finished in ${totalTime.toFixed(1)}ms`);
+        if (isFirstCalculation) {
+            console.log(`✅ FIRST CLIENT-SIDE CALCULATION: Complete processing finished in ${totalTime.toFixed(1)}ms`);
+            this.firstCalculationDone = true;
+        } else {
+            console.log(`Complete processing finished in ${totalTime.toFixed(1)}ms`);
+        }
         
         return scoringResult;
     }

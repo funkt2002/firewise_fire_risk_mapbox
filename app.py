@@ -831,7 +831,7 @@ def prepare_data():
             "total_time": total_time
         }
         
-        logger.info(f"Prepare completed in {total_time:.2f}s - sent {len(features)} parcels with individual factor scores")
+        logger.info(f"Prepare completed in {total_time:.2f}s - sent {len(features)} parcels with raw data for client-side score calculation")
         return jsonify(response_data)
         
     except Exception as e:

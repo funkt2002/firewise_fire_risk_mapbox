@@ -1756,39 +1756,45 @@
                 });
                 
                 // Store complete dataset for future client-side processing
-                window.fireRiskScoring.storeCompleteData(responseData);
+                const storedCount = window.fireRiskScoring.storeCompleteData(responseData);
+                console.log(`✓ Stored ${storedCount} parcels for client-side processing`);
                 
-                // Immediately trigger client-side score calculation
-                console.log('Triggering immediate client-side score calculation...');
+                // ALWAYS use client-side score calculation, even on first load
+                console.log('🔄 FIRST CLIENT-SIDE CALCULATION STARTING...');
+                console.log(`   - Weights:`, weights);
+                console.log(`   - Max parcels: ${maxParcels}`);
+                console.log(`   - Local normalization: ${filters.use_local_normalization}`);
+                console.log(`   - Use quantile: ${filters.use_quantile}`);
+                console.log(`   - Use quantiled scores: ${filters.use_quantiled_scores}`);
+                
+                const firstCalcStart = performance.now();
                 const clientResult = window.fireRiskScoring.processData(
                     weights, 
                     filters, 
                     maxParcels,
-                    responseData.use_local_normalization,
-                    responseData.use_quantile,
-                    responseData.use_quantiled_scores
+                    filters.use_local_normalization,
+                    filters.use_quantile,
+                    filters.use_quantiled_scores
                 );
+                const firstCalcTime = performance.now() - firstCalcStart;
                 
-                // Update current data and map with client-calculated scores
-                currentData = clientResult || responseData;
+                // Use client-calculated scores, not server precomputed scores
+                if (clientResult) {
+                    currentData = clientResult;
+                    console.log(`✅ FIRST CLIENT-SIDE CALCULATION SUCCEEDED in ${firstCalcTime.toFixed(1)}ms`);
+                    console.log(`   - Calculated scores for ${clientResult.features.length} parcels`);
+                    console.log(`   - Top ${clientResult.selected_count} parcels selected`);
+                    console.log(`   - Using client-calculated composite scores (not precomputed)`);
+                } else {
+                    console.error(`❌ FIRST CLIENT-SIDE CALCULATION FAILED after ${firstCalcTime.toFixed(1)}ms`);
+                    console.error('   - Falling back to server precomputed scores');
+                    currentData = responseData;
+                }
                 updateMap();
                 updateStatistics();
                 
-                // Update normalization mode display
-                if (responseData.use_local_normalization !== undefined) {
-                    document.getElementById('normalization-row').style.display = 'flex';
-                    if (responseData.use_local_normalization) {
-                        document.getElementById('normalization-mode').textContent = 
-                            `Local (${responseData.total_parcels_after_filter} parcels)`;
-                        document.getElementById('local-norm-info').style.display = 'block';
-                        document.getElementById('local-norm-status').textContent = 
-                            `✓ Scores renormalized on ${responseData.total_parcels_after_filter} filtered parcels`;
-                    } else {
-                        document.getElementById('normalization-mode').textContent = 
-                            `Global (${responseData.total_parcels_after_filter} of ${responseData.total_parcels_before_filter} parcels)`;
-                        document.getElementById('local-norm-info').style.display = 'none';
-                    }
-                }
+                // Update normalization mode display using client-calculated data
+                updateNormalizationDisplay(filters);
                 
                 // Auto-refresh score distribution plot if the modal is open
                 if (modal.style.display === 'block') {
