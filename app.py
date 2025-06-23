@@ -245,6 +245,9 @@ def apply_local_normalization(raw_results, use_quantile, use_quantiled_scores):
                 raw_value = row[raw_var]
                 if raw_value is not None:
                     if var_base == 'neigh1d':
+                        # Skip parcels without structures (neigh1d = 0)
+                        if float(raw_value) == 0:
+                            continue
                         # Apply log transformation: log(1 + capped_distance)
                         capped_value = min(float(raw_value), 5280)
                         raw_value = math.log(1 + capped_value)
@@ -301,6 +304,12 @@ def apply_local_normalization(raw_results, use_quantile, use_quantiled_scores):
             
             if raw_value is not None and var_base in norm_data:
                 if var_base == 'neigh1d':
+                    # Assign score of 0 for parcels without structures (neigh1d = 0)
+                    if float(raw_value) == 0:
+                        score_key = var_base + '_score'
+                        row_dict[score_key] = 0.0
+                        raw_results[i] = row_dict
+                        continue
                     # Apply log transformation: log(1 + capped_distance)
                     capped_value = min(float(raw_value), 5280)
                     raw_value = math.log(1 + capped_value)

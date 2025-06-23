@@ -257,6 +257,10 @@ class ClientNormalizationManager {
                     
                     // Apply log transformations
                     if (varBase === 'neigh1d') {
+                        // Skip parcels without structures (neigh1d = 0)
+                        if (rawValue === 0) {
+                            continue;
+                        }
                         const cappedValue = Math.min(rawValue, 5280);
                         rawValue = Math.log(1 + cappedValue);
                     } else if (varBase === 'hagri' || varBase === 'hfb' || varBase === 'hlfmi_agfb') {
@@ -327,6 +331,11 @@ class ClientNormalizationManager {
                     
                     // Apply log transformations  
                     if (varBase === 'neigh1d') {
+                        // Assign score of 0 for parcels without structures (neigh1d = 0)
+                        if (rawValue === 0) {
+                            newFeature.properties[varBase + '_s'] = 0.0;
+                            continue;
+                        }
                         const cappedValue = Math.min(rawValue, 5280);
                         rawValue = Math.log(1 + cappedValue);
                     } else if (varBase === 'hagri' || varBase === 'hfb' || varBase === 'hlfmi_agfb') {
