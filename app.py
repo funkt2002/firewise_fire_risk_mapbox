@@ -12,6 +12,7 @@ import traceback
 
 from flask import Flask, request, jsonify, render_template, send_file
 from flask_cors import CORS
+from flask_compress import Compress
 import psycopg2
 from psycopg2.extras import RealDictCursor
 import numpy as np
@@ -48,6 +49,9 @@ except Exception as e:
 
 app = Flask(__name__)
 CORS(app)
+
+# Enable gzip compression
+Compress(app)
 
 # Configuration
 app.config['DATABASE_URL'] = os.environ.get('DATABASE_URL', 'postgresql://postgres:postgres@localhost:5432/firedb')
@@ -894,6 +898,8 @@ def prepare_data():
         
         logger.info(f"📦 Response built in {timings['response_building']:.3f}s")
         logger.info(f"📏 Estimated payload size: {payload_size_mb:.1f} MB")
+        logger.info(f"🗜️ Gzip compression: ENABLED (Flask-Compress auto-configured)")
+        logger.info(f"🗜️ Expected compressed size: ~{payload_size_mb * 0.3:.1f}-{payload_size_mb * 0.4:.1f} MB (60-70% reduction)")
         logger.info(f"🎯 === PREPARE COMPLETED ===")
         logger.info(f"🕐 Total server time: {total_time:.3f}s")
         logger.info(f"📊 Sent {len(features):,} parcels with raw data for client-side calculation")

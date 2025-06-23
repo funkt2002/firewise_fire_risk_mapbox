@@ -1,5 +1,6 @@
 Flask==2.3.3
 Flask-CORS==4.0.0
+Flask-Compress==1.14
 psycopg2-binary==2.9.7
 redis==4.6.0
 numpy==1.24.3
