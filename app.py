@@ -9,6 +9,7 @@ import logging
 import tempfile
 import zipfile
 import traceback
+import gzip
 
 from flask import Flask, request, jsonify, render_template, send_file
 from flask_cors import CORS
@@ -780,19 +781,28 @@ def prepare_data():
                     cached_data = redis_client.get(cache_key)
                     cache_time = time.time() - cache_start
                     if cached_data:
-                        # Handle Redis response properly
-                        if isinstance(cached_data, bytes):
-                            cached_result = json.loads(cached_data.decode('utf-8'))
-                        else:
-                            cached_result = json.loads(cached_data)
-                        logger.info(f"🟢 CACHE HIT: Retrieved base dataset in {cache_time*1000:.1f}ms")
-                        
-                        # Update response with cache timing
-                        cached_result['cache_used'] = True
-                        cached_result['cache_time'] = cache_time
-                        cached_result['total_time'] = time.time() - start_time
-                        
-                        return jsonify(cached_result)
+                        # Decompress and deserialize cached data
+                        try:
+                            # Decompress the gzipped data
+                            decompressed_data = gzip.decompress(cached_data)
+                            cached_result = json.loads(decompressed_data.decode('utf-8'))
+                            
+                            data_size_mb = len(cached_data) / 1024 / 1024
+                            decompressed_size_mb = len(decompressed_data) / 1024 / 1024
+                            compression_ratio = (1 - data_size_mb / decompressed_size_mb) * 100
+                            
+                            logger.info(f"🟢 CACHE HIT: Retrieved base dataset in {cache_time*1000:.1f}ms")
+                            logger.info(f"📦 Decompressed {data_size_mb:.1f}MB → {decompressed_size_mb:.1f}MB ({compression_ratio:.1f}% compression)")
+                            
+                            # Update response with cache timing
+                            cached_result['cache_used'] = True
+                            cached_result['cache_time'] = cache_time
+                            cached_result['total_time'] = time.time() - start_time
+                            
+                            return jsonify(cached_result)
+                        except Exception as decomp_error:
+                            logger.error(f"🔴 CACHE DECOMPRESSION ERROR: {decomp_error}")
+                            # Fall through to database query
                     else:
                         logger.info(f"🟡 CACHE MISS: Base dataset not cached")
                 except Exception as e:
@@ -984,10 +994,19 @@ def prepare_data():
             redis_client = get_redis_client()
             if redis_client:
                 try:
-                    redis_client.setex(cache_key, 86400, json.dumps(response_data))  # 24 hour TTL
+                    # Compress the JSON data before storing
+                    json_data = json.dumps(response_data)
+                    compressed_data = gzip.compress(json_data.encode('utf-8'))
+                    
+                    redis_client.setex(cache_key, 86400, compressed_data)  # 24 hour TTL
                     cache_save_time = time.time() - cache_save_start
-                    response_size_mb = len(json.dumps(response_data)) / 1024 / 1024
-                    logger.info(f"🟢 CACHE SET: Stored base dataset ({response_size_mb:.1f}MB) in {cache_save_time*1000:.1f}ms")
+                    
+                    original_size_mb = len(json_data) / 1024 / 1024
+                    compressed_size_mb = len(compressed_data) / 1024 / 1024
+                    compression_ratio = (1 - compressed_size_mb / original_size_mb) * 100
+                    
+                    logger.info(f"🟢 CACHE SET: Compressed {original_size_mb:.1f}MB → {compressed_size_mb:.1f}MB ({compression_ratio:.1f}% reduction)")
+                    logger.info(f"🟢 CACHE SET: Stored compressed dataset in {cache_save_time*1000:.1f}ms")
                     timings['cache_save'] = cache_save_time
                 except Exception as e:
                     logger.error(f"🔴 CACHE ERROR: Failed to save base dataset: {e}")
