@@ -1745,39 +1745,62 @@
                 // First time load: fetch complete dataset from server
                 console.log('Loading complete dataset from server (first time)');
                 
-                const responseData = await window.apiClient.prepareData({
+                // For first load, always get global scores from server to allow proper client-side local normalization
+                const serverRequest = {
                     weights,
                     use_quantiled_scores: filters.use_quantiled_scores,
                     use_quantile: filters.use_quantile,
-                    use_local_normalization: filters.use_local_normalization,
+                    use_local_normalization: false, // Always get global scores first
                     max_parcels: maxParcels,
                     subset_area: filters.subset_area,
                     ...filters
-                });
+                };
+                
+                const responseData = await window.apiClient.prepareData(serverRequest);
                 
                 // Store complete dataset for future client-side processing
                 window.fireRiskScoring.storeCompleteData(responseData);
                 
-                // Update current data and map
+                // If local normalization was requested, immediately trigger client-side processing
+                if (filters.use_local_normalization) {
+                    console.log('Local normalization enabled - triggering client-side recalculation');
+                    
+                    const clientResult = window.fireRiskScoring.processData(
+                        weights, 
+                        filters, 
+                        maxParcels,
+                        filters.use_local_normalization,
+                        filters.use_quantile,
+                        filters.use_quantiled_scores
+                    );
+                    
+                    if (clientResult) {
+                        currentData = clientResult;
+                        updateMap();
+                        updateStatistics();
+                        updateNormalizationDisplay(filters);
+                        
+                        // Auto-refresh score distribution plot if the modal is open
+                        if (modal.style.display === 'block') {
+                            refreshScoreDistributionPlot();
+                        }
+                        
+                        const totalTime = performance.now() - overallStartTime;
+                        console.log(`=== INITIAL LOAD WITH LOCAL NORMALIZATION COMPLETED in ${totalTime.toFixed(1)}ms ===`);
+                        return;
+                    }
+                }
+                
+                // Use server data as-is (global normalization)
                 currentData = responseData;
                 updateMap();
                 updateStatistics();
                 
                 // Update normalization mode display
-                if (responseData.use_local_normalization !== undefined) {
-                    document.getElementById('normalization-row').style.display = 'flex';
-                    if (responseData.use_local_normalization) {
-                        document.getElementById('normalization-mode').textContent = 
-                            `Local (${responseData.total_parcels_after_filter} parcels)`;
-                        document.getElementById('local-norm-info').style.display = 'block';
-                        document.getElementById('local-norm-status').textContent = 
-                            `✓ Scores renormalized on ${responseData.total_parcels_after_filter} filtered parcels`;
-                    } else {
-                        document.getElementById('normalization-mode').textContent = 
-                            `Global (${responseData.total_parcels_after_filter} of ${responseData.total_parcels_before_filter} parcels)`;
-                        document.getElementById('local-norm-info').style.display = 'none';
-                    }
-                }
+                document.getElementById('normalization-row').style.display = 'flex';
+                document.getElementById('normalization-mode').textContent = 
+                    `Global (${responseData.total_parcels_after_filter} of ${responseData.total_parcels_before_filter} parcels)`;
+                document.getElementById('local-norm-info').style.display = 'none';
                 
                 // Auto-refresh score distribution plot if the modal is open
                 if (modal.style.display === 'block') {
