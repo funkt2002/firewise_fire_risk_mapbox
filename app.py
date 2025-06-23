@@ -705,20 +705,25 @@ def prepare_data():
     start_time = time.time()
     
     try:
+        # Request parsing
+        request_start = time.time()
         data = request.get_json()
-        logger.info("Prepare data called - loading parcels from database")
+        timings['request_parsing'] = time.time() - request_start
+        logger.info(f"🚀 Prepare data called - request parsed in {timings['request_parsing']:.3f}s")
         
         # Build filters
         filter_start = time.time()
         conditions, params = build_filter_conditions(data)
         where_clause = "WHERE " + " AND ".join(conditions) if conditions else ""
         timings['filter_building'] = time.time() - filter_start
+        logger.info(f"📋 Filter building completed in {timings['filter_building']:.3f}s")
         
         # Database connection
         db_connect_start = time.time()
         conn = get_db()
         cur = conn.cursor()
         timings['database_connection'] = time.time() - db_connect_start
+        logger.info(f"🔌 Database connection established in {timings['database_connection']:.3f}s")
         
         # Get total count
         count_start = time.time()
@@ -726,6 +731,7 @@ def prepare_data():
         result = cur.fetchone()
         total_parcels_before_filter = dict(result)['total_count'] if result else 0
         timings['count_query'] = time.time() - count_start
+        logger.info(f"🔢 Count query completed in {timings['count_query']:.3f}s - total parcels: {total_parcels_before_filter:,}")
         
         # Prepare columns - get all score variables and raw variables
         col_prep_start = time.time()
@@ -750,9 +756,11 @@ def prepare_data():
         
         all_columns = capped_raw_columns + all_score_vars + other_columns
         timings['column_preparation'] = time.time() - col_prep_start
+        logger.info(f"📝 Column preparation completed in {timings['column_preparation']:.3f}s - prepared {len(all_columns)} columns")
         
         # Query data from database
         query_start = time.time()
+        query_build_start = time.time()
         query = f"""
         SELECT
             id,
@@ -761,62 +769,108 @@ def prepare_data():
         FROM parcels
         {where_clause}
         """
+        timings['query_building'] = time.time() - query_build_start
+        logger.info(f"🔍 SQL query built in {timings['query_building']:.3f}s with {len(params)} parameters")
         
-        logger.info(f"Executing data query with {len(params)} parameters")
+        # Execute query
+        query_exec_start = time.time()
         cur.execute(query, params)
-        raw_results = cur.fetchall()
-        timings['raw_data_query'] = time.time() - query_start
-        logger.info(f"Raw data query completed in {timings['raw_data_query']:.2f}s, returned {len(raw_results)} rows")
+        timings['query_execution'] = time.time() - query_exec_start
+        logger.info(f"⚡ Query executed in {timings['query_execution']:.3f}s")
         
+        # Fetch results
+        fetch_start = time.time()
+        raw_results = cur.fetchall()
+        timings['data_fetching'] = time.time() - fetch_start
+        timings['raw_data_query'] = time.time() - query_start
+        logger.info(f"📥 Data fetched in {timings['data_fetching']:.3f}s - returned {len(raw_results):,} rows")
+        logger.info(f"🎯 Total database query completed in {timings['raw_data_query']:.3f}s")
+        
+        # Close database connection
+        db_close_start = time.time()
         cur.close()
         conn.close()
+        timings['database_cleanup'] = time.time() - db_close_start
+        logger.info(f"🔌 Database connection closed in {timings['database_cleanup']:.3f}s")
         
         if len(raw_results) < 10:
             return jsonify({"error": "Not enough data for analysis"}), 400
         
-        # Just pass through settings - client will handle all calculations
+        # Settings extraction
+        settings_start = time.time()
         use_local_normalization = data.get('use_local_normalization', True)  # Default to local for missing scores
         use_quantile = data.get('use_quantile', False)
         use_quantiled_scores = data.get('use_quantiled_scores', False)
         max_parcels = data.get('max_parcels', 500)
+        timings['settings_extraction'] = time.time() - settings_start
+        logger.info(f"⚙️ Settings extracted in {timings['settings_extraction']:.3f}s")
         
-        # No server-side scoring - just prepare data for client
-        scoring_start = time.time()
-        
-        # Convert raw results to dictionaries - no score calculations on server
+        # Data preparation - convert raw results to dictionaries
+        prep_start = time.time()
         scored_results = []
         for i, row in enumerate(raw_results):
             row_dict = dict(row)
             # No scoring on server - client will handle everything
             scored_results.append(row_dict)
             
-        timings['data_preparation'] = time.time() - scoring_start
+            # Log progress for large datasets
+            if i > 0 and i % 10000 == 0:
+                logger.info(f"📊 Processed {i:,}/{len(raw_results):,} rows ({i/len(raw_results)*100:.1f}%)")
+            
+        timings['data_preparation'] = time.time() - prep_start
+        logger.info(f"📋 Data preparation completed in {timings['data_preparation']:.3f}s - processed {len(scored_results):,} rows")
         
         # Create GeoJSON features
         feature_creation_start = time.time()
         features = []
         
-        for row in scored_results:
+        geom_processing_time = 0
+        properties_processing_time = 0
+        feature_building_time = 0
+        
+        for i, row in enumerate(scored_results):
             row_dict = dict(row)
             
-            # Just include all raw data - client will calculate scores
+            # Extract geometry
+            geom_start = time.time()
+            geometry = row_dict['geometry']
+            geom_processing_time += time.time() - geom_start
+            
+            # Build properties
+            props_start = time.time()
             properties = {
                 "id": row_dict['id'],
                 **{k: row_dict[k] for k in row_dict.keys() if k not in ['id', 'geometry']}
             }
+            properties_processing_time += time.time() - props_start
             
+            # Build feature
+            feature_start = time.time()
             features.append({
                 "type": "Feature",
                 "id": row_dict['id'],
-                "geometry": row_dict['geometry'],
+                "geometry": geometry,
                 "properties": properties
             })
+            feature_building_time += time.time() - feature_start
+            
+            # Log progress for large datasets
+            if i > 0 and i % 10000 == 0:
+                logger.info(f"🏗️ Built {i:,}/{len(scored_results):,} features ({i/len(scored_results)*100:.1f}%)")
         
         timings['feature_creation'] = time.time() - feature_creation_start
+        timings['geometry_processing'] = geom_processing_time
+        timings['properties_processing'] = properties_processing_time
+        timings['feature_building'] = feature_building_time
         
-        total_time = time.time() - start_time
+        logger.info(f"🏗️ Feature creation completed in {timings['feature_creation']:.3f}s:")
+        logger.info(f"  - Geometry processing: {timings['geometry_processing']:.3f}s")
+        logger.info(f"  - Properties processing: {timings['properties_processing']:.3f}s") 
+        logger.info(f"  - Feature building: {timings['feature_building']:.3f}s")
+        logger.info(f"  - Created {len(features):,} GeoJSON features")
         
-        # Response data
+        # Build response
+        response_start = time.time()
         response_data = {
             "type": "FeatureCollection",
             "features": features,
@@ -828,10 +882,26 @@ def prepare_data():
             "use_quantiled_scores": use_quantiled_scores,
             "max_parcels": max_parcels,
             "timings": timings,
-            "total_time": total_time
+            "total_time": time.time() - start_time
         }
+        timings['response_building'] = time.time() - response_start
         
-        logger.info(f"Prepare completed in {total_time:.2f}s - sent {len(features)} parcels with raw data for client-side score calculation")
+        total_time = time.time() - start_time
+        
+        # Calculate payload size estimate
+        import sys
+        payload_size_mb = sys.getsizeof(str(response_data)) / 1024 / 1024
+        
+        logger.info(f"📦 Response built in {timings['response_building']:.3f}s")
+        logger.info(f"📏 Estimated payload size: {payload_size_mb:.1f} MB")
+        logger.info(f"🎯 === PREPARE COMPLETED ===")
+        logger.info(f"🕐 Total server time: {total_time:.3f}s")
+        logger.info(f"📊 Sent {len(features):,} parcels with raw data for client-side calculation")
+        logger.info(f"🚀 Server processing breakdown:")
+        for operation, timing in timings.items():
+            percentage = (timing / total_time) * 100
+            logger.info(f"  - {operation}: {timing:.3f}s ({percentage:.1f}%)")
+        
         return jsonify(response_data)
         
     except Exception as e:
