@@ -1077,9 +1077,18 @@ def get_parcel_scores_for_optimization(data, include_vars):
     include_vars = correct_variable_names(include_vars)
     logger.info(f"Corrected include_vars: {include_vars}")
     
-    # Process variable names
-    include_vars_base = [var.replace('_s', '').replace('_q', '').replace('_z', '') 
-                        for var in include_vars]
+    # Process variable names - properly remove only the suffix, not all occurrences
+    include_vars_base = []
+    for var in include_vars:
+        if var.endswith('_s'):
+            base_var = var[:-2]  # Remove last 2 characters (_s)
+        elif var.endswith('_q'):
+            base_var = var[:-2]  # Remove last 2 characters (_q)
+        elif var.endswith('_z'):
+            base_var = var[:-2]  # Remove last 2 characters (_z)
+        else:
+            base_var = var  # No suffix to remove
+        include_vars_base.append(base_var)
     
     logger.info(f"Base variables: {include_vars_base}")
     
@@ -1180,8 +1189,18 @@ def get_parcel_scores_for_optimization(data, include_vars):
 
 def solve_weight_optimization(parcel_data, include_vars):
     """Solve the linear programming optimization problem"""
-    include_vars_base = [var.replace('_s', '').replace('_q', '').replace('_z', '') 
-                        for var in include_vars]
+    # Process variable names - properly remove only the suffix, not all occurrences
+    include_vars_base = []
+    for var in include_vars:
+        if var.endswith('_s'):
+            base_var = var[:-2]  # Remove last 2 characters (_s)
+        elif var.endswith('_q'):
+            base_var = var[:-2]  # Remove last 2 characters (_q)
+        elif var.endswith('_z'):
+            base_var = var[:-2]  # Remove last 2 characters (_z)
+        else:
+            base_var = var  # No suffix to remove
+        include_vars_base.append(base_var)
     
     # Create LP problem
     prob = LpProblem("Maximize_Score", LpMaximize)
@@ -1217,8 +1236,18 @@ def solve_weight_optimization(parcel_data, include_vars):
 def generate_solution_files(include_vars, best_weights, weights_pct, total_score, 
                            parcel_data, request_data):
     """Generate LP and TXT solution files"""
-    include_vars_base = [var.replace('_s', '').replace('_q', '').replace('_z', '') 
-                        for var in include_vars]
+    # Process variable names - properly remove only the suffix, not all occurrences
+    include_vars_base = []
+    for var in include_vars:
+        if var.endswith('_s'):
+            base_var = var[:-2]  # Remove last 2 characters (_s)
+        elif var.endswith('_q'):
+            base_var = var[:-2]  # Remove last 2 characters (_q)
+        elif var.endswith('_z'):
+            base_var = var[:-2]  # Remove last 2 characters (_z)
+        else:
+            base_var = var  # No suffix to remove
+        include_vars_base.append(base_var)
     
     # Generate LP file
     lp_lines = ["Maximize"]
@@ -1282,7 +1311,16 @@ def generate_solution_files(include_vars, best_weights, weights_pct, total_score
     
     sorted_weights = sorted(weights_pct.items(), key=lambda x: x[1], reverse=True)
     for var_name, weight_pct in sorted_weights:
-        var_base = var_name.replace('_s', '')
+        # Properly remove only the suffix, not all occurrences
+        if var_name.endswith('_s'):
+            var_base = var_name[:-2]  # Remove last 2 characters (_s)
+        elif var_name.endswith('_q'):
+            var_base = var_name[:-2]  # Remove last 2 characters (_q)
+        elif var_name.endswith('_z'):
+            var_base = var_name[:-2]  # Remove last 2 characters (_z)
+        else:
+            var_base = var_name  # No suffix to remove
+            
         factor_name = factor_names.get(var_base, var_base)
         txt_lines.append(f"{factor_name}: {weight_pct:.1f}%")
     
