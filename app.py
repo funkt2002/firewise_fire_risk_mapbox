@@ -774,40 +774,23 @@ def prepare_data():
         if len(raw_results) < 10:
             return jsonify({"error": "Not enough data for analysis"}), 400
         
-        # Get settings
-        use_local_normalization = data.get('use_local_normalization', False)
+        # Just pass through settings - client will handle all calculations
+        use_local_normalization = data.get('use_local_normalization', True)  # Default to local for missing scores
         use_quantile = data.get('use_quantile', False)
         use_quantiled_scores = data.get('use_quantiled_scores', False)
         max_parcels = data.get('max_parcels', 500)
         
-        # Get initial weights from request or use defaults
-        weights = data.get('weights', {
-            'qtrmi_s': 0.3,
-            'neigh1d_s': 0.0,
-            'hwui_s': 0.1,
-            'hvhsz_s': 0.3,
-            'hagri_s': 0.11,
-            'hfb_s': 0.1,
-            'slope_s': 0.0,
-            'hbrn_s': 0.09,
-            'par_buf_sl_s': 0.0,
-            'hlfmi_agfb_s': 0.0
-        })
-        
-        # Normalize weights
-        weight_norm_start = time.time()
-        total_weight = sum(weights.values())
-        if total_weight > 0:
-            weights = {k: v/total_weight for k, v in weights.items()}
-        timings['weight_normalization'] = time.time() - weight_norm_start
-        
-        # Calculate initial scores (this adds individual factor scores and composite scores)
+        # No server-side scoring - just prepare data for client
         scoring_start = time.time()
-        scored_results = calculate_initial_scores(
-            raw_results, weights, use_local_normalization, 
-            use_quantile, use_quantiled_scores, max_parcels
-        )
-        timings['score_calculation'] = time.time() - scoring_start
+        
+        # Convert raw results to dictionaries - no score calculations on server
+        scored_results = []
+        for i, row in enumerate(raw_results):
+            row_dict = dict(row)
+            # No scoring on server - client will handle everything
+            scored_results.append(row_dict)
+            
+        timings['data_preparation'] = time.time() - scoring_start
         
         # Create GeoJSON features
         feature_creation_start = time.time()
@@ -816,38 +799,10 @@ def prepare_data():
         for row in scored_results:
             row_dict = dict(row)
             
-            # Include all individual factor scores for client-side calculation
-            factor_scores = {}
-            if use_local_normalization:
-                # Include calculated factor scores
-                for var_base in WEIGHT_VARS_BASE:
-                    score_key = var_base + '_score'
-                    if score_key in row_dict:
-                        factor_scores[var_base + '_s'] = row_dict[score_key]
-            else:
-                # Include global scores
-                if use_quantile:
-                    score_suffix = '_z'
-                elif use_quantiled_scores:
-                    score_suffix = '_q'
-                else:
-                    score_suffix = '_s'
-                
-                for var_base in WEIGHT_VARS_BASE:
-                    score_var = var_base + score_suffix
-                    if score_var in row_dict and row_dict[score_var] is not None:
-                        factor_scores[var_base + '_s'] = float(row_dict[score_var])
-                    else:
-                        factor_scores[var_base + '_s'] = 0.0
-            
-            # Properties for the feature
+            # Just include all raw data - client will calculate scores
             properties = {
                 "id": row_dict['id'],
-                "score": row_dict['score'],
-                "rank": row_dict['rank'],
-                "top500": row_dict['top500'],
-                **factor_scores,  # Individual factor scores for client-side calculation
-                **{k: row_dict[k] for k in row_dict.keys() if k not in ['id', 'geometry', 'score', 'rank', 'top500'] and not k.endswith('_score')}
+                **{k: row_dict[k] for k in row_dict.keys() if k not in ['id', 'geometry']}
             }
             
             features.append({
@@ -869,7 +824,9 @@ def prepare_data():
             "total_parcels_before_filter": total_parcels_before_filter,
             "total_parcels_after_filter": len(raw_results),
             "use_local_normalization": use_local_normalization,
-            "weights_used": weights,
+            "use_quantile": use_quantile,
+            "use_quantiled_scores": use_quantiled_scores,
+            "max_parcels": max_parcels,
             "timings": timings,
             "total_time": total_time
         }

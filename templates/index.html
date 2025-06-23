@@ -1758,8 +1758,19 @@
                 // Store complete dataset for future client-side processing
                 window.fireRiskScoring.storeCompleteData(responseData);
                 
-                // Update current data and map
-                currentData = responseData;
+                // Immediately trigger client-side score calculation
+                console.log('Triggering immediate client-side score calculation...');
+                const clientResult = window.fireRiskScoring.processData(
+                    weights, 
+                    filters, 
+                    maxParcels,
+                    responseData.use_local_normalization,
+                    responseData.use_quantile,
+                    responseData.use_quantiled_scores
+                );
+                
+                // Update current data and map with client-calculated scores
+                currentData = clientResult || responseData;
                 updateMap();
                 updateStatistics();
                 
