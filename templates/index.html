@@ -3272,22 +3272,24 @@
 
             if (currentData) {
                 updateMap();
-            } else {
-                updateScores(true);  // Initial load is like a filter change
             }
+            // Note: updateScores(true) will be called by map.on('load') to avoid duplicate initialization
         }
 
         // Map load
         map.on('load', () => {
+            console.log('🚀 Map loaded - starting application initialization...');
             initializeLayers();
             normalizeWeights();
             updateMaxParcels();
             updateSelectionCount(); // Initialize multi-area selection UI
-            updateScores(true);  // Initial load is like a filter change
+            console.log('🎯 Starting single initial data load and client-side calculation...');
+            updateScores(true);  // Single initial load and client-side calculation
             
             document.querySelectorAll('input[type="range"]').forEach(slider => {
                 updateSliderFill(slider);
             });
+            console.log('✅ Application initialization complete');
         });
 
 
