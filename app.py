@@ -11,7 +11,7 @@ import zipfile
 import traceback
 import gzip
 
-from flask import Flask, request, jsonify, render_template, send_file
+from flask import Flask, request, jsonify, render_template, send_file, make_response
 from flask_cors import CORS
 from flask_compress import Compress
 import psycopg2
@@ -1336,11 +1336,11 @@ def generate_solution_files(include_vars, best_weights, weights_pct, total_score
 
 @app.route('/api/infer-weights', methods=['POST'])
 def infer_weights():
-    """Infer optimal weights using linear programming"""
+    """Infer optimal weights using linear programming - memory optimized with file system storage"""
     start_time = time.time()
     try:
         data = request.get_json()
-        logger.info("Weight optimization called")
+        logger.info("Weight optimization called - file system storage")
         
         # Validate input
         if not data.get('selection'):
@@ -1348,7 +1348,7 @@ def infer_weights():
         
         # Get include_vars and apply corrections
         include_vars = data.get('include_vars', [var + '_s' for var in WEIGHT_VARS_BASE])
-        include_vars = correct_variable_names(include_vars)  # Ensure all names are correct
+        include_vars = correct_variable_names(include_vars)
         
         if not include_vars:
             return jsonify({"error": "No variables selected for optimization"}), 400
@@ -1368,29 +1368,196 @@ def infer_weights():
         if solver_status != 'Optimal':
             return jsonify({"error": f"Solver failed: {solver_status}"}), 500
         
-        # Generate solution files
+        # Generate files immediately 
         weights_pct = {var: round(best_weights[var] * 100, 1) for var in best_weights}
         lp_content, txt_content = generate_solution_files(
             include_vars, best_weights, weights_pct, total_score, 
             parcel_data, data
         )
         
+        # Create session ID and directory for file storage
+        import uuid
+        import tempfile
+        session_id = str(uuid.uuid4())
+        session_dir = os.path.join(tempfile.gettempdir(), 'fire_risk_sessions', session_id)
+        os.makedirs(session_dir, exist_ok=True)
+        
+        # Save files to disk (memory optimized!)
+        with open(os.path.join(session_dir, 'optimization.lp'), 'w') as f:
+            f.write(lp_content)
+        with open(os.path.join(session_dir, 'solution.txt'), 'w') as f:
+            f.write(txt_content)
+        with open(os.path.join(session_dir, 'metadata.json'), 'w') as f:
+            json.dump({
+                'weights': weights_pct,
+                'total_score': total_score,
+                'num_parcels': len(parcel_data),
+                'solver_status': solver_status,
+                'timestamp': time.time(),
+                'ttl': time.time() + 3600  # 1 hour expiry
+            }, f)
+        
+        logger.info(f"Saved optimization files to: {session_dir}")
+        
         total_time = time.time() - start_time
         
+        # Return minimal response - NO BULK DATA (memory optimized!)
         return jsonify({
-            "weights": weights_pct,
-            "total_score": total_score,
-            "num_parcels": len(parcel_data),
-            "lp_file_content": lp_content,
-            "txt_file_content": txt_content,
-            "solver_status": solver_status,
-            "optimization_parcel_data": parcel_data,
-            "timing_log": f"Weight inference completed in {total_time:.2f}s for {len(parcel_data)} parcels."
+            "weights": weights_pct,           # ~200 bytes
+            "total_score": total_score,       # ~20 bytes
+            "num_parcels": len(parcel_data),  # ~20 bytes
+            "solver_status": solver_status,   # ~20 bytes
+            "session_id": session_id,         # ~40 bytes
+            "timing_log": f"Weight inference completed in {total_time:.2f}s for {len(parcel_data)} parcels.",
+            "files_available": True           # Files stored on disk, not in memory
         })
         
     except Exception as e:
         logger.error(f"Exception in /api/infer-weights: {e}")
         return jsonify({"error": str(e), "traceback": traceback.format_exc()}), 500
+
+@app.route('/api/download-lp/<session_id>')
+def download_lp_file(session_id):
+    """Download LP file from file system storage"""
+    try:
+        session_dir = os.path.join(tempfile.gettempdir(), 'fire_risk_sessions', session_id)
+        lp_file_path = os.path.join(session_dir, 'optimization.lp')
+        
+        if not os.path.exists(lp_file_path):
+            return jsonify({"error": "Optimization session expired or not found"}), 404
+        
+        # Check if session has expired
+        metadata_path = os.path.join(session_dir, 'metadata.json')
+        if os.path.exists(metadata_path):
+            with open(metadata_path, 'r') as f:
+                metadata = json.load(f)
+                if time.time() > metadata.get('ttl', 0):
+                    # Clean up expired session
+                    import shutil
+                    shutil.rmtree(session_dir, ignore_errors=True)
+                    return jsonify({"error": "Optimization session expired"}), 404
+        
+        # Read and return file (minimal memory usage)
+        with open(lp_file_path, 'r') as f:
+            lp_content = f.read()
+        
+        response = make_response(lp_content)
+        response.headers['Content-Type'] = 'text/plain'
+        response.headers['Content-Disposition'] = 'attachment; filename=fire_risk_optimization.lp'
+        
+        logger.info(f"Downloaded LP file for session {session_id}")
+        return response
+        
+    except Exception as e:
+        logger.error(f"Error downloading LP file: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/download-txt/<session_id>')
+def download_txt_file(session_id):
+    """Download TXT solution file from file system storage"""
+    try:
+        session_dir = os.path.join(tempfile.gettempdir(), 'fire_risk_sessions', session_id)
+        txt_file_path = os.path.join(session_dir, 'solution.txt')
+        
+        if not os.path.exists(txt_file_path):
+            return jsonify({"error": "Optimization session expired or not found"}), 404
+        
+        # Check if session has expired
+        metadata_path = os.path.join(session_dir, 'metadata.json')
+        if os.path.exists(metadata_path):
+            with open(metadata_path, 'r') as f:
+                metadata = json.load(f)
+                if time.time() > metadata.get('ttl', 0):
+                    # Clean up expired session
+                    import shutil
+                    shutil.rmtree(session_dir, ignore_errors=True)
+                    return jsonify({"error": "Optimization session expired"}), 404
+        
+        # Read and return file (minimal memory usage)
+        with open(txt_file_path, 'r') as f:
+            txt_content = f.read()
+        
+        response = make_response(txt_content)
+        response.headers['Content-Type'] = 'text/plain'
+        response.headers['Content-Disposition'] = 'attachment; filename=fire_risk_solution.txt'
+        
+        logger.info(f"Downloaded TXT file for session {session_id}")
+        return response
+        
+    except Exception as e:
+        logger.error(f"Error downloading TXT file: {e}")
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/view-solution/<session_id>')
+def view_solution(session_id):
+    """View solution report from file system storage"""
+    try:
+        session_dir = os.path.join(tempfile.gettempdir(), 'fire_risk_sessions', session_id)
+        txt_file_path = os.path.join(session_dir, 'solution.txt')
+        
+        if not os.path.exists(txt_file_path):
+            return "Optimization session expired or not found", 404
+        
+        # Check if session has expired
+        metadata_path = os.path.join(session_dir, 'metadata.json')
+        if os.path.exists(metadata_path):
+            with open(metadata_path, 'r') as f:
+                metadata = json.load(f)
+                if time.time() > metadata.get('ttl', 0):
+                    # Clean up expired session
+                    import shutil
+                    shutil.rmtree(session_dir, ignore_errors=True)
+                    return "Optimization session expired", 404
+        
+        # Read and return file for viewing (minimal memory usage)
+        with open(txt_file_path, 'r') as f:
+            txt_content = f.read()
+        
+        response = make_response(f"<pre>{txt_content}</pre>")
+        response.headers['Content-Type'] = 'text/html'
+        
+        logger.info(f"Viewed solution for session {session_id}")
+        return response
+        
+    except Exception as e:
+        logger.error(f"Error viewing solution: {e}")
+        return f"Error: {str(e)}", 500
+
+@app.route('/api/cleanup-expired-sessions', methods=['POST'])
+def cleanup_expired_sessions():
+    """Clean up expired optimization sessions (manual cleanup endpoint)"""
+    try:
+        import shutil
+        sessions_dir = os.path.join(tempfile.gettempdir(), 'fire_risk_sessions')
+        
+        if not os.path.exists(sessions_dir):
+            return jsonify({"message": "No sessions directory found"})
+        
+        cleaned_count = 0
+        current_time = time.time()
+        
+        for session_id in os.listdir(sessions_dir):
+            session_dir = os.path.join(sessions_dir, session_id)
+            metadata_path = os.path.join(session_dir, 'metadata.json')
+            
+            if os.path.exists(metadata_path):
+                try:
+                    with open(metadata_path, 'r') as f:
+                        metadata = json.load(f)
+                        if current_time > metadata.get('ttl', 0):
+                            shutil.rmtree(session_dir, ignore_errors=True)
+                            cleaned_count += 1
+                except:
+                    # If metadata is corrupted, remove the session
+                    shutil.rmtree(session_dir, ignore_errors=True)
+                    cleaned_count += 1
+        
+        logger.info(f"Cleaned up {cleaned_count} expired optimization sessions")
+        return jsonify({"message": f"Cleaned up {cleaned_count} expired sessions"})
+        
+    except Exception as e:
+        logger.error(f"Error cleaning up sessions: {e}")
+        return jsonify({"error": str(e)}), 500
 
 # ====================
 # MAIN EXECUTION

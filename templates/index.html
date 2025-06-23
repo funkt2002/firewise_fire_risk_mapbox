@@ -1096,8 +1096,9 @@
                 </div>
             </div>
             <button class="button" id="infer-weights" disabled>Infer Weights from Multi-Selection</button>
-            <button class="button" id="download-lp-btn" disabled>Download .LP File</button>
-            <button class="button" id="view-solution-btn" disabled>View Solution Report</button>
+                                        <button class="button" id="download-lp-btn" disabled>Download .LP File</button>
+                            <button class="button" id="download-txt-btn" disabled>Download .TXT Report</button>
+                            <button class="button" id="view-solution-btn" disabled>View Solution Report</button>
             <p style="font-size: 10px; color: #888; margin: 5px 0;">↑ Maximizes total risk score across all selected areas</p>
             
 
@@ -1613,9 +1614,8 @@
         let selectionAreas = [];
         let isAddingSelection = false;
         
-        // Variables to store solution files content
-        let currentLpContent = null;
-        let currentTxtContent = null;
+        // Variables for optimization session (memory optimized)
+        let currentOptimizationSession = null;
 
         // Get DOM elements
         const weightSliders = document.querySelectorAll('.weight-slider');
@@ -1841,11 +1841,11 @@
             document.getElementById('clear-all-selections').disabled = !hasSelections;
             document.getElementById('infer-weights').disabled = !hasSelections;
             
-            // Clear solution files when selections change
+            // Clear optimization session when selections change
             if (hasSelections) {
-                currentLpContent = null;
-                currentTxtContent = null;
+                currentOptimizationSession = null;
                 document.getElementById('download-lp-btn').disabled = true;
+                document.getElementById('download-txt-btn').disabled = true;
                 document.getElementById('view-solution-btn').disabled = true;
             }
         }
@@ -2098,40 +2098,97 @@
 
 
 
-        // Download .LP file (client-side)
-        document.getElementById('download-lp-btn').addEventListener('click', () => {
-            if (!currentLpContent) {
-                alert('No LP file available. Run weight inference first.');
+        // Download .LP file (memory optimized - on-demand from server)
+        document.getElementById('download-lp-btn').addEventListener('click', async () => {
+            if (!currentOptimizationSession) {
+                alert('No optimization session available. Please run weight optimization first.');
                 return;
             }
             
             try {
-                // Create and download file entirely on client-side (no backend needed)
-                const blob = new Blob([currentLpContent], { type: 'text/plain' });
+                console.log('Downloading LP file on-demand (memory optimized)');
+                const response = await fetch(`/api/download-lp/${currentOptimizationSession}`);
+                
+                if (!response.ok) {
+                    throw new Error(`Server error: ${response.status}`);
+                }
+                
+                const blob = await response.blob();
                 const url = window.URL.createObjectURL(blob);
                 const a = document.createElement('a');
+                a.style.display = 'none';
                 a.href = url;
                 a.download = 'fire_risk_optimization.lp';
-                a.style.display = 'none';
                 document.body.appendChild(a);
                 a.click();
-                document.body.removeChild(a);
                 window.URL.revokeObjectURL(url);
+                document.body.removeChild(a);
+                
+                console.log('LP file downloaded successfully - no client storage used');
             } catch (error) {
                 console.error('Error downloading LP file:', error);
-                alert('Failed to download LP file. Please try again.');
+                alert('Error downloading LP file. Please try again.');
             }
         });
 
-        // View solution report in modal
-        document.getElementById('view-solution-btn').addEventListener('click', () => {
-            if (!currentTxtContent) {
-                alert('No solution report available. Run weight inference first.');
+        // Download .TXT report (memory optimized - on-demand from server)
+        document.getElementById('download-txt-btn').addEventListener('click', async () => {
+            if (!currentOptimizationSession) {
+                alert('No optimization session available. Please run weight optimization first.');
                 return;
             }
             
-            document.getElementById('solution-text').textContent = currentTxtContent;
-            document.getElementById('solution-modal').style.display = 'block';
+            try {
+                console.log('Downloading TXT report on-demand (memory optimized)');
+                const response = await fetch(`/api/download-txt/${currentOptimizationSession}`);
+                
+                if (!response.ok) {
+                    throw new Error(`Server error: ${response.status}`);
+                }
+                
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.style.display = 'none';
+                a.href = url;
+                a.download = 'fire_risk_solution.txt';
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+                document.body.removeChild(a);
+                
+                console.log('TXT report downloaded successfully - no client storage used');
+            } catch (error) {
+                console.error('Error downloading TXT report:', error);
+                alert('Error downloading TXT report. Please try again.');
+            }
+        });
+
+        // View solution report in modal (memory optimized - on-demand from server)
+        document.getElementById('view-solution-btn').addEventListener('click', async () => {
+            if (!currentOptimizationSession) {
+                alert('No optimization session available. Please run weight optimization first.');
+                return;
+            }
+            
+            try {
+                console.log('Loading solution on-demand (memory optimized)');
+                const response = await fetch(`/api/view-solution/${currentOptimizationSession}`);
+                
+                if (!response.ok) {
+                    throw new Error(`Server error: ${response.status}`);
+                }
+                
+                const htmlContent = await response.text();
+                const newWindow = window.open();
+                newWindow.document.write(htmlContent);
+                newWindow.document.title = 'Fire Risk Optimization Solution';
+                
+                console.log('Solution viewed successfully - no client storage used');
+            } catch (error) {
+                console.error('Error viewing solution:', error);
+                alert('Error viewing solution. Please try again.');
+            }
         });
 
         // Multi-area selection handlers - Add Rectangle
@@ -2235,31 +2292,16 @@
                     ...getCurrentFilters()
                 });
 
-                // Store the solution files content for client-side download
-                currentLpContent = data.lp_file_content;
-                currentTxtContent = data.txt_file_content;
+                // Store only the session ID (memory optimized - no bulk data)
+                currentOptimizationSession = data.session_id;
+                console.log(`Memory optimization: Stored only session ID, no bulk data in client`);
 
-                // Store the optimization parcel data for correct plot display
-                if (data.optimization_parcel_data) {
-                    // Update selectedParcels with the actual optimization scores
-                    selectedParcels = data.optimization_parcel_data.map(parcel => {
-                        // Calculate weighted score using the optimal weights
-                        let weightedScore = 0;
-                        for (const varName in parcel.scores) {
-                            const weight = data.weights[varName + '_s'] / 100; // Convert percentage to decimal
-                            weightedScore += weight * parcel.scores[varName];
-                        }
-                        return {
-                            id: parcel.id,
-                            properties: {
-                                score: weightedScore
-                            }
-                        };
-                    });
-                }
+                // Clear any previous optimization data to prevent memory buildup
+                selectedParcels = [];
 
-                // Enable the download and view buttons
+                // Enable the download and view buttons if files are available
                 document.getElementById('download-lp-btn').disabled = false;
+                document.getElementById('download-txt-btn').disabled = false;
                 document.getElementById('view-solution-btn').disabled = false;
 
                 // Update the weight sliders with optimized values
@@ -2986,9 +3028,9 @@
         function resetInferWeightsUI() {
             document.getElementById('infer-weights').disabled = true;
             document.getElementById('download-lp-btn').disabled = true;
+            document.getElementById('download-txt-btn').disabled = true;
             document.getElementById('view-solution-btn').disabled = true;
-            currentLpContent = null;
-            currentTxtContent = null;
+            currentOptimizationSession = null;
         }
 
         map.on('draw.delete', () => {
