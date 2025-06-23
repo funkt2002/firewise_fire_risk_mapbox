@@ -83,6 +83,17 @@ def get_redis_client():
 
 WEIGHT_VARS_BASE = ['qtrmi', 'hwui', 'hagri', 'hvhsz', 'hfb', 'slope', 'neigh1d', 'hbrn', 'par_buf_sl', 'hlfmi_agfb']
 INVERT_VARS = {'hagri', 'neigh1d', 'hfb', 'hlfmi_agfb'}
+
+# Variable name correction mapping to fix any corrupted/truncated names
+VARIABLE_NAME_CORRECTIONS = {
+    # Fix the par_bufl issue (seems to be truncated)
+    'par_bufl': 'par_buf_sl',
+    'par_bufl_s': 'par_buf_sl_s',
+    'par_bufl_q': 'par_buf_sl_q',
+    'par_bufl_z': 'par_buf_sl_z',
+    # Add any other potential corrections here as needed
+}
+
 RAW_VAR_MAP = {
     'qtrmi': 'qtrmi_cnt',
     'hwui': 'hlfmi_wui',
@@ -109,6 +120,18 @@ LAYER_TABLE_MAP = {
 # ====================
 # UTILITY FUNCTIONS
 # ====================
+
+def correct_variable_names(include_vars):
+    """Correct any corrupted or truncated variable names"""
+    corrected_vars = []
+    for var in include_vars:
+        if var in VARIABLE_NAME_CORRECTIONS:
+            corrected_var = VARIABLE_NAME_CORRECTIONS[var]
+            logger.info(f"Corrected variable name: {var} -> {corrected_var}")
+            corrected_vars.append(corrected_var)
+        else:
+            corrected_vars.append(var)
+    return corrected_vars
 
 def get_db():
     """Get database connection"""
@@ -199,7 +222,11 @@ def get_score_vars(use_quantiled_scores=False, use_quantile=False):
         suffix = '_q'
     else:
         suffix = '_s'
-    return [var + suffix for var in WEIGHT_VARS_BASE]
+    
+    score_vars = [var + suffix for var in WEIGHT_VARS_BASE]
+    # Apply corrections to ensure all variable names are correct
+    score_vars = correct_variable_names(score_vars)
+    return score_vars
 
 def apply_local_normalization(raw_results, use_quantile, use_quantiled_scores):
     """Apply local normalization to raw values and return individual factor scores"""
@@ -1043,9 +1070,18 @@ def prepare_data():
 
 def get_parcel_scores_for_optimization(data, include_vars):
     """Get parcel scores within selection area(s) for optimization"""
+    # Add debugging
+    logger.info(f"Original include_vars received: {include_vars}")
+    
+    # Correct any corrupted variable names
+    include_vars = correct_variable_names(include_vars)
+    logger.info(f"Corrected include_vars: {include_vars}")
+    
     # Process variable names
     include_vars_base = [var.replace('_s', '').replace('_q', '').replace('_z', '') 
                         for var in include_vars]
+    
+    logger.info(f"Base variables: {include_vars_base}")
     
     use_quantile = data.get('use_quantile', False)
     use_quantiled_scores = data.get('use_quantiled_scores', False)
@@ -1059,6 +1095,8 @@ def get_parcel_scores_for_optimization(data, include_vars):
         else:
             score_var = var_base + '_s'
         score_vars_to_use.append(score_var)
+    
+    logger.info(f"Score variables to use in SQL: {score_vars_to_use}")
     
     # Build filters
     conditions, params = build_filter_conditions(data)
@@ -1110,6 +1148,8 @@ def get_parcel_scores_for_optimization(data, include_vars):
         FROM parcels
         WHERE {filter_sql}
     """
+    
+    logger.info(f"SQL Query: {query_sql}")
     
     cur.execute(query_sql, params)
     rows = cur.fetchall()
@@ -1268,9 +1308,14 @@ def infer_weights():
         if not data.get('selection'):
             return jsonify({"error": "No selection provided"}), 400
         
+        # Get include_vars and apply corrections
         include_vars = data.get('include_vars', [var + '_s' for var in WEIGHT_VARS_BASE])
+        include_vars = correct_variable_names(include_vars)  # Ensure all names are correct
+        
         if not include_vars:
             return jsonify({"error": "No variables selected for optimization"}), 400
+        
+        logger.info(f"Using corrected include_vars for optimization: {include_vars}")
         
         # Get parcel scores for optimization
         parcel_data = get_parcel_scores_for_optimization(data, include_vars)
