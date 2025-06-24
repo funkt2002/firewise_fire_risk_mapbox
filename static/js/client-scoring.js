@@ -84,8 +84,7 @@ class FireRiskScoring {
             this.lastFilters = { ...filters };
             this.lastNormalizationSettings = {
                 use_local_normalization,
-                use_quantile,
-                use_quantiled_scores
+                use_quantile
             };
         } else {
             // Use cached filtered dataset
