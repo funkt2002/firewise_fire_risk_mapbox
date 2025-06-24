@@ -981,42 +981,7 @@
                 <span style="margin-left: 8px; font-size: 12px; color: #888;" id="filters-toggle">▶</span>
             </div>
             <div id="filters-content" style="display: none; margin-left: 12px; padding-left: 8px; border-left: 2px solid rgba(255,255,255,0.1);">
-                <!-- Advanced Score Options - Expandable -->
-                <div style="margin-bottom: 15px;">
-                    <div style="display: flex; align-items: center; cursor: pointer; margin-bottom: 8px;" id="advanced-score-header">
-                        <span style="font-size: 12px; color: #aaa; font-weight: 600;">Advanced Score Options</span>
-                        <span style="margin-left: 8px; font-size: 12px; color: #888;" id="advanced-score-toggle">▶</span>
-                    </div>
-                    <div id="advanced-score-content" style="display: none; margin-left: 12px; padding-left: 8px; border-left: 2px solid rgba(255,255,255,0.1);">
-                        <div style="margin-bottom: 10px;">
-                            <h4 style="font-size: 11px; color: #aaa; margin-bottom: 6px;">Score Type:</h4>
-                            <div class="toggle-container">
-                                <label class="toggle-label">
-                                    <input type="radio" name="score-type" id="use-basic-scores" value="basic" checked>
-                                    Basic Min-Max Scores
-                                </label>
-                            </div>
-                            <div class="toggle-container">
-                                <label class="toggle-label">
-                                    <input type="radio" name="score-type" id="use-quantile" value="quantile">
-                                    Quantile Scores
-                                </label>
-                            </div>
-                        </div>
-                        <div>
-                            <h4 style="font-size: 11px; color: #aaa; margin-bottom: 6px;">Normalization:</h4>
-                            <div class="toggle-container">
-                                <label class="toggle-label">
-                                    <input type="checkbox" id="use-local-normalization" checked>
-                                    Renormalize scores for filtered data
-                                </label>
-                            </div>
-                            <div id="local-norm-info" style="font-size: 11px; color: #888; margin-top: 4px; display: none;">
-                                <div id="local-norm-status"></div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+            
             
             <div style="margin-bottom: 15px;">
                 <h3 style="font-size: 12px; color: #aaa; margin-bottom: 8px;">Exclude parcels without:</h3>
@@ -1072,6 +1037,42 @@
                     <input type="number" class="number-input" id="filter-neigh1d" min="0" max="1000" value="50" style="margin-left: 8px; width: 80px; vertical-align: middle;">
                 </div>
             </div>
+            </div>
+        </div>
+        
+        <div class="control-section">
+            <div style="display: flex; align-items: center; cursor: pointer; margin-bottom: 8px;" id="advanced-score-header">
+                <h2 style="margin: 0;">Advanced Score Options</h2>
+                <span style="margin-left: 8px; font-size: 12px; color: #888;" id="advanced-score-toggle">▶</span>
+            </div>
+            <div id="advanced-score-content" style="display: none; margin-left: 12px; padding-left: 8px; border-left: 2px solid rgba(255,255,255,0.1);">
+                <div style="margin-bottom: 10px;">
+                    <h4 style="font-size: 11px; color: #aaa; margin-bottom: 6px;">Score Type:</h4>
+                    <div class="toggle-container">
+                        <label class="toggle-label">
+                            <input type="radio" name="score-type" id="use-basic-scores" value="basic" checked>
+                            Basic Min-Max Scores
+                        </label>
+                    </div>
+                    <div class="toggle-container">
+                        <label class="toggle-label">
+                            <input type="radio" name="score-type" id="use-quantile" value="quantile">
+                            Quantile Scores
+                        </label>
+                    </div>
+                </div>
+                <div>
+                    <h4 style="font-size: 11px; color: #aaa; margin-bottom: 6px;">Normalization:</h4>
+                    <div class="toggle-container">
+                        <label class="toggle-label">
+                            <input type="checkbox" id="use-local-normalization" checked>
+                            Renormalize scores for filtered data
+                        </label>
+                    </div>
+                    <div id="local-norm-info" style="font-size: 11px; color: #888; margin-top: 4px; display: none;">
+                        <div id="local-norm-status"></div>
+                    </div>
+                </div>
             </div>
         </div>
         
