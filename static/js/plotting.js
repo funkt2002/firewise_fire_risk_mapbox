@@ -674,6 +674,283 @@ class PlottingManager {
         Plotly.newPlot('dist-plot', [trace], layout);
         document.getElementById('dist-modal').style.display = "block";
     }
+
+    // Show calculated risk score distribution
+    showScoreDistribution() {
+        if (!window.currentData) {
+            alert('Please calculate scores first');
+            return;
+        }
+
+        const scores = window.currentData.features.map(f => f.properties.score);
+        const selectedScores = window.currentData.features
+            .filter(f => f.properties.top500)
+            .map(f => f.properties.score);
+
+        // Get selected area scores if available
+        let selectedAreaScores = [];
+        if (window.selectedParcels && window.selectedParcels.length > 0) {
+            selectedAreaScores = window.selectedParcels.map(f => f.properties.score);
+        }
+
+        // Calculate statistics for all scores
+        const allScoresMean = scores.reduce((a, b) => a + b, 0) / scores.length;
+        const allScoresMin = Math.min(...scores);
+        const allScoresMax = Math.max(...scores);
+        const allScoresStd = Math.sqrt(scores.reduce((a, b) => a + Math.pow(b - allScoresMean, 2), 0) / scores.length);
+
+        // Calculate statistics for selected scores
+        const selectedScoresMean = selectedScores.reduce((a, b) => a + b, 0) / selectedScores.length;
+        const selectedScoresMin = Math.min(...selectedScores);
+        const selectedScoresMax = Math.max(...selectedScores);
+        const selectedScoresStd = Math.sqrt(selectedScores.reduce((a, b) => a + Math.pow(b - selectedScoresMean, 2), 0) / selectedScores.length);
+
+        // Create gradient colors for histogram bins based on score position
+        const numBins = 50;
+        const binColors = [];
+        
+        for (let i = 0; i < numBins; i++) {
+            // Position from 0 to 1 (left to right)
+            const position = i / (numBins - 1);
+            
+            // White to red gradient based on position
+            const red = 255;
+            const green = Math.round(255 * (1 - position));
+            const blue = Math.round(255 * (1 - position));
+            
+            binColors.push(`rgb(${red},${green},${blue})`);
+        }
+
+        // Create main histogram for all scores
+        const allScoresTrace = {
+            x: scores,
+            type: 'histogram',
+            name: 'All Parcels',
+            marker: {
+                color: binColors,
+                line: {
+                    color: 'rgba(100,100,100,0.3)',
+                    width: 1
+                }
+            },
+            nbinsx: numBins,
+            opacity: 0.8
+        };
+
+        const traces = [allScoresTrace];
+
+        // Calculate the expected maximum height for reference bars (1/4 of plot height)
+        const binCount = Math.ceil(scores.length / 50);
+        const referenceBarHeight = binCount * 0.25;
+
+        // Add selected area bars and arrows if available
+        if (selectedAreaScores.length > 0) {
+            const selectedAreaMean = selectedAreaScores.reduce((a, b) => a + b, 0) / selectedAreaScores.length;
+            const selectedAreaMin = Math.min(...selectedAreaScores);
+            const selectedAreaMax = Math.max(...selectedAreaScores);
+            
+            // Add dotted bars at min and max (1/4 height)
+            traces.push({
+                x: [selectedAreaMin, selectedAreaMin],
+                y: [0, referenceBarHeight],
+                type: 'scatter',
+                mode: 'lines',
+                line: {
+                    color: '#ffff00',
+                    width: 3,
+                    dash: 'dot'
+                },
+                name: `Selected Area Min: ${selectedAreaMin.toFixed(3)}`,
+                showlegend: true
+            });
+
+            traces.push({
+                x: [selectedAreaMax, selectedAreaMax],
+                y: [0, referenceBarHeight],
+                type: 'scatter',
+                mode: 'lines',
+                line: {
+                    color: '#ffff00',
+                    width: 3,
+                    dash: 'dot'
+                },
+                name: `Selected Area Max: ${selectedAreaMax.toFixed(3)}`,
+                showlegend: true
+            });
+
+            // Add solid bar at mean (1/4 height)
+            traces.push({
+                x: [selectedAreaMean, selectedAreaMean],
+                y: [0, referenceBarHeight],
+                type: 'scatter',
+                mode: 'lines',
+                line: {
+                    color: '#ffff00',
+                    width: 3
+                },
+                name: `Selected Area Mean: ${selectedAreaMean.toFixed(3)}`,
+                showlegend: true
+            });
+        }
+
+        const layout = {
+            title: 'Calculated Risk Score Distribution',
+            paper_bgcolor: '#1a1a1a',
+            plot_bgcolor: '#1a1a1a',
+            font: {
+                color: '#fff'
+            },
+            xaxis: {
+                title: 'Score',
+                gridcolor: 'rgba(255,255,255,0.1)',
+                zerolinecolor: 'rgba(255,255,255,0.1)'
+            },
+            yaxis: {
+                title: 'Count',
+                gridcolor: 'rgba(255,255,255,0.1)',
+                zerolinecolor: 'rgba(255,255,255,0.1)'
+            },
+            showlegend: true,
+            legend: {
+                font: {
+                    color: '#fff'
+                },
+                y: 0.95,
+                x: 0.02
+            },
+            bargap: 0,
+            displayModeBar: false,
+            margin: {
+                l: 50,
+                r: 20,
+                t: 50,
+                b: 50
+            },
+            height: 600,
+            annotations: []
+        };
+
+        // Add statistics annotation
+        let statsText = `All Parcels:<br>Min: ${allScoresMin.toFixed(3)}<br>Max: ${allScoresMax.toFixed(3)}<br>Mean: ${allScoresMean.toFixed(3)}<br>Std: ${allScoresStd.toFixed(3)}<br>Count: ${scores.length}<br><br>Top N Parcels:<br>Min: ${selectedScoresMin.toFixed(3)}<br>Max: ${selectedScoresMax.toFixed(3)}<br>Mean: ${selectedScoresMean.toFixed(3)}<br>Std: ${selectedScoresStd.toFixed(3)}<br>Count: ${selectedScores.length}`;
+        
+        if (selectedAreaScores.length > 0) {
+            const selectedAreaMean = selectedAreaScores.reduce((a, b) => a + b, 0) / selectedAreaScores.length;
+            const selectedAreaMin = Math.min(...selectedAreaScores);
+            const selectedAreaMax = Math.max(...selectedAreaScores);
+            const selectedAreaStd = Math.sqrt(selectedAreaScores.reduce((a, b) => a + Math.pow(b - selectedAreaMean, 2), 0) / selectedAreaScores.length);
+            statsText += `<br><br>Selected Area:<br>Min: ${selectedAreaMin.toFixed(3)}<br>Max: ${selectedAreaMax.toFixed(3)}<br>Mean: ${selectedAreaMean.toFixed(3)}<br>Std: ${selectedAreaStd.toFixed(3)}<br>Count: ${selectedAreaScores.length}`;
+        }
+
+        layout.annotations.push({
+            x: 0.02,
+            y: 0.02,
+            xref: 'paper',
+            yref: 'paper',
+            text: statsText,
+            showarrow: false,
+            font: {
+                color: '#fff',
+                size: 12
+            },
+            bgcolor: 'rgba(0,0,0,0.5)',
+            bordercolor: 'rgba(255,255,255,0.3)',
+            borderwidth: 1,
+            borderpad: 4,
+            xanchor: 'left',
+            yanchor: 'bottom'
+        });
+
+        // Add single arrow for top parcels (blue arrow)
+        const maxY = referenceBarHeight * 4;
+        const arrowY = maxY * 0.9;
+        
+        // Add single arrow for Top Parcels at the midpoint of selected scores
+        if (selectedScores.length > 0) {
+            const topParcelsScore = selectedScores[Math.floor(selectedScores.length / 2)];
+            layout.annotations.push({
+                x: topParcelsScore,
+                y: arrowY,
+                text: 'Top Parcels',
+                showarrow: true,
+                arrowhead: 2,
+                arrowsize: 1,
+                arrowwidth: 2,
+                arrowcolor: '#0066ff',
+                font: {
+                    color: '#0066ff',
+                    size: 12
+                },
+                xanchor: 'center',
+                yanchor: 'bottom'
+            });
+        }
+
+        // Add arrows for selected area scores (yellow arrows for min, mean, max)
+        if (selectedAreaScores.length > 0) {
+            const selectedAreaMean = selectedAreaScores.reduce((a, b) => a + b, 0) / selectedAreaScores.length;
+            const selectedAreaMin = Math.min(...selectedAreaScores);
+            const selectedAreaMax = Math.max(...selectedAreaScores);
+            
+            const yellowArrowY = arrowY * 0.7;
+            
+            // Min arrow
+            layout.annotations.push({
+                x: selectedAreaMin,
+                y: yellowArrowY,
+                text: 'Min',
+                showarrow: true,
+                arrowhead: 2,
+                arrowsize: 1,
+                arrowwidth: 2,
+                arrowcolor: '#ffff00',
+                font: {
+                    color: '#ffff00',
+                    size: 12
+                },
+                xanchor: 'center',
+                yanchor: 'bottom'
+            });
+            
+            // Mean arrow
+            layout.annotations.push({
+                x: selectedAreaMean,
+                y: yellowArrowY,
+                text: 'Mean',
+                showarrow: true,
+                arrowhead: 2,
+                arrowsize: 1,
+                arrowwidth: 2,
+                arrowcolor: '#ffff00',
+                font: {
+                    color: '#ffff00',
+                    size: 12
+                },
+                xanchor: 'center',
+                yanchor: 'bottom'
+            });
+            
+            // Max arrow
+            layout.annotations.push({
+                x: selectedAreaMax,
+                y: yellowArrowY,
+                text: 'Max',
+                showarrow: true,
+                arrowhead: 2,
+                arrowsize: 1,
+                arrowwidth: 2,
+                arrowcolor: '#ffff00',
+                font: {
+                    color: '#ffff00',
+                    size: 12
+                },
+                xanchor: 'center',
+                yanchor: 'bottom'
+            });
+        }
+
+        Plotly.newPlot('dist-plot', traces, layout);
+        document.getElementById('dist-modal').style.display = "block";
+    }
 }
 
 // Initialize global plotting manager
