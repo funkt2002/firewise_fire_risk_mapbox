@@ -3356,7 +3356,7 @@
             // Add vector tile source for parcels
             map.addSource('parcel-tiles', {
                 type: 'vector',
-                url: 'mapbox://theo1158.d77x09xc'
+                url: 'mapbox://theo1158.bblecnfo'
             });
             
             // Global data object for attribute lookup in paint expressions
@@ -3367,7 +3367,7 @@
                 id: 'parcels-fill',
                 type: 'fill',
                 source: 'parcel-tiles',
-                'source-layer': 'parcels_for_mapbox-2wpi1y', // Actual layer name from Mapbox tileset
+                'source-layer': 'parcels_for_mapbox', // Layer name from new tileset
                 minzoom: 0, // Force visibility at all zoom levels
                 maxzoom: 22,
                 paint: {
@@ -3395,7 +3395,7 @@
                 id: 'parcels-boundary',
                 type: 'line',
                 source: 'parcel-tiles',
-                'source-layer': 'parcels_for_mapbox-2wpi1y',
+                'source-layer': 'parcels_for_mapbox',
                 minzoom: 10, // Show boundaries at zoom 10+ (was 12+) for better visibility
                 maxzoom: 22,
                 paint: {
@@ -3409,7 +3409,7 @@
                 id: 'parcels-top500',
                 type: 'line',
                 source: 'parcel-tiles',
-                'source-layer': 'parcels_for_mapbox-2wpi1y',
+                'source-layer': 'parcels_for_mapbox',
                 minzoom: 0, // Force visibility at all zoom levels
                 maxzoom: 22,
                 filter: ['in', ['to-string', ['get', 'parcel_id']], ['literal', window.top500ParcelIds]],
