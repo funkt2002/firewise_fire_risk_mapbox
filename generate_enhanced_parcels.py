@@ -370,9 +370,9 @@ def main():
         
         print("=" * 40)
         print("NEXT STEPS:")
-        print("1. Convert to MBTiles with preserved geometry:")
-        print(f"   tippecanoe -o parcels_enhanced.mbtiles -Z 0 -z 16 --simplification=2 --no-simplification-of-shared-nodes --force {OUTPUT_GEOJSON}")
-        print("   (Using lower simplification and preserving shared nodes for better precision)")
+        print("1. Convert to MBTiles with maximum precision:")
+        print(f"   tippecanoe -o parcels_enhanced.mbtiles -Z 0 -z 16 --no-simplification --no-feature-limit --no-tile-size-limit --force {OUTPUT_GEOJSON}")
+        print("   (Using NO simplification for maximum precision at all zoom levels)")
         print("2. Upload to Mapbox Studio")
         print("3. Update app to use precomputed scores")
         print("=" * 40)
