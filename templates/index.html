@@ -3013,7 +3013,7 @@
                 id: 'parcels-fill',
                 type: 'fill',
                 source: 'parcel-tiles',
-                'source-layer': 'parcels_with_score', // Layer name from hybrid tileset
+                'source-layer': 'parcels_with_score-4syjnp', // Layer name from hybrid tileset
                 minzoom: 0,
                 maxzoom: 22,
                 layout: {
@@ -3044,7 +3044,7 @@
                 id: 'parcels-boundary',
                 type: 'line',
                 source: 'parcel-tiles',
-                'source-layer': 'parcels_with_score',
+                'source-layer': 'parcels_with_score-4syjnp',
                 minzoom: 10, // Show boundaries at zoom 10+ (was 12+) for better visibility
                 maxzoom: 22,
                 layout: {
@@ -3061,7 +3061,7 @@
                 id: 'parcels-top500',
                 type: 'line',
                 source: 'parcel-tiles',
-                'source-layer': 'parcels_with_score',
+                'source-layer': 'parcels_with_score-4syjnp',
                 minzoom: 0, // Force visibility at all zoom levels
                 maxzoom: 22,
                 filter: ['in', ['to-string', ['get', 'parcel_id']], ['literal', window.top500ParcelIds]],
