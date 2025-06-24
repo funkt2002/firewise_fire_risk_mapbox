@@ -223,7 +223,7 @@ class ClientNormalizationManager {
     }
 
     // Calculate local normalization on filtered dataset
-    calculateLocalNormalization(filteredFeatures, use_quantile, use_quantiled_scores) {
+    calculateLocalNormalization(filteredFeatures, use_quantile) {
         const start = performance.now();
         console.log(`Calculating local normalization for ${filteredFeatures.length} filtered parcels`);
 
@@ -283,22 +283,7 @@ class ClientNormalizationManager {
                         mean: mean,
                         std: std > 0 ? std : 1.0,
                         norm_type: 'quantile'
-                    };
-                } else if (use_quantiled_scores) {
-                    // Robust min-max (5th-95th percentile)
-                    values.sort((a, b) => a - b);
-                    const q05Index = Math.floor(values.length * 0.05);
-                    const q95Index = Math.floor(values.length * 0.95);
-                    const q05 = values[q05Index];
-                    const q95 = values[q95Index];
-                    const range = q95 > q05 ? q95 - q05 : 1.0;
-                    
-                    normData[varBase] = {
-                        min: q05,
-                        max: q95,
-                        range: range,
-                        norm_type: 'robust_minmax'
-                    };
+                                          };
                 } else {
                     // Basic min-max
                     const min = Math.min(...values);
@@ -357,9 +342,6 @@ class ClientNormalizationManager {
 
                     if (normInfo.norm_type === 'quantile') {
                         normalizedScore = (rawValue - normInfo.mean) / normInfo.std;
-                    } else if (normInfo.norm_type === 'robust_minmax') {
-                        normalizedScore = (rawValue - normInfo.min) / normInfo.range;
-                        normalizedScore = Math.max(0, Math.min(1, normalizedScore));
                     } else {
                         normalizedScore = (rawValue - normInfo.min) / normInfo.range;
                         normalizedScore = Math.max(0, Math.min(1, normalizedScore));
@@ -389,7 +371,7 @@ class ClientNormalizationManager {
     }
 
     // Get factor scores for a feature based on normalization type
-    getFactorScores(feature, use_local_normalization, use_quantile, use_quantiled_scores) {
+    getFactorScores(feature, use_local_normalization, use_quantile) {
         const factorScores = {};
         const weightVarsBase = ['qtrmi', 'hwui', 'hagri', 'hvhsz', 'hfb', 'slope', 'neigh1d', 'hbrn', 'par_buf_sl', 'hlfmi_agfb'];
 
@@ -400,8 +382,7 @@ class ClientNormalizationManager {
                 scoreKey = varBase + '_s'; // Use locally calculated scores
             } else if (use_quantile) {
                 scoreKey = varBase + '_z';
-            } else if (use_quantiled_scores) {
-                scoreKey = varBase + '_q';
+
             } else {
                 scoreKey = varBase + '_s';
             }

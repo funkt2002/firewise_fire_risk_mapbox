@@ -998,12 +998,6 @@
                             </div>
                             <div class="toggle-container">
                                 <label class="toggle-label">
-                                    <input type="radio" name="score-type" id="use-quantiled-scores" value="quantiled">
-                                    Robust Min-Max Scores
-                                </label>
-                            </div>
-                            <div class="toggle-container">
-                                <label class="toggle-label">
                                     <input type="radio" name="score-type" id="use-quantile" value="quantile">
                                     Quantile Scores
                                 </label>
@@ -1523,7 +1517,6 @@
                 exclude_vhsz_zero: document.getElementById('filter-vhsz-zero-enabled').checked,
                 exclude_no_brns: document.getElementById('filter-brns-enabled').checked,
                 exclude_agri_protection: document.getElementById('filter-agri-protection-enabled').checked,
-                use_quantiled_scores: document.getElementById('use-quantiled-scores').checked,
                 use_quantile: document.getElementById('use-quantile').checked,
                 use_local_normalization: document.getElementById('use-local-normalization').checked,
                 subset_area: subsetArea
@@ -1532,12 +1525,9 @@
 
         function getActiveScoreVariable(baseVar) {
             const useQuantile = document.getElementById('use-quantile').checked;
-            const useQuantiled = document.getElementById('use-quantiled-scores').checked;
             
             if (useQuantile) {
                 return baseVar + '_z';
-            } else if (useQuantiled) {
-                return baseVar + '_q';
             } else {
                 return baseVar + '_s';
             }
@@ -1545,15 +1535,11 @@
 
         function createPopupContent(props) {
             const useQuantile = document.getElementById('use-quantile').checked;
-            const useQuantiled = document.getElementById('use-quantiled-scores').checked;
             let suffix, scoreType;
             
             if (useQuantile) {
                 suffix = '_z';
                 scoreType = 'Quantile';
-            } else if (useQuantiled) {
-                suffix = '_q';
-                scoreType = 'Robust Min-Max';
             } else {
                 suffix = '_s';
                 scoreType = 'Basic Min-Max';
@@ -1739,36 +1725,26 @@
             'neigh1_d': 'Neighbor Distance',
             'hlfmi_brn': 'Burn Score',
             'qtrmi_s': 'Quarter Mile Score',
-            'qtrmi_q': 'Quarter Mile Score (Robust Min-Max)',
             'qtrmi_z': 'Quarter Mile Score (Quantile)',
             'hwui_s': 'WUI Score',
-            'hwui_q': 'WUI Score (Robust Min-Max)',
             'hwui_z': 'WUI Score (Quantile)',
             'hagri_s': 'Agriculture Score',
-            'hagri_q': 'Agriculture Score (Robust Min-Max)',
             'hagri_z': 'Agriculture Score (Quantile)',
             'hvhsz_s': 'Very High Fire Hazard Score',
-            'hvhsz_q': 'Very High Fire Hazard Score (Robust Min-Max)',
             'hvhsz_z': 'Very High Fire Hazard Score (Quantile)',
             'hfb_s': 'Fuel Break Score',
-            'hfb_q': 'Fuel Break Score (Robust Min-Max)',
             'hfb_z': 'Fuel Break Score (Quantile)',
             'slope_s': 'Slope Score',
-            'slope_q': 'Slope Score (Robust Min-Max)',
             'slope_z': 'Slope Score (Quantile)',
             'neigh1d_s': 'Neighbor Distance Score',
-            'neigh1d_q': 'Neighbor Distance Score (Robust Min-Max)',
             'neigh1d_z': 'Neighbor Distance Score (Quantile)',
             'hbrn_s': 'Burn Score',
-            'hbrn_q': 'Burn Score (Robust Min-Max)',
             'hbrn_z': 'Burn Score (Quantile)',
             'par_buf_sl': 'Slope within 100 ft',
             'par_buf_sl_s': 'Slope within 100 ft Score',
-            'par_buf_sl_q': 'Slope within 100 ft Score (Robust Min-Max)',
             'par_buf_sl_z': 'Slope within 100 ft Score (Quantile)',
             'hlfmi_agfb': 'Agriculture & Fuelbreaks',
             'hlfmi_agfb_s': 'Agriculture & Fuelbreaks Score',
-            'hlfmi_agfb_q': 'Agriculture & Fuelbreaks Score (Robust Min-Max)',
             'hlfmi_agfb_z': 'Agriculture & Fuelbreaks Score (Quantile)'
         };
 
@@ -1834,7 +1810,6 @@
                 
                 const responseData = await window.apiClient.prepareData({
                     weights,
-                    use_quantiled_scores: filters.use_quantiled_scores,
                     use_quantile: filters.use_quantile,
                     use_local_normalization: filters.use_local_normalization,
                     max_parcels: maxParcels,
@@ -1852,7 +1827,7 @@
                 console.log(`   - Max parcels: ${maxParcels}`);
                 console.log(`   - Local normalization: ${filters.use_local_normalization}`);
                 console.log(`   - Use quantile: ${filters.use_quantile}`);
-                console.log(`   - Use quantiled scores: ${filters.use_quantiled_scores}`);
+
                 
                 const firstCalcStart = performance.now();
                 const clientResult = window.fireRiskScoring.processData(
@@ -1860,8 +1835,7 @@
                     filters, 
                     maxParcels,
                     filters.use_local_normalization,
-                    filters.use_quantile,
-                    filters.use_quantiled_scores
+                    filters.use_quantile
                 );
                 const firstCalcTime = performance.now() - firstCalcStart;
                 
@@ -2162,7 +2136,7 @@
         // Filter and normalization controls - all use client-side processing
         const filters = ['filter-yearbuilt-enabled', 'filter-neigh1d-enabled', 'filter-yearbuilt-exclude-unknown', 
                         'filter-strcnt-enabled', 'filter-wui-zero-enabled', 'filter-vhsz-zero-enabled', 
-                        'filter-brns-enabled', 'filter-agri-protection-enabled', 'use-basic-scores', 'use-quantiled-scores', 'use-quantile',
+                        'filter-brns-enabled', 'filter-agri-protection-enabled', 'use-basic-scores', 'use-quantile',
                         'use-local-normalization'];
         filters.forEach(id => {
             document.getElementById(id).addEventListener('change', () => {
@@ -2374,7 +2348,7 @@
                     selection_areas: selectionAreas, // Send all individual areas for reference
                     max_parcels: maxParcels,
                     include_vars: includeVars,
-                    use_quantiled_scores: document.getElementById('use-quantiled-scores').checked,
+
                     use_quantile: document.getElementById('use-quantile').checked,
                     ...getCurrentFilters()
                 });

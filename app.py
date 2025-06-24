@@ -214,12 +214,10 @@ def build_filter_conditions(filters):
     
     return conditions, params
 
-def get_score_vars(use_quantiled_scores=False, use_quantile=False):
+def get_score_vars(use_quantile=False):
     """Get the appropriate score variable names based on normalization setting"""
     if use_quantile:
         suffix = '_z'
-    elif use_quantiled_scores:
-        suffix = '_q'
     else:
         suffix = '_s'
     
@@ -228,7 +226,7 @@ def get_score_vars(use_quantiled_scores=False, use_quantile=False):
     score_vars = correct_variable_names(score_vars)
     return score_vars
 
-def apply_local_normalization(raw_results, use_quantile, use_quantiled_scores):
+def apply_local_normalization(raw_results, use_quantile):
     """Apply local normalization to raw values and return individual factor scores"""
     start_time = time.time()
     
@@ -271,15 +269,7 @@ def apply_local_normalization(raw_results, use_quantile, use_quantiled_scores):
                         'std': std_val if std_val > 0 else 1.0,
                         'norm_type': 'quantile'
                     }
-                elif use_quantiled_scores:
-                    q05, q95 = np.percentile(values, [5, 95])
-                    range_val = q95 - q05 if q95 > q05 else 1.0
-                    norm_data[var_base] = {
-                        'min': q05,
-                        'max': q95,
-                        'range': range_val,
-                        'norm_type': 'robust_minmax'
-                    }
+
                 else:
                     min_val = np.min(values)
                     if var_base == 'qtrmi':
@@ -328,9 +318,7 @@ def apply_local_normalization(raw_results, use_quantile, use_quantiled_scores):
                 
                 if norm_info['norm_type'] == 'quantile':
                     normalized_score = (raw_value - norm_info['mean']) / norm_info['std']
-                elif norm_info['norm_type'] == 'robust_minmax':
-                    normalized_score = (raw_value - norm_info['min']) / norm_info['range']
-                    normalized_score = max(0, min(1, normalized_score))
+
                 else:
                     normalized_score = (raw_value - norm_info['min']) / norm_info['range']
                     normalized_score = max(0, min(1, normalized_score))
@@ -349,21 +337,20 @@ def apply_local_normalization(raw_results, use_quantile, use_quantiled_scores):
     logger.info(f"Local normalization completed in {time.time() - start_time:.2f}s")
     return raw_results
 
-def calculate_initial_scores(raw_results, weights, use_local_normalization, use_quantile, use_quantiled_scores, max_parcels):
+def calculate_initial_scores(raw_results, weights, use_local_normalization, use_quantile, max_parcels):
     """Calculate initial composite scores for display"""
     start_time = time.time()
     
     # Apply local normalization if requested (adds individual factor scores)
     if use_local_normalization:
         logger.info("Using local normalization with log transformations for neigh1d, hagri, and hfb")
-        raw_results = apply_local_normalization(raw_results, use_quantile, use_quantiled_scores)
+        raw_results = apply_local_normalization(raw_results, use_quantile)
         score_suffix = '_score'
     else:
         # Use global scores
         if use_quantile:
             score_suffix = '_z'
-        elif use_quantiled_scores:
-            score_suffix = '_q'
+
         else:
             score_suffix = '_s'
     
@@ -505,12 +492,11 @@ def export_shapefile():
 def get_distribution(variable):
     """Get distribution data for a variable"""
     data = request.get_json() or {}
-    use_quantiled_scores = data.get('use_quantiled_scores', False)
     use_quantile = data.get('use_quantile', False)
     use_local_normalization = data.get('use_local_normalization', False)
     
     # Get allowed variables - simplified check
-    score_vars = get_score_vars(use_quantiled_scores, use_quantile)
+    score_vars = get_score_vars(use_quantile)
     raw_vars = list(RAW_VAR_MAP.values())
     allowed_vars = set(score_vars + raw_vars + ['num_brns', 'hlfmi_brn'])
     
@@ -527,9 +513,9 @@ def get_distribution(variable):
     cur = conn.cursor()
     
     # Check if we need local normalization
-    if use_local_normalization and variable.endswith(('_s', '_q', '_z')):
+    if use_local_normalization and variable.endswith(('_s', '_z')):
         # Local normalization logic
-        var_base = variable.replace('_s', '').replace('_q', '').replace('_z', '')
+        var_base = variable.replace('_s', '').replace('_z', '')
         
         if var_base in RAW_VAR_MAP:
             raw_var = RAW_VAR_MAP[var_base]
@@ -561,7 +547,7 @@ def get_distribution(variable):
                     # Apply local normalization
                     raw_data = apply_local_normalization(
                         [{raw_var: v} for v in raw_values],
-                        use_quantile, use_quantiled_scores
+                        use_quantile
                     )
                     
                     # Transform values
@@ -572,9 +558,6 @@ def get_distribution(variable):
                         for val in raw_values:
                             if norm_data['norm_type'] == 'quantile':
                                 normalized = (val - norm_data['mean']) / norm_data['std']
-                            elif norm_data['norm_type'] == 'robust_minmax':
-                                normalized = (val - norm_data['min']) / norm_data['range']
-                                normalized = max(0, min(1, normalized))
                             else:
                                 normalized = (val - norm_data['min']) / norm_data['range']
                                 normalized = max(0, min(1, normalized))

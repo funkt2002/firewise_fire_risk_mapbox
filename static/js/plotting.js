@@ -203,7 +203,7 @@ class PlottingManager {
         // Always use client-side for local normalization or when we have client data
         // For score variables with local normalization, we need to force client-side processing
         const needsClientSide = filters.use_local_normalization || 
-                               (variable.endsWith('_s') || variable.endsWith('_q') || variable.endsWith('_z'));
+                               (variable.endsWith('_s') || variable.endsWith('_z'));
         const useClientSide = needsClientSide && clientData;
         
         let data;
@@ -216,9 +216,9 @@ class PlottingManager {
             let values = [];
             
             // Handle both score variables and raw variables
-            if (variable.endsWith('_s') || variable.endsWith('_q') || variable.endsWith('_z')) {
+            if (variable.endsWith('_s') || variable.endsWith('_z')) {
                 // Score variable - check if we need to calculate scores
-                const baseVar = variable.slice(0, -2); // Remove _s, _q, or _z
+                const baseVar = variable.slice(0, -2); // Remove _s or _z
                 const scoreKey = baseVar + '_s';
                 
                 // Check if scores are already calculated
@@ -248,8 +248,7 @@ class PlottingManager {
                     const processedData = window.fireRiskScoring.processData(
                         weights, filters, maxParcels,
                         filters.use_local_normalization,
-                        filters.use_quantile,
-                        filters.use_quantiled_scores
+                        filters.use_quantile
                     );
                     
                     if (processedData && processedData.features) {
@@ -302,12 +301,10 @@ class PlottingManager {
             console.log('Using server-side data for distribution of:', variable);
             
             // If this is a score variable, use the correct suffix based on settings
-            if (variable.endsWith('_s') || variable.endsWith('_q') || variable.endsWith('_z')) {
-                const baseVar = variable.slice(0, -2); // Remove _s, _q, or _z
+            if (variable.endsWith('_s') || variable.endsWith('_z')) {
+                const baseVar = variable.slice(0, -2); // Remove _s or _z
                 if (filters.use_quantile) {
                     variable = baseVar + '_z';
-                } else if (filters.use_quantiled_scores) {
-                    variable = baseVar + '_q';
                 } else {
                     variable = baseVar + '_s';
                 }
@@ -378,7 +375,7 @@ class PlottingManager {
         
         // Check if this variable uses log transformation (only for score variables, not raw)
         const baseVarForTitle = Object.keys(this.rawVarMap).find(key => this.rawVarMap[key] === variable) || variable;
-        const isScoreVariable = variable.includes('_s') || variable.includes('_q') || variable.includes('_z');
+        const isScoreVariable = variable.includes('_s') || variable.includes('_z');
         const usesLogTransform = isScoreVariable && (['neigh1d', 'hagri', 'hfb'].includes(baseVarForTitle) || 
                                 ['neigh1_d', 'hlfmi_agri', 'hlfmi_fb'].includes(variable));
         

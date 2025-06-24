@@ -36,7 +36,7 @@ class FireRiskScoring {
     }
  
     // Process data with filters and calculate scores (comprehensive client-side)
-    processData(weights, filters, maxParcels = 500, use_local_normalization = false, use_quantile = false, use_quantiled_scores = false) {
+    processData(weights, filters, maxParcels = 500, use_local_normalization = false, use_quantile = false) {
         if (!this.completeDataset) {
             console.error('No complete dataset stored. Call storeCompleteData() first.');
             return null;
@@ -52,7 +52,7 @@ class FireRiskScoring {
         
         // Check if we need to reprocess filters
         const filtersChanged = this.filtersChanged(filters) || 
-                              this.normalizationChanged(use_local_normalization, use_quantile, use_quantiled_scores);
+                              this.normalizationChanged(use_local_normalization, use_quantile);
         
         let currentFeatures;
         
@@ -68,7 +68,7 @@ class FireRiskScoring {
             if (use_local_normalization && currentFeatures.length > 0) {
                 const normStart = performance.now();
                 const normalizedResult = window.clientNormalizationManager.calculateLocalNormalization(
-                    currentFeatures, use_quantile, use_quantiled_scores
+                    currentFeatures, use_quantile
                 );
                 currentFeatures = normalizedResult.features;
                 this.logTiming('Local Normalization', performance.now() - normStart);
@@ -95,7 +95,7 @@ class FireRiskScoring {
 
         // Calculate scores on current (filtered) dataset
         const scoringResult = this.calculateScores(
-            weights, maxParcels, use_local_normalization, use_quantile, use_quantiled_scores, currentFeatures
+            weights, maxParcels, use_local_normalization, use_quantile, currentFeatures
         );
 
         const totalTime = performance.now() - start;
@@ -112,7 +112,7 @@ class FireRiskScoring {
     }
 
     // Calculate composite scores using weights (client-side)
-    calculateScores(weights, maxParcels = 500, use_local_normalization = false, use_quantile = false, use_quantiled_scores = false, features = null) {
+    calculateScores(weights, maxParcels = 500, use_local_normalization = false, use_quantile = false, features = null) {
         const parcelsToScore = features || this.currentDataset?.features || this.completeDataset?.features;
         
         if (!parcelsToScore) {
@@ -139,7 +139,7 @@ class FireRiskScoring {
             
             // Get factor scores based on normalization settings
             const factorScores = window.clientNormalizationManager.getFactorScores(
-                parcel, use_local_normalization, use_quantile, use_quantiled_scores
+                parcel, use_local_normalization, use_quantile
             );
             
             // Calculate weighted sum of factor scores
@@ -209,14 +209,13 @@ class FireRiskScoring {
     }
 
     // Check if normalization settings have changed
-    normalizationChanged(use_local_normalization, use_quantile, use_quantiled_scores) {
+    normalizationChanged(use_local_normalization, use_quantile) {
         if (!this.lastNormalizationSettings) return true;
         
         const current = this.lastNormalizationSettings;
         return (
             current.use_local_normalization !== use_local_normalization ||
-            current.use_quantile !== use_quantile ||
-            current.use_quantiled_scores !== use_quantiled_scores
+            current.use_quantile !== use_quantile
         );
     }
 
