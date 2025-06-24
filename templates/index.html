@@ -2082,6 +2082,7 @@
             // Update global variables for expressions
             window.parcelScores = scoreObject;
             window.top500ParcelIds = top500Ids;
+            window.filteredParcelIds = Object.values(scoreObject).filter(score => score !== undefined).map(score => parseFloat(score)).sort((a, b) => a - b);
             
             console.log(`VECTOR TILES: Updated styling data for ${Object.keys(scoreObject).length} parcels (${top500Ids.length} top parcels)`);
             
@@ -2105,6 +2106,17 @@
             
             // Update top 500 filter
             map.setFilter('parcels-top500', ['in', ['to-string', ['get', 'parcel_id']], ['literal', top500Ids]]);
+            
+            // Update fill opacity for spatial filtering
+            map.setPaintProperty('parcels-fill', 'fill-opacity', [
+                'case',
+                // If filteredParcelIds is empty (no spatial filter), show all parcels
+                ['==', ['length', ['literal', window.filteredParcelIds]], 0], 0.8,
+                // If spatial filter is active, only show parcels in the filtered list
+                ['in', ['to-string', ['get', 'parcel_id']], ['literal', window.filteredParcelIds]], 0.8,
+                // Otherwise make transparent
+                0.0
+            ]);
             
             console.log('VECTOR TILES: Map styling updated successfully');
         }
@@ -3299,6 +3311,13 @@
             
             if (attributes) {
                 console.log(`VECTOR TILES: Found attributes for parcel ${parcelId}`);
+                console.log(`VECTOR TILES DEBUG: Attributes for popup:`, {
+                    score: attributes.score,
+                    rank: attributes.rank,
+                    par_buf_sl: attributes.par_buf_sl,
+                    hlfmi_agfb: attributes.hlfmi_agfb,
+                    parcel_id: attributes.parcel_id
+                });
                 new mapboxgl.Popup()
                     .setLngLat(e.lngLat)
                     .setHTML(createPopupContent(attributes))
@@ -3362,6 +3381,7 @@
             // Global data object for attribute lookup in paint expressions
             window.parcelScores = {}; // Will be updated by updateMap()
             window.top500ParcelIds = []; // Will be updated by updateMap()
+            window.filteredParcelIds = []; // Will be updated during spatial filtering
             
             map.addLayer({
                 id: 'parcels-fill',
@@ -3387,7 +3407,15 @@
                         ],
                         '#eeeeee' // Default color for parcels without scores
                     ],
-                    'fill-opacity': 0.8
+                    'fill-opacity': [
+                        'case',
+                        // If filteredParcelIds is empty (no spatial filter), show all parcels
+                        ['==', ['length', ['literal', window.filteredParcelIds]], 0], 0.8,
+                        // If spatial filter is active, only show parcels in the filtered list
+                        ['in', ['to-string', ['get', 'parcel_id']], ['literal', window.filteredParcelIds]], 0.8,
+                        // Otherwise make transparent
+                        0.0
+                    ]
                 }
             });
             

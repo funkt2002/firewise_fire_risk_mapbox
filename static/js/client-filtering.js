@@ -56,6 +56,12 @@ class ClientFilterManager {
             const spatialStart = performance.now();
             filteredFeatures = this.applySpatialFilter(filteredFeatures, filters.subset_area, window.map);
             this.logTiming('Spatial Filtering', performance.now() - spatialStart);
+        } else {
+            // Clear spatial filter - show all parcels
+            if (window.filteredParcelIds && window.filteredParcelIds.length > 0) {
+                window.filteredParcelIds = [];
+                console.log(`VECTOR TILES: Cleared spatial filter - showing all parcels`);
+            }
         }
 
         // Create filtered dataset
@@ -209,6 +215,12 @@ class ClientFilterManager {
             });
 
             console.log(`VECTOR TILES: Spatial filter reduced from ${features.length} to ${filteredFeatures.length} parcels`);
+            
+            // Update global filtered parcel IDs for map styling (make non-filtered parcels transparent)
+            if (filteredFeatures.length > 0) {
+                window.filteredParcelIds = filteredFeatures.map(f => f.properties.parcel_id.toString());
+                console.log(`VECTOR TILES: Updated filteredParcelIds for map styling (${window.filteredParcelIds.length} parcels)`);
+            }
             
             // DEBUG: If no matches, log more details
             if (filteredFeatures.length === 0 && visibleParcelIds.size > 0 && features.length > 0) {
