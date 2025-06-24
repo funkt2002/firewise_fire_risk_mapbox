@@ -162,12 +162,23 @@ class PlottingManager {
             return;
         }
 
-        // Get all variables for comparison
+        // Get enabled variables for comparison
         const allVariables = Object.keys(this.rawVarMap);
+        const enabledVariables = allVariables.filter(varBase => {
+            // Check if the corresponding enable checkbox is checked
+            const enableCheckbox = document.getElementById(`enable-${varBase}_s`);
+            return enableCheckbox && enableCheckbox.checked;
+        });
+
+        if (enabledVariables.length === 0) {
+            alert('No variables are currently enabled. Please enable at least one variable to generate correlations.');
+            return;
+        }
+        
         const correlations = [];
         const labels = [];
         
-        for (const compareVar of allVariables) {
+        for (const compareVar of enabledVariables) {
             const rawVar = this.rawVarMap[compareVar];
             const compareData = features
                 .map(f => {
@@ -238,7 +249,7 @@ class PlottingManager {
         const titleSuffix = isScoreVariable ? scoreTypeText + normalizationText : '';
         
         const layout = {
-            title: `${targetVarName} - Correlations with All Variables${titleSuffix}`,
+            title: `${targetVarName} - Correlations with Enabled Variables${titleSuffix}`,
             paper_bgcolor: '#1a1a1a',
             plot_bgcolor: '#1a1a1a',
             font: { color: '#fff' },
@@ -296,8 +307,21 @@ class PlottingManager {
             alert('No data available. Please load data first.');
             return;
         }
-        const variables = Object.keys(this.rawVarMap);
-        const rawVars = Object.values(this.rawVarMap);
+
+        // Filter variables to only include enabled ones
+        const allVariables = Object.keys(this.rawVarMap);
+        const variables = allVariables.filter(varBase => {
+            // Check if the corresponding enable checkbox is checked
+            const enableCheckbox = document.getElementById(`enable-${varBase}_s`);
+            return enableCheckbox && enableCheckbox.checked;
+        });
+
+        if (variables.length === 0) {
+            alert('No variables are currently enabled. Please enable at least one variable to generate the correlation matrix.');
+            return;
+        }
+
+        console.log(`Generating correlation matrix for ${variables.length} enabled variables:`, variables);
         
         // Extract data for each variable with log transformations
         const variableData = {};
@@ -386,7 +410,7 @@ class PlottingManager {
         };
 
         const layout = {
-            title: 'Variable Correlation Matrix',
+            title: `Variable Correlation Matrix (${variables.length} Enabled Variables)`,
             paper_bgcolor: '#1a1a1a',
             plot_bgcolor: '#1a1a1a',
             font: { color: '#fff' },

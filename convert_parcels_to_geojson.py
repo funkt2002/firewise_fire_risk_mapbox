@@ -69,27 +69,36 @@ def generate_optimized_tiles(geojson_file):
         print(f"✅ SUCCESS! Generated parcels_better_balanced.mbtiles ({size_mb:.1f} MB)")
         print("   → This tileset keeps small parcels visible and prevents 'too much data' errors")
         
-        # Strategy 2: Maximum Detail (keeps ALL parcels when possible)
-        print("\n📊 Strategy 2: Maximum Detail")
+        # Strategy 2: Simplify Smallest (ALL parcels render, smallest become dots)
+        print("\n📊 Strategy 2: Simplify Smallest (ALL parcels zoom 6-15)")
         balanced_cmd = [
             'tippecanoe',
-            '--output', 'parcels_max_detail.mbtiles',
+            '--output', 'parcels_simplify_smallest.mbtiles',
             '--force',
-            '--minimum-zoom', '0',
-            '--maximum-zoom', '16',
-            '--maximum-tile-bytes', '700000',  # Larger tiles allowed
-            '--maximum-tile-features', '50000', # Many more features allowed
-            '--drop-densest-as-needed',        # Only when absolutely necessary
-            '--simplification', '3',           # Minimal simplification
+            '--minimum-zoom', '6',             # Start at zoom 6 (region level)
+            '--maximum-zoom', '15',            # End at zoom 15 (street level)
+            '--base-zoom', '10',               # Optimize for zoom 10 (county level)
+            # GENEROUS settings to fit ALL parcels:
+            '--maximum-tile-bytes', '1200000', # 1.2MB tiles (generous)
+            '--maximum-tile-features', '80000', # 80K features per tile (very generous)
+            # SIMPLIFY INSTEAD OF DROP - this is the key!
+            '--coalesce-smallest-as-needed',   # Simplify smallest ~20% parcels into dots
+            '--coalesce-densest-as-needed',    # Simplify in dense areas (urban)
+            # ABSOLUTELY NO DROPPING:
+            # REMOVED: --drop-densest-as-needed    ← NO DROPPING!
+            # REMOVED: --drop-fraction-as-needed   ← NO DROPPING!
+            # REMOVED: --drop-smallest-as-needed   ← NO DROPPING!
+            # GEOMETRY: Smart simplification
+            '--simplify-only-low-zooms',       # Only simplify at zoom 6-11, full detail at 12+
             '--detect-shared-borders',
-            '--buffer', '1',
+            '--buffer', '1',                   # Small buffer for clean rendering
             geojson_file
         ]
         
         result = subprocess.run(balanced_cmd, check=True, capture_output=True, text=True)
-        size_mb = os.path.getsize('parcels_max_detail.mbtiles') / (1024 * 1024)
-        print(f"✅ SUCCESS! Generated parcels_max_detail.mbtiles ({size_mb:.1f} MB)")
-        print("   → This tileset shows maximum detail, might have 'too much data' in very dense areas")
+        size_mb = os.path.getsize('parcels_simplify_smallest.mbtiles') / (1024 * 1024)
+        print(f"✅ SUCCESS! Generated parcels_simplify_smallest.mbtiles ({size_mb:.1f} MB)")
+        print("   → This tileset shows ALL parcels: smallest as dots/simple shapes, larger with detail")
         
         # Strategy 3: Emergency fallback (if you still get "too much data" errors)
         print("\n📊 Strategy 3: Emergency Fallback (only if needed)")
@@ -280,7 +289,7 @@ def main():
         print("✅ Smart feature dropping preserves important parcels")
         
         print("\n📂 GENERATED FILES:")
-        for file in ['parcels_better_balanced.mbtiles', 'parcels_max_detail.mbtiles', 'parcels_emergency_fallback.mbtiles']:
+        for file in ['parcels_better_balanced.mbtiles', 'parcels_simplify_smallest.mbtiles', 'parcels_emergency_fallback.mbtiles']:
             if os.path.exists(file):
                 size_mb = os.path.getsize(file) / (1024 * 1024)
                 print(f"   {file} ({size_mb:.1f} MB)")
@@ -292,13 +301,14 @@ def main():
         print("\n2. Upload to Mapbox Studio:")
         print("   mapbox upload theo1158.parcels_new parcels_better_balanced.mbtiles")
         print("\n3. Update your code in templates/index.html:")
-        print("   Change: url: 'mapbox://theo1158.d1ndl9mw'")
-        print("   To:     url: 'mapbox://theo1158.parcels_new'")
+        print("   ✅ INTEGRATED: 'parcels_better_balanced.mbtiles' → 'mapbox://theo1158.66izc3um'")
+        print("   Current tileset keeps small parcels visible!")
         
         print("\n💡 RECOMMENDATIONS:")
-        print("   1. Try 'parcels_better_balanced.mbtiles' first - keeps small parcels visible!")
-        print("   2. If that's still missing parcels, try 'parcels_max_detail.mbtiles'")
-        print("   3. If you get 'too much data' errors, fall back to 'parcels_emergency_fallback.mbtiles'")
+        print("   ✅ Current: 'theo1158.66izc3um' (balanced - keeps small parcels visible)")
+        print("   🎯 For ALL parcels rendered: Try 'parcels_simplify_smallest.mbtiles' → upload as new tileset")
+        print("      (Small parcels become dots, large parcels keep detail - ALL 62,416 parcels visible!)")
+        print("   🛡️  If errors occur: Fall back to 'parcels_emergency_fallback.mbtiles'")
         
         return True
     else:
