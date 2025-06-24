@@ -705,17 +705,50 @@ class PlottingManager {
                 .map(f => f.properties.score);
 
             console.log(`📊 SCORE DISTRIBUTION: Extracted ${scores.length} total scores, ${selectedScores.length} top scores`);
-            console.log(`📊 SCORE DISTRIBUTION: Score range: ${Math.min(...scores).toFixed(3)} to ${Math.max(...scores).toFixed(3)}`);
+            
+            // Detailed score validation
+            console.log('📊 SCORE DISTRIBUTION: Validating score data...');
+            const invalidScores = scores.filter(s => s === null || s === undefined || isNaN(s) || !isFinite(s));
+            const validScores = scores.filter(s => s !== null && s !== undefined && !isNaN(s) && isFinite(s));
+            console.log(`📊 SCORE DISTRIBUTION: Invalid scores: ${invalidScores.length}, Valid scores: ${validScores.length}`);
+            
+            if (invalidScores.length > 0) {
+                console.log(`📊 SCORE DISTRIBUTION: Sample invalid scores:`, invalidScores.slice(0, 5));
+            }
+            
+            if (validScores.length === 0) {
+                throw new Error(`No valid scores found! All ${scores.length} scores are invalid.`);
+            }
+            
+            // Log score samples and range
+            console.log(`📊 SCORE DISTRIBUTION: First 10 scores:`, scores.slice(0, 10));
+            console.log(`📊 SCORE DISTRIBUTION: Score types:`, scores.slice(0, 5).map(s => typeof s));
+            
+            const scoreMin = Math.min(...validScores);
+            const scoreMax = Math.max(...validScores);
+            console.log(`📊 SCORE DISTRIBUTION: Valid score range: ${scoreMin.toFixed(6)} to ${scoreMax.toFixed(6)}`);
+            
+            if (scoreMin === scoreMax) {
+                throw new Error(`All scores are identical (${scoreMin}). Cannot create meaningful histogram.`);
+            }
 
-            // Calculate statistics
-            const allScoresMean = scores.reduce((a, b) => a + b, 0) / scores.length;
-            const allScoresMin = Math.min(...scores);
-            const allScoresMax = Math.max(...scores);
-            const allScoresStd = Math.sqrt(scores.reduce((a, b) => a + Math.pow(b - allScoresMean, 2), 0) / scores.length);
+            // Calculate statistics using valid scores only
+            const allScoresMean = validScores.reduce((a, b) => a + b, 0) / validScores.length;
+            const allScoresMin = scoreMin;
+            const allScoresMax = scoreMax;
+            const allScoresStd = Math.sqrt(validScores.reduce((a, b) => a + Math.pow(b - allScoresMean, 2), 0) / validScores.length);
 
-            const selectedScoresMean = selectedScores.reduce((a, b) => a + b, 0) / selectedScores.length;
-            const selectedScoresMin = Math.min(...selectedScores);
-            const selectedScoresMax = Math.max(...selectedScores);
+            // Validate selected scores
+            const validSelectedScores = selectedScores.filter(s => s !== null && s !== undefined && !isNaN(s) && isFinite(s));
+            console.log(`📊 SCORE DISTRIBUTION: Valid selected scores: ${validSelectedScores.length} out of ${selectedScores.length}`);
+            
+            if (validSelectedScores.length === 0) {
+                throw new Error(`No valid selected scores found!`);
+            }
+            
+            const selectedScoresMean = validSelectedScores.reduce((a, b) => a + b, 0) / validSelectedScores.length;
+            const selectedScoresMin = Math.min(...validSelectedScores);
+            const selectedScoresMax = Math.max(...validSelectedScores);
 
             console.log(`📊 SCORE DISTRIBUTION: All scores - Mean: ${allScoresMean.toFixed(3)}, Std: ${allScoresStd.toFixed(3)}`);
             console.log(`📊 SCORE DISTRIBUTION: Top scores - Mean: ${selectedScoresMean.toFixed(3)}, Range: ${selectedScoresMin.toFixed(3)}-${selectedScoresMax.toFixed(3)}`);
@@ -732,9 +765,10 @@ class PlottingManager {
                 binColors.push(`rgb(${red},${green},${blue})`);
             }
 
-            // Simple histogram trace (like regular distributions)
+            // Simple histogram trace using valid scores only
+            console.log(`📊 SCORE DISTRIBUTION: Creating histogram with ${validScores.length} valid scores`);
             const trace = {
-                x: scores,
+                x: validScores,  // Use only valid scores
                 type: 'histogram',
                 marker: {
                     color: binColors,
@@ -745,6 +779,13 @@ class PlottingManager {
                 },
                 nbinsx: numBins
             };
+            
+            console.log('📊 SCORE DISTRIBUTION: Histogram trace created:', {
+                dataLength: validScores.length,
+                dataType: typeof validScores[0],
+                numBins: numBins,
+                binColorsLength: binColors.length
+            });
 
             // Simple layout (like regular distributions)
             const layout = {
@@ -770,7 +811,7 @@ class PlottingManager {
                     y: 0.98,
                     xref: 'paper',
                     yref: 'paper',
-                    text: `Min: ${allScoresMin.toFixed(3)}<br>Max: ${allScoresMax.toFixed(3)}<br>Mean: ${allScoresMean.toFixed(3)}<br>Std: ${allScoresStd.toFixed(3)}<br>Count: ${scores.length}<br><br>Top ${selectedScores.length}:<br>Min: ${selectedScoresMin.toFixed(3)}<br>Max: ${selectedScoresMax.toFixed(3)}<br>Mean: ${selectedScoresMean.toFixed(3)}`,
+                    text: `Min: ${allScoresMin.toFixed(3)}<br>Max: ${allScoresMax.toFixed(3)}<br>Mean: ${allScoresMean.toFixed(3)}<br>Std: ${allScoresStd.toFixed(3)}<br>Count: ${validScores.length}<br><br>Top ${validSelectedScores.length}:<br>Min: ${selectedScoresMin.toFixed(3)}<br>Max: ${selectedScoresMax.toFixed(3)}<br>Mean: ${selectedScoresMean.toFixed(3)}`,
                     showarrow: false,
                     font: {
                         color: '#fff',
@@ -786,6 +827,18 @@ class PlottingManager {
             };
 
             console.log('📊 SCORE DISTRIBUTION: Creating Plotly chart...');
+            console.log('📊 SCORE DISTRIBUTION: Final trace validation:', {
+                x_length: trace.x.length,
+                x_first_5: trace.x.slice(0, 5),
+                x_all_finite: trace.x.every(v => isFinite(v)),
+                nbinsx: trace.nbinsx
+            });
+            console.log('📊 SCORE DISTRIBUTION: Layout validation:', {
+                title: layout.title,
+                xaxis_title: layout.xaxis.title,
+                yaxis_title: layout.yaxis.title
+            });
+            
             Plotly.newPlot('dist-plot', [trace], layout);
             document.getElementById('dist-modal').style.display = "block";
             console.log('📊 SCORE DISTRIBUTION: Successfully created chart');
