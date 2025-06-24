@@ -1114,147 +1114,67 @@ def prepare_data():
 # ====================
 
 def get_parcel_scores_for_optimization(data, include_vars):
-    """Get parcel scores within selection area(s) for optimization"""
-    # Add debugging
-    logger.info(f"Original include_vars received: {include_vars}")
+    """Get parcel scores within selection area(s) for optimization - uses client-sent scores"""
     
     # Correct any corrupted variable names
     include_vars = correct_variable_names(include_vars)
-    logger.info(f"Corrected include_vars: {include_vars}")
+    logger.info(f"Processing include_vars: {include_vars}")
     
-    # Process variable names - properly remove only the suffix, not all occurrences
+    # Client must send pre-computed parcel scores for consistency
+    parcel_scores_data = data.get('parcel_scores')
+    if not parcel_scores_data:
+        raise ValueError("No client-computed parcel scores provided. Client must send 'parcel_scores' array for optimization.")
+    
+    logger.info(f"Using pre-computed scores from client for {len(parcel_scores_data)} parcels")
+    
+    # Process variable names to get base names (remove suffixes)
     include_vars_base = []
     for var in include_vars:
-        if var.endswith('_s'):
-            base_var = var[:-2]  # Remove last 2 characters (_s)
-        elif var.endswith('_q'):
-            base_var = var[:-2]  # Remove last 2 characters (_q)
-        elif var.endswith('_z'):
-            base_var = var[:-2]  # Remove last 2 characters (_z)
+        if var.endswith(('_s', '_q', '_z')):
+            base_var = var[:-2]  # Remove last 2 characters
         else:
             base_var = var  # No suffix to remove
         include_vars_base.append(base_var)
     
     logger.info(f"Base variables: {include_vars_base}")
     
-    use_quantile = data.get('use_quantile', False)
-    score_vars_to_use = []
-    
-    for var_base in include_vars_base:
-        if use_quantile:
-            score_var = var_base + '_z'
-        else:
-            score_var = var_base + '_s'
-        score_vars_to_use.append(score_var)
-    
-    logger.info(f"Score variables to use in SQL: {score_vars_to_use}")
-    
-    # Build filters
-    conditions, params = build_filter_conditions(data)
-    
-    # Add selection area filter - the frontend combines multiple areas via Turf.js union
-    selection_geom = data['selection']
-    
-    # Log the selection geometry for debugging
-    logger.info(f"Selection geometry type: {selection_geom.get('type', 'unknown') if isinstance(selection_geom, dict) else type(selection_geom)}")
-    
-    # Check if this is a FeatureCollection (multiple areas) or single geometry
-    if isinstance(selection_geom, dict) and selection_geom.get('type') == 'FeatureCollection':
-        # Handle multiple areas - create union condition
-        geom_conditions = []
-        for i, feature in enumerate(selection_geom['features']):
-            geom_conditions.append(
-                "ST_Intersects(geom, ST_Transform(ST_SetSRID(ST_GeomFromGeoJSON(%s), 4326), 3857))"
-            )
-            params.append(json.dumps(feature['geometry']))
-            logger.info(f"Added area {i+1} geometry: {feature['geometry']['type']}")
-        
-        # Use OR to combine multiple area conditions
-        multi_area_condition = "(" + " OR ".join(geom_conditions) + ")"
-        conditions.append(multi_area_condition)
-    else:
-        # Single area selection - handle both raw geometry and Feature objects
-        if isinstance(selection_geom, dict) and selection_geom.get('type') == 'Feature':
-            # Extract geometry from Feature object
-            actual_geom = selection_geom['geometry']
-            logger.info(f"Extracted geometry from Feature: {actual_geom['type']}")
-        else:
-            # Already a geometry object
-            actual_geom = selection_geom
-            logger.info(f"Using direct geometry: {actual_geom.get('type', 'unknown')}")
-        
-        conditions.append(
-            "ST_Intersects(geom, ST_Transform(ST_SetSRID(ST_GeomFromGeoJSON(%s), 4326), 3857))"
-        )
-        params.append(json.dumps(actual_geom))
-    
-    filter_sql = ' AND '.join(conditions) if conditions else 'TRUE'
-    
-    # Query database
-    conn = get_db()
-    cur = conn.cursor()
-    
-    query_sql = f"""
-        SELECT id, {', '.join(score_vars_to_use)}
-        FROM parcels
-        WHERE {filter_sql}
-    """
-    
-    logger.info(f"SQL Query: {query_sql}")
-    
-    try:
-        cur.execute(query_sql, params)
-        rows = cur.fetchall()
-        logger.info(f"Query executed successfully, got {len(rows)} rows")
-        
-        # Log first row structure for debugging
-        if rows:
-            first_row = dict(rows[0])
-            logger.info(f"Sample row keys: {list(first_row.keys())}")
-            logger.info(f"Sample row values for score vars: {[(var, first_row.get(var, 'MISSING')) for var in score_vars_to_use]}")
-        
-    except Exception as sql_error:
-        logger.error(f"SQL Query failed: {sql_error}")
-        logger.error(f"Query was: {query_sql}")
-        logger.error(f"Parameters were: {params}")
-        cur.close()
-        conn.close()
-        raise
-    
-    cur.close()
-    conn.close()
-    
-    # Format data
+    # Format client data for optimization - directly use the sent scores
     parcel_data = []
-    try:
-        for i, row in enumerate(rows):
-            parcel_scores = {}
-            row_dict = dict(row)
+    for parcel in parcel_scores_data:
+        parcel_scores = {}
+        client_scores = parcel.get('scores', {})
+        
+        # Map the client scores to our expected format
+        for var_base in include_vars_base:
+            # Client might send scores with suffixes, try different keys
+            score_value = None
+            for suffix in ['_s', '_z', '']:
+                key = var_base + suffix
+                if key in client_scores:
+                    score_value = client_scores[key]
+                    break
             
-            for j, var_base in enumerate(include_vars_base):
-                score_var = score_vars_to_use[j]
+            if score_value is not None:
                 try:
-                    score_value = row_dict.get(score_var)
-                    if score_value is None:
-                        logger.warning(f"Row {i}: score_var '{score_var}' is None")
-                        parcel_scores[var_base] = 0.0
-                    else:
-                        parcel_scores[var_base] = float(score_value)
-                except (ValueError, TypeError) as e:
-                    logger.error(f"Row {i}: Error converting score_var '{score_var}' value '{row_dict.get(score_var)}' to float: {e}")
+                    parcel_scores[var_base] = float(score_value)
+                except (ValueError, TypeError):
+                    logger.warning(f"Could not convert score value {score_value} for {var_base}")
                     parcel_scores[var_base] = 0.0
-            
-            parcel_data.append({
-                'id': row_dict['id'],
-                'scores': parcel_scores
-            })
-            
-    except Exception as format_error:
-        logger.error(f"Error formatting parcel data: {format_error}")
-        logger.error(f"Current row index: {i if 'i' in locals() else 'unknown'}")
-        logger.error(f"include_vars_base: {include_vars_base}")
-        logger.error(f"score_vars_to_use: {score_vars_to_use}")
-        raise
+            else:
+                logger.warning(f"No score found for {var_base} in client data")
+                parcel_scores[var_base] = 0.0
+        
+        parcel_data.append({
+            'id': parcel.get('parcel_id'),
+            'scores': parcel_scores
+        })
+    
+    logger.info(f"Successfully processed {len(parcel_data)} parcels from client")
+    
+    # Log sample data for debugging
+    if parcel_data:
+        sample = parcel_data[0]
+        logger.info(f"Sample parcel data - ID: {sample['id']}, Scores: {sample['scores']}")
     
     # Log selection area info
     selection_areas = data.get('selection_areas', [])

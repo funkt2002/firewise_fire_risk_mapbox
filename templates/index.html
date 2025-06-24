@@ -2993,10 +2993,12 @@
         function initializeLayers() {
             console.log('VECTOR TILES: Initializing layers with vector tile source...');
             
-            // Add vector tile source for parcels (enhanced with precomputed scores)
+            // Add vector tile source for parcels (OPTIMIZED - fixes "too much data" errors)
+            // Updated: 2024 - New tileset theo1158.d1ndl9mw with optimized tile sizes
+            // Fixes: "too much data for zoom 10" errors, missing parcels at low zoom
             map.addSource('parcel-tiles', {
                 type: 'vector',
-                url: 'mapbox://theo1158.awcli4s0',
+                url: 'mapbox://theo1158.d1ndl9mw',  // OPTIMIZED TILESET
                 promoteId: 'parcel_id'  // Promote parcel_id to feature.id for better identification
             });
             
