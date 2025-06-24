@@ -33,7 +33,7 @@ class WelcomePopup {
                     <div class="welcome-popup-body">
                         <div id="welcome-popup-content">
                             <div class="development-note">
-                                <p><strong>TUPDATE</strong></p>
+                                <p><strong>UPDATE</strong></p>
                                 <ul style="margin: 10px 0; padding-left: 20px;">
                                     <li><strong>No more .geojson:</strong> All geometries are hosted as static vector tiles hosted by Mapbox, with attribute data hosted by PostgreSQL/server caching</li>
                                     <li><strong>Client-side processing:</strong> Filtering, normalization, and score calculations all run client-side with JavaScript. This is all done just on attribute data, and mapped to vector tiles for updating via IDs. This results in high speeds and low memory usage</li>
