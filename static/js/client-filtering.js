@@ -406,18 +406,17 @@ class ClientNormalizationManager {
                 }
             }
 
-            if (values.length > 0) {
+                        if (values.length > 0) {
                 if (use_quantile) {
-                    // Z-score normalization
-                    const mean = values.reduce((a, b) => a + b, 0) / values.length;
-                    const variance = values.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / values.length;
-                    const std = Math.sqrt(variance);
+                    // True quantile normalization - create equal-sized bins
+                    const sortedValues = [...values].sort((a, b) => a - b);
                     
                     normData[varBase] = {
-                        mean: mean,
-                        std: std > 0 ? std : 1.0,
-                        norm_type: 'quantile'
-                                          };
+                        sorted_values: sortedValues,
+                        total_count: sortedValues.length,
+                        norm_type: 'true_quantile'
+                    };
+                    console.log(`${varBase}: True quantile normalization with ${sortedValues.length} values (min: ${sortedValues[0].toFixed(3)}, max: ${sortedValues[sortedValues.length-1].toFixed(3)})`);
                 } else {
                     // Basic min-max
                     const min = Math.min(...values);
@@ -474,12 +473,27 @@ class ClientNormalizationManager {
                     const normInfo = normData[varBase];
                     let normalizedScore;
 
-                    if (normInfo.norm_type === 'quantile') {
-                        // Z-score normalization, then map to 0-1 range using sigmoid-like function
-                        const zScore = (rawValue - normInfo.mean) / normInfo.std;
-                        // Use cumulative normal distribution approximation to map z-score to 0-1
-                        // This ensures scores stay bounded between 0 and 1
-                        normalizedScore = 1 / (1 + Math.exp(-zScore));
+                    if (normInfo.norm_type === 'true_quantile') {
+                        // True quantile normalization - find percentile rank
+                        const sortedValues = normInfo.sorted_values;
+                        const totalCount = normInfo.total_count;
+                        
+                        // Binary search to find rank
+                        let left = 0;
+                        let right = sortedValues.length;
+                        while (left < right) {
+                            const mid = Math.floor((left + right) / 2);
+                            if (sortedValues[mid] <= rawValue) {
+                                left = mid + 1;
+                            } else {
+                                right = mid;
+                            }
+                        }
+                        const rank = left;
+                        
+                        // Convert rank to percentile (0.0 to 1.0)
+                        normalizedScore = rank / totalCount;
+                        normalizedScore = Math.max(0.0, Math.min(1.0, normalizedScore));
                     } else {
                         normalizedScore = (rawValue - normInfo.min) / normInfo.range;
                         normalizedScore = Math.max(0, Math.min(1, normalizedScore));

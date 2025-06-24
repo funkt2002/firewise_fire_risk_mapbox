@@ -246,7 +246,13 @@ def get_score_vars(use_quantile=False):
     return score_vars
 
 def apply_local_normalization(raw_results, use_quantile):
-    """Apply local normalization to raw values and return individual factor scores"""
+    """Apply local normalization to raw values and return individual factor scores
+    
+    Args:
+        raw_results: List of raw parcel data
+        use_quantile: If True, uses true quantile normalization (equal-sized bins)
+                     If False, uses min-max normalization
+    """
     start_time = time.time()
     
     logger.info(f"Starting local normalization for {len(raw_results)} parcels")
@@ -281,13 +287,14 @@ def apply_local_normalization(raw_results, use_quantile):
             
             if len(values) > 0:
                 if use_quantile:
-                    mean_val = np.mean(values)
-                    std_val = np.std(values)
+                    # True quantile normalization - create equal-sized bins
+                    sorted_values = np.sort(values)
                     norm_data[var_base] = {
-                        'mean': mean_val,
-                        'std': std_val if std_val > 0 else 1.0,
-                        'norm_type': 'quantile'
+                        'sorted_values': sorted_values,
+                        'total_count': len(sorted_values),
+                        'norm_type': 'true_quantile'
                     }
+                    logger.info(f"{var_base}: True quantile normalization with {len(sorted_values)} values (min: {sorted_values[0]:.3f}, max: {sorted_values[-1]:.3f})")
 
                 else:
                     min_val = np.min(values)
@@ -335,12 +342,17 @@ def apply_local_normalization(raw_results, use_quantile):
                 
                 norm_info = norm_data[var_base]
                 
-                if norm_info['norm_type'] == 'quantile':
-                    # Z-score normalization, then map to 0-1 range using sigmoid-like function
-                    z_score = (raw_value - norm_info['mean']) / norm_info['std']
-                    # Use cumulative normal distribution approximation to map z-score to 0-1
-                    # This ensures scores stay bounded between 0 and 1
-                    normalized_score = 1 / (1 + math.exp(-z_score))
+                if norm_info['norm_type'] == 'true_quantile':
+                    # True quantile normalization - find percentile rank
+                    sorted_values = norm_info['sorted_values']
+                    total_count = norm_info['total_count']
+                    
+                    # Find the rank of this value using binary search
+                    rank = np.searchsorted(sorted_values, raw_value, side='right')
+                    # Convert rank to percentile (0.0 to 1.0)
+                    normalized_score = rank / total_count
+                    # Ensure bounds
+                    normalized_score = max(0.0, min(1.0, normalized_score))
                 else:
                     normalized_score = (raw_value - norm_info['min']) / norm_info['range']
                     normalized_score = max(0, min(1, normalized_score))
@@ -578,8 +590,17 @@ def get_distribution(variable):
                         values = []
                         
                         for val in raw_values:
-                            if norm_data['norm_type'] == 'quantile':
-                                normalized = (val - norm_data['mean']) / norm_data['std']
+                            if norm_data['norm_type'] == 'true_quantile':
+                                # True quantile normalization - find percentile rank
+                                sorted_values = norm_data['sorted_values']
+                                total_count = norm_data['total_count']
+                                
+                                # Find the rank of this value using binary search
+                                rank = np.searchsorted(sorted_values, val, side='right')
+                                # Convert rank to percentile (0.0 to 1.0)
+                                normalized = rank / total_count
+                                # Ensure bounds
+                                normalized = max(0.0, min(1.0, normalized))
                             else:
                                 normalized = (val - norm_data['min']) / norm_data['range']
                                 normalized = max(0, min(1, normalized))
