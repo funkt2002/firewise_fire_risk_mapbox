@@ -33,93 +33,98 @@ class WelcomePopup {
                     <div class="welcome-popup-body">
                         <div id="welcome-popup-content">
                             <div class="development-note">
-                                <p><strong>UPDATE: Recent Improvements</strong></p>
+                                <p><strong> LATEST UPDATE: Lightning-Fast Performance</strong></p>
                                 <ul style="margin: 10px 0; padding-left: 20px;">
-                                    <li>Reorganized Risk Factor Weights with primary factors at top and secondary factors at bottom</li>
-                                    <li>Added new combined "Agriculture & Fuelbreaks" variable and "Structure Surrounding Slope" metric</li>
-                                    <li>Improved client-side calculations for faster operation after initial data load</li>
-                                    <li>Cleaner, simpler, and more user-friendly interface with logical variable grouping</li>
-                                    <li>Enhanced infer weights tool now supports multiple discontiguous regions</li>
-                                    <li>Fixed several bugs and improved overall stability</li>
-                                    <li>Added collapsible sections for better organization</li>
+                                    <li><strong>Instant Loading:</strong> Map shows fire risk colors immediately - no waiting!</li>
+                                    <li><strong>Precomputed Scores:</strong> Default risk scores built into the map for instant viewing</li>
+                                    <li><strong>Vector Tile Speed:</strong> All map layers load fast at every zoom level</li>
+                                    <li><strong>Smart Processing:</strong> Only calculates when you change settings</li>
+                                    <li><strong>Enhanced Multi-Area Tools:</strong> Draw multiple areas to optimize weights</li>
+                                    <li><strong>Better Organization:</strong> Cleaner interface with Advanced Score Options separate from filters</li>
                                 </ul>
-                                <p><strong>NOTE: Initial data load takes a few seconds.</strong></p>
-                                <p><strong>This application is still under development. If you encounter issues, please refresh the page. Thank you!</strong></p>
+                                <p><strong>NEW: The map loads instantly with color-coded fire risk - try it!</strong></p>
                             </div>
                             
-                            <p> This tool is intended to assess the risk of wildfire and fire spread between parcels.</p>
+                            <p>This tool helps you find areas with the highest wildfire risk by looking at different factors around each property.</p>
                             
-                            <h2>----- OVERVIEW -----</h2>
-                            <p><strong>Objective:</strong></p>
+                            <h2>----- HOW IT WORKS -----</h2>
+                            <p><strong>What You Can Do:</strong></p>
                             <ul>
-                                <li>Create composite risk scores for parcels</li>
-                                <li>Adjust weights of different risk variables</li>
-                                <li>Filter and analyze specific areas</li>
-                                <li>Infer what weights would maximize risk in a selected area</li>
+                                <li>See fire risk scores for all properties (red = high risk, white = low risk)</li>
+                                <li>Adjust how important each risk factor is using sliders</li>
+                                <li>Filter to focus on specific areas or property types</li>
+                                <li>Find the best weights for any area you select</li>
                             </ul>
                             
                             <h2>----- RISK FACTOR WEIGHTS -----</h2>
-                            <p>Use the sliders on the left to set the importance of each risk factor. Variables are organized by priority:</p>
+                            <p>Use the sliders to set how important each factor is. The map shows default weights to start:</p>
                             
-                            <p><strong>Primary Risk Factors (Active by Default):</strong></p>
+                            <p><strong>Main Risk Factors (Already Active):</strong></p>
                             <ul>
-                                <li><strong>Number of Structures Within Window (1/4 mile):</strong> Count of structures in surrounding area - higher density = higher risk</li>
-                                <li><strong>Distance to Nearest Neighbor:</strong> Distance to closest structure - closer neighbors = higher risk</li>
-                                <li><strong>WUI Coverage (1/2 mile):</strong> % Coverage of Wildland-Urban Interface areas - more WUI = higher risk</li>
-                                <li><strong>Very High Fire Hazard Zone (1/2 mile):</strong> % Coverage of Very High Fire Hazard areas - more hazard zones = higher risk</li>
-                                <li><strong>Agriculture & Fuelbreaks (1/2 mile):</strong> Combined % coverage of protective areas - more coverage = lower risk</li>
-                                <li><strong>Structure Surrounding Slope (100 foot buffer):</strong> Slope around structures - steeper slopes = higher risk</li>
+                                <li><strong>Structures Nearby (1/4 mile):</strong> More buildings around = higher fire risk</li>
+                                <li><strong>Wildland Areas (1/2 mile):</strong> More wild areas around = higher fire risk</li>
+                                <li><strong>Fire Hazard Zones (1/2 mile):</strong> Official high-risk fire zones = higher risk</li>
+                                <li><strong>Slope Around Buildings:</strong> Steeper slopes near structures = higher risk</li>
                             </ul>
                             
-                            <p><strong>Additional Risk Factors (Turned Off by Default):</strong></p>
+                            <p><strong>Extra Risk Factors (You Can Turn On):</strong></p>
                             <ul>
-                                <li><strong>Agricultural Coverage (1/2 mile):</strong> Individual % coverage of agricultural areas - protective factor</li>
-                                <li><strong>Fuel Break Coverage (1/2 mile):</strong> Individual % coverage of fuel breaks - protective factor</li>
-                                <li><strong>Burn Scar Coverage (1/2 mile):</strong> % coverage of past burn areas - can indicate either risk or protection</li>
-                                <li><strong>Mean Parcel Slope:</strong> Average slope across the entire parcel</li>
+                                <li><strong>Distance to Neighbors:</strong> Closer neighbors = higher risk</li>
+                                <li><strong>Protective Areas:</strong> Farms and firebreaks = lower risk</li>
+                                <li><strong>Burn Scars:</strong> Areas that burned before</li>
+                                <li><strong>Property Slope:</strong> Steeper land = higher risk</li>
                             </ul>
                             
-                            <p><em>Note: Individual Agriculture and Fuel Break variables are available for fine-tuning, but the combined variable is recommended for most analyses.</em></p>
-                            <p>Weights automatically normalize to 100%.</p>
+                            <p><em>Tip: Start with the default settings, then adjust to see how risk patterns change!</em></p>
 
-                            <h2>----- CALCULATING RISK SCORES -----</h2>
-                            <p>Click <strong>"Calculate Risk Scores"</strong> to:</p>
+                            <h2>----- CALCULATING NEW SCORES -----</h2>
+                            <p>To create custom fire risk maps:</p>
                             <ul>
-                                <li>Set maximum number of top parcels to select (i.e. 500)</li>
-                                <li>Click Calculate!</li>
-                                <li>Parcels will be ranked on composite risk score, from white (low risk) to red (high risk), and top N will be highlighted in blue</li>
-                                <li>Click on the Score Distribution button to see the distribution of scores for all parcels</li>
+                                <li><strong>Adjust Weights:</strong> Move sliders to change factor importance</li>
+                                <li><strong>Set Max Parcels:</strong> Choose how many top-risk properties to highlight (like 500)</li>
+                                <li><strong>Click Calculate:</strong> Map updates with your new settings</li>
+                                <li><strong>View Results:</strong> Red areas = highest risk, blue outlines = top properties</li>
                             </ul>
                             
-                            <h2>----- FILTERS -----</h2>
-                            <p>Various filters are provided (spatial and attribute) to focus on areas or parcel requirements</p>
+                            <h2>----- FILTERS AND OPTIONS -----</h2>
+                            <p><strong>Advanced Score Options:</strong> Choose how scores are calculated</p>
                             <ul>
-                                <li><strong>Score Type:</strong> At top is an option to re-normalize (min/max) scores as you filter</li>
-                                <li><strong>Exclude parcels:</strong> We can remove parcels that dont meet criteria such as:</li>
-                                <li><strong>Filter by year built:</strong> We can remove parcels built after a certain year, or remove parcels with unknown year built</li>
-                                <li><strong>Structure count:</strong> Set a min number of structures per parcel (likely just 1)</li>
-                                <li><strong>Neighbor distance:</strong> Exclude parcels that have nearest neighbors farther than X (like 50)</li>
+                                <li><strong>Score Type:</strong> Basic scores vs. advanced quantile scoring</li>
+                                <li><strong>Renormalize:</strong> Recalculate scores based on filtered data only</li>
                             </ul>
                             
-
-                            
-                            <h2>----- Spatial Filters -----</h2>
-                            <p>We can use the lasso and rectangle tools to filter to a certain area:</p>
+                            <p><strong>Filters:</strong> Focus on specific properties</p>
                             <ul>
-                                <li><strong>Draw Rectangle/Lasso:</strong> Select parcels of interest</li>
-                                <li><strong>Infer Weights:</strong> Optimize weights to maximize total risk in your selection</li>
-                                <li><strong>View Statistics:</strong> See risk stats for selected parcels</li>
+                                <li><strong>Building Age:</strong> Only newer or older buildings</li>
+                                <li><strong>Structure Count:</strong> Properties with at least X buildings</li>
+                                <li><strong>Neighbor Distance:</strong> Properties with neighbors within X feet</li>
+                                <li><strong>Coverage Requirements:</strong> Areas with fire zones, wild lands, etc.</li>
                             </ul>
-                            <p>Use <strong>Spatial Filter</strong> to limit analysis to specific geographic areas.</p>
                             
-                            <h2>----- ADDITIONAL FEATURES -----</h2>
+                            <h2>----- AREA SELECTION TOOLS -----</h2>
+                            <p><strong>Spatial Filter:</strong> Focus on specific geographic areas</p>
                             <ul>
-                                <li><strong>Distribution Plot:</strong> View score distributions and statistics</li>
-                                <li><strong>Map Layers:</strong> Toggle visibility of agricultural areas, fuel breaks, burn scars, etc.</li>
-                                <li><strong>Export:</strong> Download top-risk parcels as shapefiles</li>
+                                <li><strong>Draw Rectangle/Lasso:</strong> Select an area to filter the map</li>
+                                <li><strong>Filter Parcels:</strong> Only show properties in your selected area</li>
+                            </ul>
+                            
+                            <p><strong>Weight Inference:</strong> Find the best settings for any area</p>
+                            <ul>
+                                <li><strong>Draw Multiple Areas:</strong> Select one or more high-risk zones</li>
+                                <li><strong>Infer Weights:</strong> Tool finds factor weights that maximize risk in your selections</li>
+                                <li><strong>Download Results:</strong> Get detailed reports and optimization files</li>
+                            </ul>
+                            
+                            <h2>----- OTHER FEATURES -----</h2>
+                            <ul>
+                                <li><strong>Click Properties:</strong> See detailed info for any property</li>
+                                <li><strong>Map Layers:</strong> Turn on/off farms, fire zones, burn scars, etc.</li>
+                                <li><strong>Export Data:</strong> Download top-risk properties as shapefiles</li>
+                                <li><strong>View Charts:</strong> See score distributions and statistics</li>
                                 <li><strong>Measure Tool:</strong> Measure distances on the map</li>
                             </ul>
-                            <p><em>Click on a parcel for pop-ups with detailed information</em></p>
+                            
+                            <p><strong>Quick Start:</strong> The map is ready to use! Try adjusting the weight sliders and clicking Calculate to see how fire risk patterns change.</p>
                         </div>
                     </div>
                     <div class="welcome-popup-footer">
@@ -250,8 +255,8 @@ class WelcomePopup {
                 }
 
                 .development-note {
-                    background: rgba(255, 193, 7, 0.15);
-                    border: 1px solid rgba(255, 193, 7, 0.3);
+                    background: rgba(76, 175, 80, 0.15);
+                    border: 1px solid rgba(76, 175, 80, 0.3);
                     border-radius: 4px;
                     padding: 15px;
                     margin-bottom: 20px;
