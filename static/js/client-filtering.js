@@ -186,6 +186,21 @@ class ClientFilterManager {
             });
 
             console.log(`VECTOR TILES: Spatial filter found ${visibleParcelIds.size} visible parcels in viewport`);
+            
+            // DEBUG: Log sample parcel IDs from vector tiles
+            const sampleVectorIds = Array.from(visibleParcelIds).slice(0, 5);
+            console.log(`VECTOR TILES DEBUG: Sample vector tile parcel IDs:`, sampleVectorIds);
+            
+            // DEBUG: Log sample parcel IDs from stored features  
+            const sampleStoredIds = features.slice(0, 5).map(f => f.properties.parcel_id);
+            console.log(`VECTOR TILES DEBUG: Sample stored feature parcel IDs:`, sampleStoredIds);
+
+            // DEBUG: Check all properties of first vector tile feature
+            if (visibleFeatures.length > 0) {
+                console.log(`VECTOR TILES DEBUG: First vector tile feature properties:`, visibleFeatures[0].properties);
+                console.log(`VECTOR TILES DEBUG: First vector tile feature.id:`, visibleFeatures[0].id);
+                console.log(`VECTOR TILES DEBUG: All property keys:`, Object.keys(visibleFeatures[0].properties || {}));
+            }
 
             // Filter input features to only those visible in viewport
             const filteredFeatures = features.filter(feature => {
@@ -194,6 +209,24 @@ class ClientFilterManager {
             });
 
             console.log(`VECTOR TILES: Spatial filter reduced from ${features.length} to ${filteredFeatures.length} parcels`);
+            
+            // DEBUG: If no matches, log more details
+            if (filteredFeatures.length === 0 && visibleParcelIds.size > 0 && features.length > 0) {
+                console.log(`VECTOR TILES DEBUG: NO MATCHES FOUND!`);
+                console.log(`VECTOR TILES DEBUG: Vector tile feature structure:`, visibleFeatures[0]);
+                console.log(`VECTOR TILES DEBUG: Stored feature structure:`, features[0]);
+                console.log(`VECTOR TILES DEBUG: Checking first stored parcel ID ${features[0].properties.parcel_id} against vector tile IDs...`);
+                console.log(`VECTOR TILES DEBUG: Vector tile has this ID?`, visibleParcelIds.has(features[0].properties.parcel_id.toString()));
+                
+                // Try to find any matching IDs by checking different formats
+                const firstStoredId = features[0].properties.parcel_id;
+                console.log(`VECTOR TILES DEBUG: Testing ID formats for ${firstStoredId}:`);
+                console.log(`VECTOR TILES DEBUG: - As string: ${visibleParcelIds.has(String(firstStoredId))}`);
+                console.log(`VECTOR TILES DEBUG: - As number: ${visibleParcelIds.has(Number(firstStoredId))}`);
+                console.log(`VECTOR TILES DEBUG: - With p_ prefix: ${visibleParcelIds.has('p_' + firstStoredId)}`);
+                console.log(`VECTOR TILES DEBUG: - Without p_ prefix: ${visibleParcelIds.has(String(firstStoredId).replace('p_', ''))}`);
+            }
+            
             return filteredFeatures;
 
         } catch (error) {
