@@ -41,57 +41,78 @@ def generate_optimized_tiles(geojson_file):
     print("\n🔧 GENERATING OPTIMIZED TILES...")
     print("This will fix your parcel rendering issues!")
     
-    # Strategy 1: Conservative (always works, some parcels may not show at very low zoom)
-    print("\n📊 Strategy 1: Conservative (Recommended)")
+    # Strategy 1: BETTER BALANCED - keeps small parcels visible!
+    print("\n📊 Strategy 1: Balanced (FIXED - keeps small parcels)")
     conservative_cmd = [
         'tippecanoe',
-        '--output', 'parcels_fixed_conservative.mbtiles',
+        '--output', 'parcels_better_balanced.mbtiles',
         '--force',
         '--minimum-zoom', '0',
         '--maximum-zoom', '16',
-        # THESE LIMITS PREVENT "too much data" ERRORS:
-        '--maximum-tile-bytes', '300000',  # 300KB max per tile (very safe)
-        '--maximum-tile-features', '8000', # Max 8K features per tile
-        # SMART DROPPING TO ENSURE ALL ZOOM LEVELS WORK:
-        '--drop-densest-as-needed',        # Drop dense areas first
-        '--drop-fraction-as-needed',       # Drop percentage when needed
-        '--drop-smallest-as-needed',       # Drop small parcels first
-        '--drop-rate', '2.5',              # Aggressive dropping rate
-        # GEOMETRY OPTIMIZATION:
-        '--simplification', '12',          # Simplify geometry moderately
+        # LESS AGGRESSIVE LIMITS - prevents "too much data" but keeps parcels visible:
+        '--maximum-tile-bytes', '500000',  # 500KB max per tile (less restrictive)
+        '--maximum-tile-features', '20000', # Max 20K features per tile (much better)
+        # MINIMAL DROPPING - only when absolutely necessary:
+        '--drop-densest-as-needed',        # Only drop in very dense areas
+        # REMOVED: --drop-smallest-as-needed  ← This was killing small parcels!
+        # REMOVED: --drop-rate              ← Was too aggressive
+        # GEOMETRY OPTIMIZATION (gentler):
+        '--simplification', '6',           # Much less simplification
         '--detect-shared-borders',         # Optimize shared boundaries
-        '--buffer', '0',                   # No buffer to save space
+        '--buffer', '1',                   # Small buffer to prevent gaps
         geojson_file
     ]
     
     try:
         result = subprocess.run(conservative_cmd, check=True, capture_output=True, text=True)
-        size_mb = os.path.getsize('parcels_fixed_conservative.mbtiles') / (1024 * 1024)
-        print(f"✅ SUCCESS! Generated parcels_fixed_conservative.mbtiles ({size_mb:.1f} MB)")
-        print("   → This tileset should work without 'too much data' errors")
+        size_mb = os.path.getsize('parcels_better_balanced.mbtiles') / (1024 * 1024)
+        print(f"✅ SUCCESS! Generated parcels_better_balanced.mbtiles ({size_mb:.1f} MB)")
+        print("   → This tileset keeps small parcels visible and prevents 'too much data' errors")
         
-        # Strategy 2: Balanced (more detail, but still safe)
-        print("\n📊 Strategy 2: Balanced")
+        # Strategy 2: Maximum Detail (keeps ALL parcels when possible)
+        print("\n📊 Strategy 2: Maximum Detail")
         balanced_cmd = [
             'tippecanoe',
-            '--output', 'parcels_fixed_balanced.mbtiles',
+            '--output', 'parcels_max_detail.mbtiles',
             '--force',
             '--minimum-zoom', '0',
             '--maximum-zoom', '16',
-            '--maximum-tile-bytes', '450000',  # Slightly larger tiles
-            '--maximum-tile-features', '15000', # More features allowed
-            '--drop-densest-as-needed',
-            '--drop-fraction-as-needed',
-            '--simplification', '8',           # Less simplification
+            '--maximum-tile-bytes', '700000',  # Larger tiles allowed
+            '--maximum-tile-features', '50000', # Many more features allowed
+            '--drop-densest-as-needed',        # Only when absolutely necessary
+            '--simplification', '3',           # Minimal simplification
             '--detect-shared-borders',
             '--buffer', '1',
             geojson_file
         ]
         
         result = subprocess.run(balanced_cmd, check=True, capture_output=True, text=True)
-        size_mb = os.path.getsize('parcels_fixed_balanced.mbtiles') / (1024 * 1024)
-        print(f"✅ SUCCESS! Generated parcels_fixed_balanced.mbtiles ({size_mb:.1f} MB)")
-        print("   → This tileset has more detail but might drop some parcels at low zoom")
+        size_mb = os.path.getsize('parcels_max_detail.mbtiles') / (1024 * 1024)
+        print(f"✅ SUCCESS! Generated parcels_max_detail.mbtiles ({size_mb:.1f} MB)")
+        print("   → This tileset shows maximum detail, might have 'too much data' in very dense areas")
+        
+        # Strategy 3: Emergency fallback (if you still get "too much data" errors)
+        print("\n📊 Strategy 3: Emergency Fallback (only if needed)")
+        emergency_cmd = [
+            'tippecanoe',
+            '--output', 'parcels_emergency_fallback.mbtiles',
+            '--force',
+            '--minimum-zoom', '0',
+            '--maximum-zoom', '16',
+            '--maximum-tile-bytes', '300000',  # Very conservative
+            '--maximum-tile-features', '12000', # Moderate limit
+            '--drop-densest-as-needed',
+            '--drop-fraction-as-needed',       # Only use fraction dropping, not smallest
+            '--simplification', '8',
+            '--detect-shared-borders',
+            '--buffer', '0',
+            geojson_file
+        ]
+        
+        result = subprocess.run(emergency_cmd, check=True, capture_output=True, text=True)
+        size_mb = os.path.getsize('parcels_emergency_fallback.mbtiles') / (1024 * 1024)
+        print(f"✅ SUCCESS! Generated parcels_emergency_fallback.mbtiles ({size_mb:.1f} MB)")
+        print("   → Emergency option: guaranteed to work but may miss some parcels at very low zoom")
         
         return True
         
@@ -259,7 +280,7 @@ def main():
         print("✅ Smart feature dropping preserves important parcels")
         
         print("\n📂 GENERATED FILES:")
-        for file in ['parcels_fixed_conservative.mbtiles', 'parcels_fixed_balanced.mbtiles']:
+        for file in ['parcels_better_balanced.mbtiles', 'parcels_max_detail.mbtiles', 'parcels_emergency_fallback.mbtiles']:
             if os.path.exists(file):
                 size_mb = os.path.getsize(file) / (1024 * 1024)
                 print(f"   {file} ({size_mb:.1f} MB)")
@@ -267,16 +288,17 @@ def main():
         print("\n📋 NEXT STEPS:")
         print("1. Test the .mbtiles files locally (optional):")
         print("   npm install -g @mapbox/mbview")
-        print("   mbview parcels_fixed_conservative.mbtiles")
+        print("   mbview parcels_better_balanced.mbtiles")
         print("\n2. Upload to Mapbox Studio:")
-        print("   mapbox upload username.parcels_fixed parcels_fixed_conservative.mbtiles")
+        print("   mapbox upload theo1158.parcels_new parcels_better_balanced.mbtiles")
         print("\n3. Update your code in templates/index.html:")
-        print("   Change: url: 'mapbox://theo1158.awcli4s0'")
-        print("   To:     url: 'mapbox://username.parcels_fixed'")
-        print("   ✅ ALREADY UPDATED to: 'mapbox://theo1158.d1ndl9mw'")
+        print("   Change: url: 'mapbox://theo1158.d1ndl9mw'")
+        print("   To:     url: 'mapbox://theo1158.parcels_new'")
         
-        print("\n💡 RECOMMENDATION: Start with 'conservative' tileset")
-        print("   It's guaranteed to work without errors!")
+        print("\n💡 RECOMMENDATIONS:")
+        print("   1. Try 'parcels_better_balanced.mbtiles' first - keeps small parcels visible!")
+        print("   2. If that's still missing parcels, try 'parcels_max_detail.mbtiles'")
+        print("   3. If you get 'too much data' errors, fall back to 'parcels_emergency_fallback.mbtiles'")
         
         return True
     else:
