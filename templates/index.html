@@ -2066,7 +2066,7 @@
                 return;
             }
             
-            // Build score lookup for styling
+            // Build score lookup for styling and update global attribute storage
             const scoreObject = {};
             const top500Ids = [];
             
@@ -2075,6 +2075,14 @@
                     scoreObject[attr.parcel_id.toString()] = attr.score;
                     if (attr.top500) {
                         top500Ids.push(attr.parcel_id.toString());
+                    }
+                    
+                    // Update the stored attributes with score and rank for popups
+                    const storedAttrs = window.fireRiskScoring.getAttributesByParcelId(attr.parcel_id);
+                    if (storedAttrs) {
+                        storedAttrs.score = attr.score;
+                        storedAttrs.rank = attr.rank;
+                        storedAttrs.top500 = attr.top500;
                     }
                 }
             });
@@ -2104,19 +2112,8 @@
                 '#eeeeee' // Default color for parcels without scores
             ]);
             
-            // Update top 500 filter
+            // Update top 500 filter  
             map.setFilter('parcels-top500', ['in', ['to-string', ['get', 'parcel_id']], ['literal', top500Ids]]);
-            
-            // Update fill opacity for spatial filtering
-            map.setPaintProperty('parcels-fill', 'fill-opacity', [
-                'case',
-                // If filteredParcelIds is empty (no spatial filter), show all parcels
-                ['==', ['length', ['literal', window.filteredParcelIds]], 0], 0.8,
-                // If spatial filter is active, only show parcels in the filtered list
-                ['in', ['to-string', ['get', 'parcel_id']], ['literal', window.filteredParcelIds]], 0.8,
-                // Otherwise make transparent
-                0.0
-            ]);
             
             console.log('VECTOR TILES: Map styling updated successfully');
         }
@@ -3381,7 +3378,8 @@
             // Global data object for attribute lookup in paint expressions
             window.parcelScores = {}; // Will be updated by updateMap()
             window.top500ParcelIds = []; // Will be updated by updateMap()
-            window.filteredParcelIds = []; // Will be updated during spatial filtering
+            window.spatialFilterActive = false; // Track if spatial filter is active
+            window.spatialFilterParcelIds = new Set(); // Parcels visible in spatial filter
             
             map.addLayer({
                 id: 'parcels-fill',
@@ -3407,15 +3405,7 @@
                         ],
                         '#eeeeee' // Default color for parcels without scores
                     ],
-                    'fill-opacity': [
-                        'case',
-                        // If filteredParcelIds is empty (no spatial filter), show all parcels
-                        ['==', ['length', ['literal', window.filteredParcelIds]], 0], 0.8,
-                        // If spatial filter is active, only show parcels in the filtered list
-                        ['in', ['to-string', ['get', 'parcel_id']], ['literal', window.filteredParcelIds]], 0.8,
-                        // Otherwise make transparent
-                        0.0
-                    ]
+                    'fill-opacity': 0.8
                 }
             });
             

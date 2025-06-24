@@ -58,9 +58,21 @@ class ClientFilterManager {
             this.logTiming('Spatial Filtering', performance.now() - spatialStart);
         } else {
             // Clear spatial filter - show all parcels
-            if (window.filteredParcelIds && window.filteredParcelIds.length > 0) {
-                window.filteredParcelIds = [];
+            if (window.spatialFilterActive) {
+                window.spatialFilterActive = false;
+                window.spatialFilterParcelIds.clear();
                 console.log(`VECTOR TILES: Cleared spatial filter - showing all parcels`);
+                
+                // Remove map layer filters to show all parcels
+                if (window.map && window.map.isStyleLoaded()) {
+                    try {
+                        window.map.setFilter('parcels-fill', null);
+                        window.map.setFilter('parcels-boundary', null);
+                        console.log(`VECTOR TILES: Removed spatial filter from map layers`);
+                    } catch (e) {
+                        console.warn(`VECTOR TILES: Could not remove map filter:`, e);
+                    }
+                }
             }
         }
 
@@ -216,10 +228,22 @@ class ClientFilterManager {
 
             console.log(`VECTOR TILES: Spatial filter reduced from ${features.length} to ${filteredFeatures.length} parcels`);
             
-            // Update global filtered parcel IDs for map styling (make non-filtered parcels transparent)
-            if (filteredFeatures.length > 0) {
-                window.filteredParcelIds = filteredFeatures.map(f => f.properties.parcel_id.toString());
-                console.log(`VECTOR TILES: Updated filteredParcelIds for map styling (${window.filteredParcelIds.length} parcels)`);
+            // Update global spatial filter state for map styling
+            window.spatialFilterActive = true;
+            window.spatialFilterParcelIds = new Set(filteredFeatures.map(f => f.properties.parcel_id.toString()));
+            console.log(`VECTOR TILES: Spatial filter activated with ${window.spatialFilterParcelIds.size} parcels`);
+            
+            // Update map layers to only show filtered parcels
+            if (window.map && window.map.isStyleLoaded()) {
+                const filterExpression = ['in', ['to-string', ['get', 'parcel_id']], ['literal', Array.from(window.spatialFilterParcelIds)]];
+                
+                try {
+                    window.map.setFilter('parcels-fill', filterExpression);
+                    window.map.setFilter('parcels-boundary', filterExpression);
+                    console.log(`VECTOR TILES: Applied spatial filter to map layers`);
+                } catch (e) {
+                    console.warn(`VECTOR TILES: Could not apply map filter:`, e);
+                }
             }
             
             // DEBUG: If no matches, log more details

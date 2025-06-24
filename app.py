@@ -1181,22 +1181,59 @@ def get_parcel_scores_for_optimization(data, include_vars):
     
     logger.info(f"SQL Query: {query_sql}")
     
-    cur.execute(query_sql, params)
-    rows = cur.fetchall()
+    try:
+        cur.execute(query_sql, params)
+        rows = cur.fetchall()
+        logger.info(f"Query executed successfully, got {len(rows)} rows")
+        
+        # Log first row structure for debugging
+        if rows:
+            first_row = dict(rows[0])
+            logger.info(f"Sample row keys: {list(first_row.keys())}")
+            logger.info(f"Sample row values for score vars: {[(var, first_row.get(var, 'MISSING')) for var in score_vars_to_use]}")
+        
+    except Exception as sql_error:
+        logger.error(f"SQL Query failed: {sql_error}")
+        logger.error(f"Query was: {query_sql}")
+        logger.error(f"Parameters were: {params}")
+        cur.close()
+        conn.close()
+        raise
+    
     cur.close()
     conn.close()
     
     # Format data
     parcel_data = []
-    for row in rows:
-        parcel_scores = {}
-        for i, var_base in enumerate(include_vars_base):
-            score_var = score_vars_to_use[i]
-            parcel_scores[var_base] = float(row[score_var] or 0)
-        parcel_data.append({
-            'id': dict(row)['id'],
-            'scores': parcel_scores
-        })
+    try:
+        for i, row in enumerate(rows):
+            parcel_scores = {}
+            row_dict = dict(row)
+            
+            for j, var_base in enumerate(include_vars_base):
+                score_var = score_vars_to_use[j]
+                try:
+                    score_value = row_dict.get(score_var)
+                    if score_value is None:
+                        logger.warning(f"Row {i}: score_var '{score_var}' is None")
+                        parcel_scores[var_base] = 0.0
+                    else:
+                        parcel_scores[var_base] = float(score_value)
+                except (ValueError, TypeError) as e:
+                    logger.error(f"Row {i}: Error converting score_var '{score_var}' value '{row_dict.get(score_var)}' to float: {e}")
+                    parcel_scores[var_base] = 0.0
+            
+            parcel_data.append({
+                'id': row_dict['id'],
+                'scores': parcel_scores
+            })
+            
+    except Exception as format_error:
+        logger.error(f"Error formatting parcel data: {format_error}")
+        logger.error(f"Current row index: {i if 'i' in locals() else 'unknown'}")
+        logger.error(f"include_vars_base: {include_vars_base}")
+        logger.error(f"score_vars_to_use: {score_vars_to_use}")
+        raise
     
     # Log selection area info
     selection_areas = data.get('selection_areas', [])
