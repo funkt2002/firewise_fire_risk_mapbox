@@ -302,7 +302,16 @@ class ClientNormalizationManager {
                 } else {
                     // Basic min-max
                     const min = Math.min(...values);
-                    const max = Math.max(...values);
+                    let max;
+                    if (varBase === 'qtrmi') {
+                        // Use 95th percentile as max for structures to reduce outlier impact
+                        values.sort((a, b) => a - b);
+                        const p95Index = Math.floor(values.length * 0.95);
+                        max = values[p95Index];
+                        console.log(`qtrmi: Using 95th percentile (${max.toFixed(1)}) as max instead of actual max (${Math.max(...values).toFixed(1)})`);
+                    } else {
+                        max = Math.max(...values);
+                    }
                     const range = max > min ? max - min : 1.0;
                     
                     normData[varBase] = {

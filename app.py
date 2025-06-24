@@ -282,7 +282,12 @@ def apply_local_normalization(raw_results, use_quantile, use_quantiled_scores):
                     }
                 else:
                     min_val = np.min(values)
-                    max_val = np.max(values)
+                    if var_base == 'qtrmi':
+                        # Use 95th percentile as max for structures to reduce outlier impact
+                        max_val = np.percentile(values, 95)
+                        logger.info(f"qtrmi: Using 95th percentile ({max_val:.1f}) as max instead of actual max ({np.max(values):.1f})")
+                    else:
+                        max_val = np.max(values)
                     range_val = max_val - min_val if max_val > min_val else 1.0
                     norm_data[var_base] = {
                         'min': min_val,
