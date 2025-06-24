@@ -736,10 +736,10 @@
 
                 <div class="variable-container" data-variable="neigh1d_s">
                     <div class="variable-header">
-                        <input type="checkbox" class="variable-enable-checkbox" id="enable-neigh1d_s" checked>
+                        <input type="checkbox" class="variable-enable-checkbox" id="enable-neigh1d_s">
                         <span class="variable-name">Distance to Nearest Neighbor</span>
                     </div>
-                    <div class="variable-controls expanded">
+                    <div class="variable-controls collapsed">
                         <div style="font-size: 10px; color: #888; margin-bottom: 3px;">Only Includes Parcels with Structure Data</div>
                         <div class="slider-container">
                             <div class="slider-label">
@@ -763,9 +763,9 @@
                     <div class="variable-controls expanded">
                         <div class="slider-container">
                             <div class="slider-label">
-                                <span class="slider-value" id="hwui_s-value">10%</span>
+                                <span class="slider-value" id="hwui_s-value">34%</span>
                             </div>
-                            <input type="range" class="slider weight-slider" id="hwui_s" min="0" max="100" value="10">
+                            <input type="range" class="slider weight-slider" id="hwui_s" min="0" max="100" value="34">
                             <div class="dist-buttons">
                                 <button class="dist-button" onclick="window.plottingManager.showDistribution('hlfmi_wui')">Raw</button>
                                 <button class="dist-button" onclick="window.plottingManager.showDistribution('hwui_s')">Score</button>
@@ -782,9 +782,9 @@
                     <div class="variable-controls expanded">
                         <div class="slider-container">
                             <div class="slider-label">
-                                <span class="slider-value" id="hvhsz_s-value">30%</span>
+                                <span class="slider-value" id="hvhsz_s-value">26%</span>
                             </div>
-                            <input type="range" class="slider weight-slider" id="hvhsz_s" min="0" max="100" value="30">
+                            <input type="range" class="slider weight-slider" id="hvhsz_s" min="0" max="100" value="26">
                             <div class="dist-buttons">
                                 <button class="dist-button" onclick="window.plottingManager.showDistribution('hlfmi_vhsz')">Raw</button>
                                 <button class="dist-button" onclick="window.plottingManager.showDistribution('hvhsz_s')">Score</button>
@@ -796,10 +796,10 @@
                 <!-- Agriculture & Fuelbreaks Group -->
                 <div class="variable-container" data-variable="hlfmi_agfb_s">
                     <div class="variable-header">
-                        <input type="checkbox" class="variable-enable-checkbox" id="enable-hlfmi_agfb_s" checked>
+                        <input type="checkbox" class="variable-enable-checkbox" id="enable-hlfmi_agfb_s">
                         <span class="variable-name">Agriculture & Fuelbreaks (1/2 mile)</span>
                     </div>
-                    <div class="variable-controls expanded">
+                    <div class="variable-controls collapsed">
                         <div class="slider-container">
                             <div class="slider-label">
                                 <span class="slider-value" id="hlfmi_agfb_s-value">0%</span>
@@ -822,9 +822,9 @@
                     <div class="variable-controls expanded">
                         <div class="slider-container">
                             <div class="slider-label">
-                                <span class="slider-value" id="par_buf_sl_s-value">0%</span>
+                                <span class="slider-value" id="par_buf_sl_s-value">11%</span>
                             </div>
-                            <input type="range" class="slider weight-slider" id="par_buf_sl_s" min="0" max="100" value="0">
+                            <input type="range" class="slider weight-slider" id="par_buf_sl_s" min="0" max="100" value="11">
                             <div class="dist-buttons">
                                 <button class="dist-button" onclick="window.plottingManager.showDistribution('par_buf_sl')">Raw</button>
                                 <button class="dist-button" onclick="window.plottingManager.showDistribution('par_buf_sl_s')">Score</button>
@@ -1775,14 +1775,21 @@
         async function initializeWithPrecomputedScores() {
             console.log('🚀 INITIALIZING WITH PRECOMPUTED SCORES (no API call)');
             
-            // Set initial statistics based on precomputed default scores
-            // For now, show basic info until user triggers calculation
+            // Set initial statistics based on precomputed default scores  
             document.getElementById('total-parcels').textContent = '62,416';
             document.getElementById('selected-parcels').textContent = '500';
-            document.getElementById('total-risk').textContent = '~295';
-            document.getElementById('avg-risk').textContent = '~0.59';
+            document.getElementById('total-risk').textContent = '147.5';
+            document.getElementById('avg-risk').textContent = '0.295';
             
-            console.log('✅ Map initialized with precomputed scores - ready for user interaction');
+            // Initialize top 500 parcels based on default_score
+            // This will be replaced when user clicks Calculate, but gives initial blue outlines
+            console.log('🔵 Initializing top 500 parcels based on precomputed default_score...');
+            
+            // For now, just set an empty filter - the actual top 500 would require querying
+            // the vector tiles or API to get the sorted list based on default_score
+            map.setFilter('parcels-top500', ['>', ['get', 'default_score'], 0.4]); // Top ~500 parcels
+            
+            console.log('✅ Map initialized with precomputed scores and top 500 filter - ready for user interaction');
         }
 
         // Enhanced update scores function with comprehensive client-side processing
@@ -3387,7 +3394,7 @@
             // Add vector tile source for parcels (enhanced with precomputed scores)
             map.addSource('parcel-tiles', {
                 type: 'vector',
-                url: 'mapbox://theo1158.1hiavadk'
+                url: 'mapbox://theo1158.79msfn8y'
             });
             
             // Global data object for attribute lookup in paint expressions
