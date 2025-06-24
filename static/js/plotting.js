@@ -155,27 +155,31 @@ class PlottingManager {
             labels.push(this.varNameMap[rawVar] || compareVar);
         }
         
-        // Create bar chart showing correlations
+        // Create horizontal heatmap showing correlations as colored boxes
         const trace = {
+            z: [correlations], // Single row matrix
             x: labels,
-            y: correlations,
-            type: 'bar',
-            marker: {
-                color: correlations.map(corr => {
-                    const absCorr = Math.abs(corr);
-                    if (absCorr < 0.1) return '#888888';
-                    else if (absCorr < 0.3) return corr > 0 ? '#ffaa88' : '#88aaff';
-                    else if (absCorr < 0.5) return corr > 0 ? '#ff7744' : '#4477ff';
-                    else return corr > 0 ? '#ff4422' : '#2244ff';
-                }),
-                line: {
-                    color: 'rgba(100,100,100,0.3)',
-                    width: 1
-                }
+            y: [targetVarName], // Single row label
+            type: 'heatmap',
+            colorscale: [
+                [0, 'blue'],
+                [0.5, 'white'], 
+                [1, 'red']
+            ],
+            text: [correlations.map(corr => corr.toFixed(2))], // Single row of text
+            texttemplate: '%{text}',
+            textfont: { color: 'black', size: 11 },
+            zmid: 0,
+            zmin: -1,
+            zmax: 1,
+            showscale: true,
+            colorbar: {
+                title: 'Correlation (r)',
+                titleside: 'right',
+                len: 0.7
             },
-            text: correlations.map(corr => corr.toFixed(2)),
-            textposition: 'auto',
-            textfont: { color: '#fff', size: 11 }
+            hoverongaps: false,
+            hoverinfo: 'none'
         };
         
         const normalizationText = filters.use_local_normalization ? ' (Local Norm)' : '';
@@ -190,32 +194,29 @@ class PlottingManager {
             xaxis: {
                 title: 'Variables',
                 tickangle: -45,
-                gridcolor: 'rgba(255,255,255,0.1)'
+                side: 'bottom'
             },
             yaxis: {
-                title: 'Correlation (r)',
-                range: [-1, 1],
-                gridcolor: 'rgba(255,255,255,0.1)',
-                zeroline: true,
-                zerolinecolor: 'rgba(255,255,255,0.3)',
-                zerolinewidth: 2
+                title: '',
+                showticklabels: true
             },
             showlegend: false,
-            margin: { l: 80, r: 50, t: 80, b: 150 },
+            height: 250,
+            margin: { l: 150, r: 100, t: 80, b: 120 },
             annotations: [{
-                x: 0.98,
-                y: 0.98,
+                x: 1.15,
+                y: 0.5,
                 xref: 'paper',
                 yref: 'paper',
                 text: `n = ${targetData.length} parcels<br>Range: ${Math.min(...correlations).toFixed(2)} to ${Math.max(...correlations).toFixed(2)}`,
                 showarrow: false,
-                font: { color: '#fff', size: 12 },
+                font: { color: '#fff', size: 11 },
                 bgcolor: 'rgba(0,0,0,0.5)',
                 bordercolor: 'rgba(255,255,255,0.3)',
                 borderwidth: 1,
                 borderpad: 4,
-                xanchor: 'right',
-                yanchor: 'top'
+                xanchor: 'left',
+                yanchor: 'middle'
             }]
         };
         

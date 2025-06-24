@@ -2438,6 +2438,94 @@
             }
         });
         
+        // Function to collect calculated scores for parcels in selection areas
+        function collectParcelScoresInSelection() {
+            if (!currentData || !currentData.features) {
+                console.error('No current data available for score collection');
+                return [];
+            }
+
+            if (!window.turf) {
+                console.error('Turf.js not available for geometry operations');
+                return [];
+            }
+
+            const use_quantile = document.getElementById('use-quantile').checked;
+            const use_local_normalization = document.getElementById('use-local-normalization').checked;
+            
+            console.log(`Collecting parcel scores: quantile=${use_quantile}, local=${use_local_normalization}`);
+
+            const selectedParcels = [];
+            const turf = window.turf;
+            const selectedParcelIds = new Set();
+
+            // For each selection area, use queryRenderedFeatures to get parcels from vector tiles
+            for (const area of selectionAreas) {
+                try {
+                    // Get bounding box for the area
+                    const bbox = turf.bbox(area.geometry);
+                    const pixelBounds = [
+                        map.project([bbox[0], bbox[1]]),
+                        map.project([bbox[2], bbox[3]])
+                    ];
+                    
+                    // Query vector tile features
+                    const renderedFeatures = map.queryRenderedFeatures(
+                        pixelBounds,
+                        { layers: ['parcels-fill'] }
+                    );
+                    
+                    // Filter geometrically and collect parcel IDs
+                    for (const feature of renderedFeatures) {
+                        try {
+                            if (turf.booleanIntersects(feature, area.geometry)) {
+                                const parcelId = feature.properties.parcel_id || feature.id;
+                                if (parcelId) {
+                                    selectedParcelIds.add(parcelId);
+                                }
+                            }
+                        } catch (e) {
+                            console.warn('Geometry intersection failed for feature:', feature);
+                        }
+                    }
+                } catch (e) {
+                    console.error('Error processing selection area:', e);
+                }
+            }
+
+            console.log(`Found ${selectedParcelIds.size} unique parcels in selection areas`);
+
+            // Now get the factor scores for each selected parcel
+            for (const parcelId of selectedParcelIds) {
+                // Get attributes for this parcel
+                const attributes = window.fireRiskScoring.getAttributesByParcelId(parcelId);
+                if (!attributes) {
+                    console.warn(`No attributes found for parcel ${parcelId}`);
+                    continue;
+                }
+
+                // Create a fake feature object for the normalization manager
+                const fakeFeature = {
+                    type: "Feature",
+                    geometry: null,
+                    properties: attributes
+                };
+
+                // Get factor scores from the normalization manager
+                const factorScores = window.clientNormalizationManager.getFactorScores(
+                    fakeFeature, use_local_normalization, use_quantile
+                );
+
+                selectedParcels.push({
+                    parcel_id: parcelId,
+                    scores: factorScores
+                });
+            }
+
+            console.log(`Collected scores for ${selectedParcels.length} parcels in selection areas`);
+            return selectedParcels;
+        }
+
         // Multi-area infer weights handler
         document.getElementById('infer-weights').addEventListener('click', async () => {
             if (selectionAreas.length === 0) {
@@ -2445,9 +2533,21 @@
                 return;
             }
 
+            if (!currentData) {
+                alert('Please calculate scores first by clicking "Calculate Scores"!');
+                return;
+            }
+
             const combinedSelection = combineSelectionAreas();
             if (!combinedSelection) {
                 alert('Error combining selection areas. Please try again.');
+                return;
+            }
+
+            // Collect parcel scores from client-side calculations
+            const parcelScores = collectParcelScoresInSelection();
+            if (parcelScores.length === 0) {
+                alert('No parcels found in selection areas. Please ensure selection areas overlap with parcels.');
                 return;
             }
 
@@ -2465,13 +2565,14 @@
             try {
                 console.log(`Optimizing weights for ${selectionAreas.length} selection areas:`, 
                     selectionAreas.map(area => area.type));
+                console.log(`Sending ${parcelScores.length} parcel scores to server for optimization`);
 
                 const data = await window.apiClient.inferWeights({
                     selection: combinedSelection,
                     selection_areas: selectionAreas, // Send all individual areas for reference
                     max_parcels: maxParcels,
                     include_vars: includeVars,
-
+                    parcel_scores: parcelScores, // NEW: Send calculated scores
                     use_quantile: document.getElementById('use-quantile').checked,
                     ...getCurrentFilters()
                 });

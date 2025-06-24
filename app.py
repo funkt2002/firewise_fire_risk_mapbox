@@ -1423,10 +1423,44 @@ def infer_weights():
         
         logger.info(f"Using corrected include_vars for optimization: {include_vars}")
         
-        # Get parcel scores for optimization
-        parcel_data = get_parcel_scores_for_optimization(data, include_vars)
-        if not parcel_data:
-            return jsonify({"error": "No parcels found in selection"}), 400
+        # Check if parcel scores are provided from client-side calculations
+        if 'parcel_scores' in data and data['parcel_scores']:
+            logger.info("Using client-side calculated parcel scores for optimization")
+            
+            # Convert client-side scores to the format expected by the LP solver
+            parcel_scores_from_client = data['parcel_scores']
+            parcel_data = []
+            
+            # Get the base variable names (remove _s/_z suffixes)
+            include_vars_base = [var[:-2] if var.endswith(('_s', '_q', '_z')) else var for var in include_vars]
+            
+            for parcel_score_data in parcel_scores_from_client:
+                parcel_id = parcel_score_data.get('parcel_id')
+                client_scores = parcel_score_data.get('scores', {})
+                
+                # Map client scores to the expected format
+                formatted_scores = {}
+                for i, var_base in enumerate(include_vars_base):
+                    # Get the corresponding variable name with suffix
+                    var_with_suffix = include_vars[i]
+                    
+                    # Try to get the score from client data
+                    score_value = client_scores.get(var_with_suffix, 0.0)
+                    formatted_scores[var_base] = float(score_value)
+                
+                parcel_data.append({
+                    'id': parcel_id,
+                    'scores': formatted_scores
+                })
+            
+            logger.info(f"Using {len(parcel_data)} parcels with client-side calculated scores")
+            
+        else:
+            # Fallback to database query (original behavior)
+            logger.info("No client-side scores provided, querying database")
+            parcel_data = get_parcel_scores_for_optimization(data, include_vars)
+            if not parcel_data:
+                return jsonify({"error": "No parcels found in selection"}), 400
         
         # Solve optimization problem
         best_weights, total_score, solver_status = solve_weight_optimization(

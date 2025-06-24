@@ -33,16 +33,15 @@ class WelcomePopup {
                     <div class="welcome-popup-body">
                         <div id="welcome-popup-content">
                             <div class="development-note">
-                                <p><strong> LATEST UPDATE: Lightning-Fast Performance</strong></p>
+                                <p><strong>TECHNICAL ARCHITECTURE UPDATE</strong></p>
                                 <ul style="margin: 10px 0; padding-left: 20px;">
-                                    <li><strong>Instant Loading:</strong> Map shows fire risk colors immediately - no waiting!</li>
-                                    <li><strong>Precomputed Scores:</strong> Default risk scores built into the map for instant viewing</li>
-                                    <li><strong>Vector Tile Speed:</strong> All map layers load fast at every zoom level</li>
-                                    <li><strong>Smart Processing:</strong> Only calculates when you change settings</li>
-                                    <li><strong>Enhanced Multi-Area Tools:</strong> Draw multiple areas to optimize weights</li>
-                                    <li><strong>Better Organization:</strong> Cleaner interface with Advanced Score Options separate from filters</li>
+                                    <li><strong>No more .geojson:</strong> All geometries are hosted as static vector tiles hosted by Mapbox, with attribute data hosted by PostgreSQL/server caching</li>
+                                    <li><strong>Client-side processing:</strong> Filtering, normalization, and score calculations all run client-side with JavaScript. This is all done just on attribute data, and mapped to vector tiles for updating via IDs. This results in high speeds and low memory usage</li>
+                                    <li><strong>Substantial calculations:</strong> Each time a user filters the data in any way, we renormalize (min-max) scores based on their selection and recalculate composite scores. This can be toggled and global scores may be used instead, but I think this is a good feature for assessing relative fire risk for given areas. And now we have this being done efficiently</li>
+                                    <li><strong>UI improvements:</strong> The UI has been improved, and several improvements to toggling/usability have been made</li>
+                                    <li><strong>Small additions:</strong> Such as a correlation matrix between variables, or allowing for multi-area selection for the infer weights tool</li>
                                 </ul>
-                                <p><strong>NEW: The map loads instantly with color-coded fire risk - try it!</strong></p>
+                                <p><strong>The map loads instantly with color-coded fire risk and handles complex analysis efficiently - try it!</strong></p>
                             </div>
                             
                             <p>This tool helps you find areas with the highest wildfire risk by looking at different factors around each property.</p>
