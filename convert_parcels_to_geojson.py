@@ -69,35 +69,33 @@ def generate_optimized_tiles(geojson_file):
         print(f"✅ SUCCESS! Generated parcels_better_balanced.mbtiles ({size_mb:.1f} MB)")
         print("   → This tileset keeps small parcels visible and prevents 'too much data' errors")
         
-        # Strategy 2: Adaptive Simplification (dynamically optimize each tile under 500KB)
-        print("\n📊 Strategy 2: Adaptive Simplification (auto-optimize each tile)")
+        # Strategy 2: Zoom 11+ Only (NO simplification, ALL parcels, smaller tile areas)
+        print("\n📊 Strategy 2: Zoom 11+ Only (no simplification, full detail)")
         balanced_cmd = [
             'tippecanoe',
-            '--output', 'parcels_adaptive.mbtiles',
+            '--output', 'parcels_zoom11plus.mbtiles',
             '--force',
-            '--minimum-zoom', '6',             # Start at zoom 6 (region level)
-            '--maximum-zoom', '15',            # End at zoom 15 (street level)
-            '--base-zoom', '10',               # Optimize for zoom 10 (county level)
-            # STRICT tile size limits to stay safely under 500KB:
-            '--maximum-tile-bytes', '400000',  # 400KB max (safe buffer under 500KB)
-            '--maximum-tile-features', '50000', # 50K features max (generous but safe)
-            # AGGRESSIVE ADAPTIVE SIMPLIFICATION:
-            '--coalesce-smallest-as-needed',   # Turn smallest parcels into dots as needed
-            '--coalesce-densest-as-needed',    # Handle dense urban areas aggressively
-            '--simplification-at-maximum-zoom', '30', # Heavy simplification when needed
-            '--simplify-only-low-zooms',       # Focus simplification on zoom 6-11
-            # GEOMETRY OPTIMIZATION:
-            '--detect-shared-borders',         # Optimize shared boundaries
-            '--buffer', '0',                   # No buffer to save space
-            # LAST RESORT: Allow minimal dropping only if coalescing isn't enough
-            '--drop-densest-as-needed',        # Only as absolute last resort
+            '--minimum-zoom', '11',            # Start at zoom 11 (15km × 19km tiles)
+            '--maximum-zoom', '16',            # End at zoom 16 (detailed street level)
+            '--base-zoom', '13',               # Optimize for zoom 13 (neighborhood level)
+            # GENEROUS settings since tile areas are much smaller:
+            '--maximum-tile-bytes', '600000',  # 600KB (generous since smaller areas)
+            '--maximum-tile-features', '100000', # 100K features (should be way more than needed)
+            # NO SIMPLIFICATION OR DROPPING:
+            # REMOVED: --coalesce-smallest-as-needed   ← No simplification!
+            # REMOVED: --coalesce-densest-as-needed    ← No simplification!
+            # REMOVED: --drop-densest-as-needed        ← No dropping!
+            # REMOVED: --simplification flags          ← No simplification!
+            # PRESERVE FULL DETAIL:
+            '--detect-shared-borders',         # Optimize shared boundaries only
+            '--buffer', '1',                   # Small buffer for clean rendering
             geojson_file
         ]
         
         result = subprocess.run(balanced_cmd, check=True, capture_output=True, text=True)
-        size_mb = os.path.getsize('parcels_adaptive.mbtiles') / (1024 * 1024)
-        print(f"✅ SUCCESS! Generated parcels_adaptive.mbtiles ({size_mb:.1f} MB)")
-        print("   → This tileset auto-optimizes each tile: turns smallest parcels into dots until <400KB")
+        size_mb = os.path.getsize('parcels_zoom11plus.mbtiles') / (1024 * 1024)
+        print(f"✅ SUCCESS! Generated parcels_zoom11plus.mbtiles ({size_mb:.1f} MB)")
+        print("   → This tileset shows ALL parcels with full detail at zoom 11-16 only")
         
         # Strategy 3: Emergency fallback (if you still get "too much data" errors)
         print("\n📊 Strategy 3: Emergency Fallback (only if needed)")
@@ -288,7 +286,7 @@ def main():
         print("✅ Smart feature dropping preserves important parcels")
         
         print("\n📂 GENERATED FILES:")
-        for file in ['parcels_better_balanced.mbtiles', 'parcels_adaptive.mbtiles', 'parcels_emergency_fallback.mbtiles']:
+        for file in ['parcels_better_balanced.mbtiles', 'parcels_zoom11plus.mbtiles', 'parcels_emergency_fallback.mbtiles']:
             if os.path.exists(file):
                 size_mb = os.path.getsize(file) / (1024 * 1024)
                 print(f"   {file} ({size_mb:.1f} MB)")
@@ -300,13 +298,14 @@ def main():
         print("\n2. Upload to Mapbox Studio:")
         print("   mapbox upload theo1158.parcels_new parcels_better_balanced.mbtiles")
         print("\n3. Update your code in templates/index.html:")
-        print("   ✅ INTEGRATED: 'parcels_adaptive.mbtiles' → 'mapbox://theo1158.2dygbt6g'")
-        print("   Current tileset uses adaptive optimization!")
+        print("   ✅ INTEGRATED: 'parcels_zoom11plus.mbtiles' → 'mapbox://theo1158.1o8xk01u'")
+        print("   Current tileset uses zoom 11+ only approach!")
         
         print("\n💡 RECOMMENDATIONS:")
-        print("   ✅ Current: 'theo1158.2dygbt6g' (adaptive - auto-optimizes each tile)")
-        print("   🎯 This should eliminate ALL '500KB at z10' errors!")
-        print("      (Large parcels = shapes, smallest parcels = dots, <400KB per tile guaranteed)")
+        print("   ✅ Current: 'theo1158.1o8xk01u' (zoom 11+ only - ALL parcels, no gaps)")
+        print("   🎯 This shows ALL 62,416 parcels with full detail at zoom 11-16")
+        print("      (Completely avoids problematic zoom 6-10, focuses on decision-making zoom)")
+        print("      (No simplification, no dropping, perfect for detailed fire risk analysis)")
         print("   🛡️  If errors still occur: Fall back to 'parcels_emergency_fallback.mbtiles'")
         
         return True
