@@ -1502,7 +1502,26 @@
             document.getElementById('max-parcels-value').textContent = maxParcels;
         }
 
-
+        // Helper function to update distribution buttons based on score type
+        function updateDistributionButtons() {
+            const useQuantile = document.getElementById('use-quantile').checked;
+            const suffix = useQuantile ? '_z' : '_s';
+            
+            // Update all score distribution buttons
+            document.querySelectorAll('.dist-button').forEach(button => {
+                const onclick = button.getAttribute('onclick');
+                if (onclick && onclick.includes("Score</button>")) {
+                    // Extract base variable name from onclick attribute
+                    const match = onclick.match(/showDistribution\('(.+)_[sz]'\)/);
+                    if (match) {
+                        const baseVar = match[1];
+                        button.setAttribute('onclick', `window.plottingManager.showDistribution('${baseVar}${suffix}')`);
+                    }
+                }
+            });
+            
+            console.log(`Updated distribution buttons to use ${suffix} suffix for score plots`);
+        }
 
         function getCurrentFilters() {
             return {
@@ -2135,12 +2154,17 @@
         // Filter and normalization controls - all use client-side processing
         const filters = ['filter-yearbuilt-enabled', 'filter-neigh1d-enabled', 'filter-yearbuilt-exclude-unknown', 
                         'filter-strcnt-enabled', 'filter-wui-zero-enabled', 'filter-vhsz-zero-enabled', 
-                        'filter-brns-enabled', 'filter-agri-protection-enabled', 'use-basic-scores', 'use-quantile',
-                        'use-local-normalization'];
+                        'filter-brns-enabled', 'filter-agri-protection-enabled', 'use-basic-scores', 'use-local-normalization'];
         filters.forEach(id => {
             document.getElementById(id).addEventListener('change', () => {
                 updateScores(); // Client-side processing handles all changes
             });
+        });
+
+        // Special handling for score type changes to update distribution buttons
+        document.getElementById('use-quantile').addEventListener('change', () => {
+            updateDistributionButtons(); // Update button onclick attributes
+            updateScores(); // Client-side processing handles all changes
         });
 
         ['filter-yearbuilt', 'filter-neigh1d', 'filter-strcnt'].forEach(id => {
@@ -3385,6 +3409,7 @@
             normalizeWeights();
             updateMaxParcels();
             updateSelectionCount(); // Initialize multi-area selection UI
+            updateDistributionButtons(); // Initialize distribution buttons with correct score type
             console.log('🎯 Starting single initial data load and client-side calculation...');
             updateScores(true);  // Single initial load and client-side calculation
             

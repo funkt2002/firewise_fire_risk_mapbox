@@ -341,7 +341,11 @@ class ClientNormalizationManager {
                     let normalizedScore;
 
                     if (normInfo.norm_type === 'quantile') {
-                        normalizedScore = (rawValue - normInfo.mean) / normInfo.std;
+                        // Z-score normalization, then map to 0-1 range using sigmoid-like function
+                        const zScore = (rawValue - normInfo.mean) / normInfo.std;
+                        // Use cumulative normal distribution approximation to map z-score to 0-1
+                        // This ensures scores stay bounded between 0 and 1
+                        normalizedScore = 1 / (1 + Math.exp(-zScore));
                     } else {
                         normalizedScore = (rawValue - normInfo.min) / normInfo.range;
                         normalizedScore = Math.max(0, Math.min(1, normalizedScore));
@@ -382,12 +386,12 @@ class ClientNormalizationManager {
                 scoreKey = varBase + '_s'; // Use locally calculated scores
             } else if (use_quantile) {
                 scoreKey = varBase + '_z';
-
             } else {
                 scoreKey = varBase + '_s';
             }
 
             const scoreValue = feature.properties[scoreKey];
+            // Always map to _s for the weight calculation (weights use _s keys)
             factorScores[varBase + '_s'] = scoreValue !== null && scoreValue !== undefined ? parseFloat(scoreValue) : 0.0;
         }
 

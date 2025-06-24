@@ -219,7 +219,16 @@ class PlottingManager {
             if (variable.endsWith('_s') || variable.endsWith('_z')) {
                 // Score variable - check if we need to calculate scores
                 const baseVar = variable.slice(0, -2); // Remove _s or _z
-                const scoreKey = baseVar + '_s';
+                
+                // Use the correct score key based on current settings
+                let scoreKey;
+                if (filters.use_local_normalization) {
+                    scoreKey = baseVar + '_s'; // Local normalization always uses _s
+                } else if (filters.use_quantile) {
+                    scoreKey = baseVar + '_z'; // Quantile scores use _z
+                } else {
+                    scoreKey = baseVar + '_s'; // Basic scores use _s
+                }
                 
                 // Check if scores are already calculated
                 const hasScores = clientData.features.some(f => f.properties[scoreKey] !== undefined);
@@ -257,7 +266,7 @@ class PlottingManager {
                 }
                 
                 values = clientData.features
-                    .map(f => f.properties[scoreKey]) // Client always uses _s suffix for calculated scores
+                    .map(f => f.properties[scoreKey]) // Use the determined scoreKey
                     .filter(v => v !== null && v !== undefined && !isNaN(v));
             } else {
                 // Raw variable - extract from properties WITHOUT log transformations

@@ -317,8 +317,11 @@ def apply_local_normalization(raw_results, use_quantile):
                 norm_info = norm_data[var_base]
                 
                 if norm_info['norm_type'] == 'quantile':
-                    normalized_score = (raw_value - norm_info['mean']) / norm_info['std']
-
+                    # Z-score normalization, then map to 0-1 range using sigmoid-like function
+                    z_score = (raw_value - norm_info['mean']) / norm_info['std']
+                    # Use cumulative normal distribution approximation to map z-score to 0-1
+                    # This ensures scores stay bounded between 0 and 1
+                    normalized_score = 1 / (1 + math.exp(-z_score))
                 else:
                     normalized_score = (raw_value - norm_info['min']) / norm_info['range']
                     normalized_score = max(0, min(1, normalized_score))
