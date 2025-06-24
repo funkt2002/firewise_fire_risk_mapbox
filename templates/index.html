@@ -1638,6 +1638,9 @@
             bearing: 0
         });
 
+        // Make map accessible globally for spatial filtering
+        window.map = map;
+
         // Initialize drawing
         const draw = new MapboxDraw({
             displayControlsDefault: false,
@@ -3393,7 +3396,7 @@
                 type: 'line',
                 source: 'parcel-tiles',
                 'source-layer': 'parcels_for_mapbox-2wpi1y',
-                minzoom: 12, // Show boundaries at zoom 12+ (was 14+)
+                minzoom: 10, // Show boundaries at zoom 10+ (was 12+) for better visibility
                 maxzoom: 22,
                 paint: {
                     'line-color': '#ffffff',

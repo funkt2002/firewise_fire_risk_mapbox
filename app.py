@@ -10,6 +10,7 @@ import tempfile
 import zipfile
 import traceback
 import gzip
+import psutil  # For memory monitoring
 
 from flask import Flask, request, jsonify, render_template, send_file, make_response
 from flask_cors import CORS
@@ -75,6 +76,24 @@ def get_redis_client():
         return redis_client
     except Exception as e:
         logger.warning(f"Redis connection failed: {e}")
+        return None
+
+def log_memory_usage(context=""):
+    """Log current memory usage"""
+    try:
+        process = psutil.Process()
+        memory_info = process.memory_info()
+        memory_mb = memory_info.rss / 1024 / 1024
+        
+        # Get system memory info
+        system_memory = psutil.virtual_memory()
+        system_available_mb = system_memory.available / 1024 / 1024
+        system_percent = system_memory.percent
+        
+        logger.info(f"MEMORY{' - ' + context if context else ''}: Process: {memory_mb:.1f}MB | System: {system_percent:.1f}% used, {system_available_mb:.1f}MB available")
+        return memory_mb
+    except Exception as e:
+        logger.warning(f"Could not get memory info: {e}")
         return None
 
 # ====================
@@ -676,24 +695,47 @@ def get_burnscars():
 
 @app.route('/api/cache/clear', methods=['POST'])
 def clear_cache():
-    """Clear Redis cache manually"""
+    """Clear Redis cache endpoint"""
     try:
+        log_memory_usage("Before cache clear")
+        
         redis_client = get_redis_client()
-        if not redis_client:
-            return jsonify({"error": "Redis not available"}), 500
-        
-        cache_key = "fire_risk:base_dataset:v1"
-        result = redis_client.delete(cache_key)
-        
-        if result:
-            logger.info(f"🗑️ CACHE CLEARED: Removed {cache_key}")
-            return jsonify({"message": "Cache cleared successfully", "keys_removed": result})
+        if redis_client:
+            # Clear specific fire risk cache key
+            cache_key = "fire_risk:base_dataset:v1"
+            deleted = redis_client.delete(cache_key)
+            
+            # Also clear any other fire risk related keys
+            keys_pattern = "fire_risk:*"
+            keys_to_delete = redis_client.keys(keys_pattern)
+            total_deleted = 0
+            if keys_to_delete:
+                total_deleted = redis_client.delete(*keys_to_delete)
+            
+            log_memory_usage("After cache clear")
+            
+            logger.info(f"Cache cleared: {deleted} specific key deleted, {total_deleted} total keys deleted")
+            return jsonify({
+                "status": "success",
+                "message": f"Cache cleared successfully. Deleted {total_deleted} keys.",
+                "keys_deleted": total_deleted,
+                "timestamp": time.strftime('%Y-%m-%d %H:%M:%S')
+            })
         else:
-            return jsonify({"message": "No cache found to clear"})
+            logger.warning("Redis not available for cache clearing")
+            return jsonify({
+                "status": "warning", 
+                "message": "Redis not available - no cache to clear",
+                "timestamp": time.strftime('%Y-%m-%d %H:%M:%S')
+            })
             
     except Exception as e:
         logger.error(f"Error clearing cache: {e}")
-        return jsonify({"error": str(e)}), 500
+        return jsonify({
+            "status": "error",
+            "message": f"Failed to clear cache: {str(e)}",
+            "timestamp": time.strftime('%Y-%m-%d %H:%M:%S')
+        }), 500
 
 @app.route('/api/debug/columns', methods=['GET'])
 def get_columns():
@@ -772,16 +814,18 @@ def get_columns():
 
 @app.route('/api/prepare', methods=['POST'])
 def prepare_data():
-    """Load data from database and calculate individual factor scores"""
-    timings = {}
+    """VECTOR TILES: Modified /api/prepare endpoint to return AttributeCollection format without geometry"""
     start_time = time.time()
+    timings = {}
+    
+    log_memory_usage("Start of prepare_data")
     
     try:
-        # Request parsing
+        # Parse request
         request_start = time.time()
-        data = request.get_json()
-        timings['request_parsing'] = time.time() - request_start
-        logger.info(f"🚀 Prepare data called - request parsed in {timings['request_parsing']:.3f}s")
+        data = request.get_json() or {}
+        timings['request_parsing'] = (time.time() - request_start) * 1000
+        logger.info(f"🚀 Prepare data called - request parsed in {timings['request_parsing']:.3f}ms")
         
         # Check Redis cache first (only for unfiltered base dataset)
         cache_key = "fire_risk:base_dataset:v1"
@@ -1037,6 +1081,7 @@ def prepare_data():
             percentage = (timing / total_time) * 100
             logger.info(f"  - {operation}: {timing:.3f}s ({percentage:.1f}%)")
         
+        log_memory_usage("End of prepare_data")
         return jsonify(response_data)
         
     except Exception as e:

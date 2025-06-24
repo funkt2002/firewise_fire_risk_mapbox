@@ -146,6 +146,17 @@ class ClientFilterManager {
         try {
             console.log('VECTOR TILES: Starting spatial filter with queryRenderedFeatures');
             
+            // Verify map instance has required methods
+            if (!mapInstance.project || typeof mapInstance.project !== 'function') {
+                console.error('VECTOR TILES: Map instance missing project method');
+                return features; // Fall back to no spatial filtering
+            }
+            
+            if (!mapInstance.queryRenderedFeatures || typeof mapInstance.queryRenderedFeatures !== 'function') {
+                console.error('VECTOR TILES: Map instance missing queryRenderedFeatures method');
+                return features; // Fall back to no spatial filtering
+            }
+            
             // Get bounding box of drawn polygon for queryRenderedFeatures
             if (!window.turf || !window.turf.bbox) {
                 console.warn('VECTOR TILES: Turf.js bbox not available, skipping spatial filter');
