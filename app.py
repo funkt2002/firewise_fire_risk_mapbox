@@ -825,7 +825,7 @@ def prepare_data():
         request_start = time.time()
         data = request.get_json() or {}
         timings['request_parsing'] = (time.time() - request_start) * 1000
-        logger.info(f"🚀 Prepare data called - request parsed in {timings['request_parsing']:.3f}ms")
+        logger.info(f"Prepare data called - request parsed in {timings['request_parsing']:.3f}ms")
         
         # Check Redis cache first (only for unfiltered base dataset)
         cache_key = "fire_risk:base_dataset:v1"
@@ -862,8 +862,8 @@ def prepare_data():
                             decompressed_size_mb = len(decompressed_data) / 1024 / 1024
                             compression_ratio = (1 - data_size_mb / decompressed_size_mb) * 100
                             
-                            logger.info(f"🟢 CACHE HIT: Retrieved base dataset in {cache_time*1000:.1f}ms")
-                            logger.info(f"📦 Decompressed {data_size_mb:.1f}MB → {decompressed_size_mb:.1f}MB ({compression_ratio:.1f}% compression)")
+                            logger.info(f"CACHE HIT: Retrieved base dataset in {cache_time*1000:.1f}ms")
+                            logger.info(f"Decompressed {data_size_mb:.1f}MB → {decompressed_size_mb:.1f}MB ({compression_ratio:.1f}% compression)")
                             
                             # Update response with cache timing
                             cached_result['cache_used'] = True
@@ -872,30 +872,30 @@ def prepare_data():
                             
                             return jsonify(cached_result)
                         except Exception as decomp_error:
-                            logger.error(f"🔴 CACHE DECOMPRESSION ERROR: {decomp_error}")
+                            logger.error(f"CACHE DECOMPRESSION ERROR: {decomp_error}")
                             # Fall through to database query
                     else:
-                        logger.info(f"🟡 CACHE MISS: Base dataset not cached")
+                        logger.info(f"CACHE MISS: Base dataset not cached")
                 except Exception as e:
-                    logger.error(f"🔴 CACHE ERROR: {e}")
+                    logger.error(f"CACHE ERROR: {e}")
             
             timings['cache_check'] = cache_time
         else:
-            logger.info(f"📋 Filters detected - bypassing cache, querying database directly")
+            logger.info(f"Filters detected - bypassing cache, querying database directly")
         
         # Build filters
         filter_start = time.time()
         conditions, params = build_filter_conditions(data)
         where_clause = "WHERE " + " AND ".join(conditions) if conditions else ""
         timings['filter_building'] = time.time() - filter_start
-        logger.info(f"📋 Filter building completed in {timings['filter_building']:.3f}s")
+        logger.info(f"Filter building completed in {timings['filter_building']:.3f}s")
         
         # Database connection
         db_connect_start = time.time()
         conn = get_db()
         cur = conn.cursor()
         timings['database_connection'] = time.time() - db_connect_start
-        logger.info(f"🔌 Database connection established in {timings['database_connection']:.3f}s")
+        logger.info(f"Database connection established in {timings['database_connection']:.3f}s")
         
         # Get total count
         count_start = time.time()
@@ -903,7 +903,7 @@ def prepare_data():
         result = cur.fetchone()
         total_parcels_before_filter = dict(result)['total_count'] if result else 0
         timings['count_query'] = time.time() - count_start
-        logger.info(f"🔢 Count query completed in {timings['count_query']:.3f}s - total parcels: {total_parcels_before_filter:,}")
+        logger.info(f"Count query completed in {timings['count_query']:.3f}s - total parcels: {total_parcels_before_filter:,}")
         
         # Prepare columns - get all score variables and raw variables
         col_prep_start = time.time()
@@ -928,7 +928,7 @@ def prepare_data():
         
         all_columns = capped_raw_columns + all_score_vars + other_columns
         timings['column_preparation'] = time.time() - col_prep_start
-        logger.info(f"📝 Column preparation completed in {timings['column_preparation']:.3f}s - prepared {len(all_columns)} columns")
+        logger.info(f"Column preparation completed in {timings['column_preparation']:.3f}s - prepared {len(all_columns)} columns")
         
         # Query data from database
         query_start = time.time()
@@ -947,22 +947,22 @@ def prepare_data():
         query_exec_start = time.time()
         cur.execute(query, params)
         timings['query_execution'] = time.time() - query_exec_start
-        logger.info(f"⚡ Query executed in {timings['query_execution']:.3f}s")
+        logger.info(f"Query executed in {timings['query_execution']:.3f}s")
         
         # Fetch results
         fetch_start = time.time()
         raw_results = cur.fetchall()
         timings['data_fetching'] = time.time() - fetch_start
         timings['raw_data_query'] = time.time() - query_start
-        logger.info(f"📥 Data fetched in {timings['data_fetching']:.3f}s - returned {len(raw_results):,} rows")
-        logger.info(f"🎯 Total database query completed in {timings['raw_data_query']:.3f}s")
+        logger.info(f"Data fetched in {timings['data_fetching']:.3f}s - returned {len(raw_results):,} rows")
+        logger.info(f"Total database query completed in {timings['raw_data_query']:.3f}s")
         
         # Close database connection
         db_close_start = time.time()
         cur.close()
         conn.close()
         timings['database_cleanup'] = time.time() - db_close_start
-        logger.info(f"🔌 Database connection closed in {timings['database_cleanup']:.3f}s")
+        logger.info(f"Database connection closed in {timings['database_cleanup']:.3f}s")
         
         if len(raw_results) < 10:
             return jsonify({"error": "Not enough data for analysis"}), 400
@@ -974,7 +974,7 @@ def prepare_data():
 
         max_parcels = data.get('max_parcels', 500)
         timings['settings_extraction'] = time.time() - settings_start
-        logger.info(f"⚙️ Settings extracted in {timings['settings_extraction']:.3f}s")
+        logger.info(f"Settings extracted in {timings['settings_extraction']:.3f}s")
         
         # Data preparation - convert raw results to dictionaries
         prep_start = time.time()
@@ -986,10 +986,10 @@ def prepare_data():
             
             # Log progress for large datasets
             if i > 0 and i % 10000 == 0:
-                logger.info(f"📊 Processed {i:,}/{len(raw_results):,} rows ({i/len(raw_results)*100:.1f}%)")
+                logger.info(f"Processed {i:,}/{len(raw_results):,} rows ({i/len(raw_results)*100:.1f}%)")
             
         timings['data_preparation'] = time.time() - prep_start
-        logger.info(f"📋 Data preparation completed in {timings['data_preparation']:.3f}s - processed {len(scored_results):,} rows")
+        logger.info(f"Data preparation completed in {timings['data_preparation']:.3f}s - processed {len(scored_results):,} rows")
         
         # Create attribute records (no geometry for vector tiles)
         attribute_creation_start = time.time()
@@ -1055,13 +1055,13 @@ def prepare_data():
                     compressed_size_mb = len(compressed_data) / 1024 / 1024
                     compression_ratio = (1 - compressed_size_mb / original_size_mb) * 100
                     
-                    logger.info(f"🟢 CACHE SET: Compressed {original_size_mb:.1f}MB → {compressed_size_mb:.1f}MB ({compression_ratio:.1f}% reduction)")
-                    logger.info(f"🟢 CACHE SET: Stored compressed dataset in {cache_save_time*1000:.1f}ms")
+                    logger.info(f"CACHE SET: Compressed {original_size_mb:.1f}MB → {compressed_size_mb:.1f}MB ({compression_ratio:.1f}% reduction)")
+                    logger.info(f"CACHE SET: Stored compressed dataset in {cache_save_time*1000:.1f}ms")
                     timings['cache_save'] = cache_save_time
                 except Exception as e:
-                    logger.error(f"🔴 CACHE ERROR: Failed to save base dataset: {e}")
+                    logger.error(f"CACHE ERROR: Failed to save base dataset: {e}")
             else:
-                logger.warning(f"🟡 CACHE SKIP: Redis not available for saving")
+                logger.warning(f"CACHE SKIP: Redis not available for saving")
         
         total_time = time.time() - start_time
         
@@ -1069,14 +1069,14 @@ def prepare_data():
         import sys
         payload_size_mb = sys.getsizeof(str(response_data)) / 1024 / 1024
         
-        logger.info(f"📦 Response built in {timings['response_building']:.3f}s")
-        logger.info(f"📏 Estimated payload size: {payload_size_mb:.1f} MB")
-        logger.info(f"🗜️ Gzip compression: ENABLED (Flask-Compress auto-configured)")
-        logger.info(f"🗜️ Expected compressed size: ~{payload_size_mb * 0.3:.1f}-{payload_size_mb * 0.4:.1f} MB (60-70% reduction)")
-        logger.info(f"🎯 === PREPARE COMPLETED ===")
-        logger.info(f"🕐 Total server time: {total_time:.3f}s")
+        logger.info(f"Response built in {timings['response_building']:.3f}s")
+        logger.info(f"Estimated payload size: {payload_size_mb:.1f} MB")
+        logger.info(f"Gzip compression: ENABLED (Flask-Compress auto-configured)")
+        logger.info(f"Expected compressed size: ~{payload_size_mb * 0.3:.1f}-{payload_size_mb * 0.4:.1f} MB (60-70% reduction)")
+        logger.info(f"=== PREPARE COMPLETED ===")
+        logger.info(f"Total server time: {total_time:.3f}s")
         logger.info(f"VECTOR TILES: Sent {len(attributes):,} parcels attributes for client-side calculation")
-        logger.info(f"🚀 Server processing breakdown:")
+        logger.info(f"Server processing breakdown:")
         for operation, timing in timings.items():
             percentage = (timing / total_time) * 100
             logger.info(f"  - {operation}: {timing:.3f}s ({percentage:.1f}%)")
@@ -1252,14 +1252,14 @@ def solve_weight_optimization(parcel_data, include_vars):
     # Process variable names efficiently
     include_vars_base = [var[:-2] if var.endswith(('_s', '_q', '_z')) else var for var in include_vars]
     
-    logger.info(f"🧠 EFFICIENT: Starting optimization for {len(parcel_data):,} parcels, {len(include_vars_base)} variables")
+    logger.info(f"EFFICIENT: Starting optimization for {len(parcel_data):,} parcels, {len(include_vars_base)} variables")
     
     # STEP 1: Pre-aggregate coefficients (instead of 500K terms, just 10)
     coefficients = {}
     for var_base in include_vars_base:
         total_score = sum(parcel['scores'][var_base] for parcel in parcel_data)
         coefficients[var_base] = total_score
-        logger.info(f"🧠 Aggregated {var_base}: {total_score:.2f} (sum of {len(parcel_data):,} parcel scores)")
+        logger.info(f"Aggregated {var_base}: {total_score:.2f} (sum of {len(parcel_data):,} parcel scores)")
     
     # STEP 2: Create lightweight LP problem (only 10 terms!)
     prob = LpProblem("Maximize_Score", LpMaximize)
@@ -1269,7 +1269,7 @@ def solve_weight_optimization(parcel_data, include_vars):
     objective = lpSum(w_vars[var] * coefficients[var] for var in include_vars_base)
     prob += objective
     
-    logger.info(f"🧠 EFFICIENT: Created LP with {len(include_vars_base)} terms (vs {len(parcel_data) * len(include_vars_base):,} in old method)")
+    logger.info(f"EFFICIENT: Created LP with {len(include_vars_base)} terms (vs {len(parcel_data) * len(include_vars_base):,} in old method)")
     
     # STEP 3: Add constraint
     prob += lpSum(w_vars[var] for var in include_vars_base) == 1
@@ -1297,7 +1297,7 @@ def solve_weight_optimization(parcel_data, include_vars):
     del coefficients
     gc.collect()
     
-    logger.info(f"🧠 EFFICIENT: LP solved and cleaned up. Memory optimized!")
+    logger.info(f"EFFICIENT: LP solved and cleaned up. Memory optimized!")
     
     return best_weights, total_score, LpStatus[solver_result]
 
@@ -1423,44 +1423,10 @@ def infer_weights():
         
         logger.info(f"Using corrected include_vars for optimization: {include_vars}")
         
-        # Check if parcel scores are provided from client-side calculations
-        if 'parcel_scores' in data and data['parcel_scores']:
-            logger.info("Using client-side calculated parcel scores for optimization")
-            
-            # Convert client-side scores to the format expected by the LP solver
-            parcel_scores_from_client = data['parcel_scores']
-            parcel_data = []
-            
-            # Get the base variable names (remove _s/_z suffixes)
-            include_vars_base = [var[:-2] if var.endswith(('_s', '_q', '_z')) else var for var in include_vars]
-            
-            for parcel_score_data in parcel_scores_from_client:
-                parcel_id = parcel_score_data.get('parcel_id')
-                client_scores = parcel_score_data.get('scores', {})
-                
-                # Map client scores to the expected format
-                formatted_scores = {}
-                for i, var_base in enumerate(include_vars_base):
-                    # Get the corresponding variable name with suffix
-                    var_with_suffix = include_vars[i]
-                    
-                    # Try to get the score from client data
-                    score_value = client_scores.get(var_with_suffix, 0.0)
-                    formatted_scores[var_base] = float(score_value)
-                
-                parcel_data.append({
-                    'id': parcel_id,
-                    'scores': formatted_scores
-                })
-            
-            logger.info(f"Using {len(parcel_data)} parcels with client-side calculated scores")
-            
-        else:
-            # Fallback to database query (original behavior)
-            logger.info("No client-side scores provided, querying database")
-            parcel_data = get_parcel_scores_for_optimization(data, include_vars)
-            if not parcel_data:
-                return jsonify({"error": "No parcels found in selection"}), 400
+        # Get parcel scores for optimization
+        parcel_data = get_parcel_scores_for_optimization(data, include_vars)
+        if not parcel_data:
+            return jsonify({"error": "No parcels found in selection"}), 400
         
         # Solve optimization problem
         best_weights, total_score, solver_status = solve_weight_optimization(

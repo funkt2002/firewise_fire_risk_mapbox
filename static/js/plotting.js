@@ -677,13 +677,21 @@ class PlottingManager {
 
     // Show calculated risk score distribution
     showScoreDistribution() {
-        if (!window.currentData) {
+        // Check both client-side scoring data and legacy currentData
+        let dataSource = null;
+        if (window.fireRiskScoring && window.fireRiskScoring.currentDataset && window.fireRiskScoring.currentDataset.features) {
+            dataSource = window.fireRiskScoring.currentDataset;
+        } else if (window.currentData && window.currentData.features) {
+            dataSource = window.currentData;
+        }
+        
+        if (!dataSource) {
             alert('Please calculate scores first');
             return;
         }
 
-        const scores = window.currentData.features.map(f => f.properties.score);
-        const selectedScores = window.currentData.features
+        const scores = dataSource.features.map(f => f.properties.score);
+        const selectedScores = dataSource.features
             .filter(f => f.properties.top500)
             .map(f => f.properties.score);
 
