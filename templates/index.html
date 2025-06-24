@@ -1771,6 +1771,20 @@
             'hlfmi_agfb_z': 'Agriculture & Fuelbreaks Score (Quantile)'
         };
 
+        // Initialize with precomputed scores from vector tiles (no API call)
+        async function initializeWithPrecomputedScores() {
+            console.log('🚀 INITIALIZING WITH PRECOMPUTED SCORES (no API call)');
+            
+            // Set initial statistics based on precomputed default scores
+            // For now, show basic info until user triggers calculation
+            document.getElementById('total-parcels').textContent = '62,416';
+            document.getElementById('selected-parcels').textContent = '500';
+            document.getElementById('total-risk').textContent = '~295';
+            document.getElementById('avg-risk').textContent = '~0.59';
+            
+            console.log('✅ Map initialized with precomputed scores - ready for user interaction');
+        }
+
         // Enhanced update scores function with comprehensive client-side processing
         async function updateScores(isFilterChange = false) {
             const overallStartTime = performance.now();
@@ -3370,10 +3384,10 @@
         function initializeLayers() {
             console.log('VECTOR TILES: Initializing layers with vector tile source...');
             
-            // Add vector tile source for parcels
+            // Add vector tile source for parcels (enhanced with precomputed scores)
             map.addSource('parcel-tiles', {
                 type: 'vector',
-                url: 'mapbox://theo1158.bblecnfo'
+                url: 'mapbox://theo1158.parcels_enhanced-8ufmms'
             });
             
             // Global data object for attribute lookup in paint expressions
@@ -3386,17 +3400,17 @@
                 id: 'parcels-fill',
                 type: 'fill',
                 source: 'parcel-tiles',
-                'source-layer': 'parcels_for_mapbox', // Layer name from new tileset
+                'source-layer': 'parcels_enhanced', // Layer name from enhanced tileset
                 minzoom: 0, // Force visibility at all zoom levels
                 maxzoom: 22,
                 paint: {
                     'fill-color': [
                         'case',
-                        ['has', ['to-string', ['get', 'parcel_id']], ['literal', window.parcelScores]],
+                        ['has', 'default_score'],
                         [
                             'interpolate',
                             ['linear'],
-                            ['get', ['to-string', ['get', 'parcel_id']], ['literal', window.parcelScores]],
+                            ['get', 'default_score'],
                             0, '#ffffff',
                             0.2, '#ffdddd',
                             0.4, '#ffaaaa',
@@ -3414,7 +3428,7 @@
                 id: 'parcels-boundary',
                 type: 'line',
                 source: 'parcel-tiles',
-                'source-layer': 'parcels_for_mapbox',
+                'source-layer': 'parcels_enhanced',
                 minzoom: 10, // Show boundaries at zoom 10+ (was 12+) for better visibility
                 maxzoom: 22,
                 paint: {
@@ -3428,7 +3442,7 @@
                 id: 'parcels-top500',
                 type: 'line',
                 source: 'parcel-tiles',
-                'source-layer': 'parcels_for_mapbox',
+                'source-layer': 'parcels_enhanced',
                 minzoom: 0, // Force visibility at all zoom levels
                 maxzoom: 22,
                 filter: ['in', ['to-string', ['get', 'parcel_id']], ['literal', window.top500ParcelIds]],
@@ -3440,9 +3454,12 @@
             
             console.log('VECTOR TILES: Parcel layers initialized with vector tile source');
             
-            const auxiliaryLayers = [
+            // Add vector tile sources for auxiliary layers
+            const auxiliaryVectorLayers = [
                 {
                     id: 'agricultural',
+                    url: 'mapbox://theo1158.agricultural-cdvfdj',
+                    sourceLayer: 'agricultural',
                     type: 'fill',
                     paint: {
                         'fill-color': '#00ff00',
@@ -3451,6 +3468,8 @@
                 },
                 {
                     id: 'fuelbreaks',
+                    url: 'mapbox://theo1158.fuelbreaks-53do9i',
+                    sourceLayer: 'fuelbreaks',
                     type: 'fill',
                     paint: {
                         'fill-color': '#00ff00',
@@ -3459,22 +3478,29 @@
                 },
                 {
                     id: 'wui',
+                    url: 'mapbox://theo1158.wui-3q9z43',
+                    sourceLayer: 'wui',
                     type: 'fill',
                     paint: {
                         'fill-color': '#0066ff',
                         'fill-opacity': 0.5
                     }
                 },
-                {
+                // Note: Hazard layer temporarily disabled - upload hazard.mbtiles to Mapbox Studio first
+                /*{
                     id: 'hazard',
+                    url: 'mapbox://theo1158.hazard-placeholder',
+                    sourceLayer: 'hazard',
                     type: 'fill',
                     paint: {
                         'fill-color': '#ff9900',
                         'fill-opacity': 0.25
                     }
-                },
+                },*/
                 {
                     id: 'structures',
+                    url: 'mapbox://theo1158.structures-9ib60k',
+                    sourceLayer: 'structures',
                     type: 'fill',
                     paint: {
                         'fill-color': '#000000',
@@ -3483,6 +3509,8 @@
                 },
                 {
                     id: 'firewise',
+                    url: 'mapbox://theo1158.firewise-6mkvho',
+                    sourceLayer: 'firewise',
                     type: 'line',
                     paint: {
                         'line-color': '#ff9900',
@@ -3491,6 +3519,8 @@
                 },
                 {
                     id: 'burnscars',
+                    url: 'mapbox://theo1158.burnscars-9w3owv',
+                    sourceLayer: 'burnscars',
                     type: 'fill',
                     paint: {
                         'fill-color': '#ffcc99',
@@ -3500,16 +3530,19 @@
                 }
             ];
 
-            auxiliaryLayers.forEach(layer => {
+            auxiliaryVectorLayers.forEach(layer => {
+                // Add vector tile source
                 map.addSource(layer.id, {
-                    type: 'geojson',
-                    data: { type: 'FeatureCollection', features: [] }
+                    type: 'vector',
+                    url: layer.url
                 });
                 
+                // Add main layer
                 map.addLayer({
                     id: layer.id,
                     type: layer.type,
                     source: layer.id,
+                    'source-layer': layer.sourceLayer,
                     layout: { 'visibility': 'none' },
                     paint: layer.paint
                 });
@@ -3520,6 +3553,7 @@
                         id: 'burnscars-outline',
                         type: 'line',
                         source: layer.id,
+                        'source-layer': layer.sourceLayer,
                         layout: { 'visibility': 'none' },
                         paint: {
                             'line-color': '#cc7722',
@@ -3527,8 +3561,6 @@
                         }
                     });
                 }
-                
-                loadLayer(layer.id);
             });
 
             if (currentData) {
@@ -3545,13 +3577,13 @@
             updateMaxParcels();
             updateSelectionCount(); // Initialize multi-area selection UI
             updateDistributionButtons(); // Initialize distribution buttons with correct score type
-            console.log('🎯 Starting single initial data load and client-side calculation...');
-            updateScores(true);  // Single initial load and client-side calculation
+            console.log('🎯 Initializing with precomputed scores from vector tiles...');
+            initializeWithPrecomputedScores();  // Use precomputed scores, no API call
             
             document.querySelectorAll('input[type="range"]').forEach(slider => {
                 updateSliderFill(slider);
             });
-            console.log('✅ Application initialization complete');
+            console.log('✅ Application initialization complete - map ready with precomputed scores');
         });
 
 
