@@ -928,7 +928,7 @@ def prepare_data():
         settings_start = time.time()
         use_local_normalization = data.get('use_local_normalization', True)  # Default to local for missing scores
         use_quantile = data.get('use_quantile', False)
-        use_quantiled_scores = data.get('use_quantiled_scores', False)
+
         max_parcels = data.get('max_parcels', 500)
         timings['settings_extraction'] = time.time() - settings_start
         logger.info(f"⚙️ Settings extracted in {timings['settings_extraction']:.3f}s")
@@ -1007,7 +1007,7 @@ def prepare_data():
             "total_parcels_after_filter": len(raw_results),
             "use_local_normalization": use_local_normalization,
             "use_quantile": use_quantile,
-            "use_quantiled_scores": use_quantiled_scores,
+
             "max_parcels": max_parcels,
             "timings": timings,
             "total_time": time.time() - start_time,
@@ -1093,14 +1093,11 @@ def get_parcel_scores_for_optimization(data, include_vars):
     logger.info(f"Base variables: {include_vars_base}")
     
     use_quantile = data.get('use_quantile', False)
-    use_quantiled_scores = data.get('use_quantiled_scores', False)
     score_vars_to_use = []
     
     for var_base in include_vars_base:
         if use_quantile:
             score_var = var_base + '_z'
-        elif use_quantiled_scores:
-            score_var = var_base + '_q'
         else:
             score_var = var_base + '_s'
         score_vars_to_use.append(score_var)
