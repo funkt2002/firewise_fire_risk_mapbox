@@ -3408,7 +3408,7 @@
             // Add vector tile source for parcels (enhanced with precomputed scores)
             map.addSource('parcel-tiles', {
                 type: 'vector',
-                url: 'mapbox://theo1158.1hjy0pdf'
+                url: 'mapbox://theo1158.awcli4s0'
             });
             
             // Global data object for attribute lookup in paint expressions
@@ -3421,7 +3421,7 @@
                 id: 'parcels-fill',
                 type: 'fill',
                 source: 'parcel-tiles',
-                'source-layer': 'parcels_enhanced', // Layer name from enhanced tileset
+                'source-layer': 'parcels_with_score', // Layer name from hybrid tileset
                 minzoom: 0,
                 maxzoom: 22,
                 paint: {
@@ -3449,7 +3449,7 @@
                 id: 'parcels-boundary',
                 type: 'line',
                 source: 'parcel-tiles',
-                'source-layer': 'parcels_enhanced',
+                'source-layer': 'parcels_with_score',
                 minzoom: 10, // Show boundaries at zoom 10+ (was 12+) for better visibility
                 maxzoom: 22,
                 paint: {
@@ -3463,7 +3463,7 @@
                 id: 'parcels-top500',
                 type: 'line',
                 source: 'parcel-tiles',
-                'source-layer': 'parcels_enhanced',
+                'source-layer': 'parcels_with_score',
                 minzoom: 0, // Force visibility at all zoom levels
                 maxzoom: 22,
                 filter: ['in', ['to-string', ['get', 'parcel_id']], ['literal', window.top500ParcelIds]],
