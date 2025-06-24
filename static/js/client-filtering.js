@@ -54,7 +54,7 @@ class ClientFilterManager {
         // Apply spatial filter if present
         if (filters.subset_area) {
             const spatialStart = performance.now();
-            filteredFeatures = this.applySpatialFilter(filteredFeatures, filters.subset_area);
+            filteredFeatures = this.applySpatialFilter(filteredFeatures, filters.subset_area, window.map);
             this.logTiming('Spatial Filtering', performance.now() - spatialStart);
         }
 
@@ -136,23 +136,60 @@ class ClientFilterManager {
         return true;
     }
 
-    // Apply spatial filter using Turf.js
-    applySpatialFilter(features, polygon) {
-        if (!window.turf) {
-            console.warn('Turf.js not loaded, skipping spatial filter');
+    // Apply spatial filter using Mapbox queryRenderedFeatures for vector tiles
+    applySpatialFilter(features, polygon, mapInstance) {
+        if (!mapInstance) {
+            console.warn('VECTOR TILES: Map instance not provided for spatial filter, skipping');
             return features;
         }
 
-        return features.filter(feature => {
-            try {
-                // Use turf.booleanPointInPolygon for point-in-polygon test
-                const point = window.turf.centroid(feature);
-                return window.turf.booleanPointInPolygon(point, polygon);
-            } catch (e) {
-                console.warn('Spatial filter error for feature:', feature.properties.id, e);
-                return false;
+        try {
+            console.log('VECTOR TILES: Starting spatial filter with queryRenderedFeatures');
+            
+            // Get bounding box of drawn polygon for queryRenderedFeatures
+            if (!window.turf || !window.turf.bbox) {
+                console.warn('VECTOR TILES: Turf.js bbox not available, skipping spatial filter');
+                return features;
             }
-        });
+            
+            const bbox = window.turf.bbox(polygon);
+            const pixelBounds = [
+                mapInstance.project([bbox[0], bbox[1]]), // SW corner
+                mapInstance.project([bbox[2], bbox[3]])  // NE corner
+            ];
+
+            // Query visible vector tile features in bounding box
+            const visibleFeatures = mapInstance.queryRenderedFeatures(
+                pixelBounds, 
+                { layers: ['parcels-fill'] }
+            );
+
+            // Extract parcel IDs from visible features
+            const visibleParcelIds = new Set();
+            visibleFeatures.forEach(feature => {
+                // Check both feature.id and feature.properties.parcel_id
+                const parcelId = feature.id || feature.properties.parcel_id;
+                if (parcelId) {
+                    visibleParcelIds.add(parcelId.toString());
+                }
+            });
+
+            console.log(`VECTOR TILES: Spatial filter found ${visibleParcelIds.size} visible parcels in viewport`);
+
+            // Filter input features to only those visible in viewport
+            const filteredFeatures = features.filter(feature => {
+                const parcelId = feature.properties.parcel_id;
+                return parcelId && visibleParcelIds.has(parcelId.toString());
+            });
+
+            console.log(`VECTOR TILES: Spatial filter reduced from ${features.length} to ${filteredFeatures.length} parcels`);
+            return filteredFeatures;
+
+        } catch (error) {
+            console.error('VECTOR TILES: Spatial filter error:', error);
+            console.warn('VECTOR TILES: Falling back to no spatial filtering');
+            return features; // Return unfiltered on error
+        }
     }
 
     // Get current filtered dataset

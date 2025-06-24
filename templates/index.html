@@ -2049,9 +2049,61 @@
         function updateMap() {
             if (!currentData) return;
             
-            if (map.getSource('parcels')) {
-                map.getSource('parcels').setData(currentData);
+            console.log('VECTOR TILES: Updating map styling with attribute data...');
+            
+            // Handle both old FeatureCollection and new AttributeCollection formats
+            let attributes;
+            if (currentData.type === "AttributeCollection") {
+                attributes = currentData.attributes;
+            } else if (currentData.type === "FeatureCollection") {
+                // Legacy format - extract properties
+                attributes = currentData.features.map(feature => feature.properties);
+            } else {
+                console.error('VECTOR TILES: Unknown data format:', currentData.type);
+                return;
             }
+            
+            // Build score lookup for styling
+            const scoreObject = {};
+            const top500Ids = [];
+            
+            attributes.forEach(attr => {
+                if (attr.parcel_id && attr.score !== undefined) {
+                    scoreObject[attr.parcel_id.toString()] = attr.score;
+                    if (attr.top500) {
+                        top500Ids.push(attr.parcel_id.toString());
+                    }
+                }
+            });
+            
+            // Update global variables for expressions
+            window.parcelScores = scoreObject;
+            window.top500ParcelIds = top500Ids;
+            
+            console.log(`VECTOR TILES: Updated styling data for ${Object.keys(scoreObject).length} parcels (${top500Ids.length} top parcels)`);
+            
+            // Update map paint properties with new scores
+            map.setPaintProperty('parcels-fill', 'fill-color', [
+                'case',
+                ['has', ['to-string', ['get', 'parcel_id']], ['literal', scoreObject]],
+                [
+                    'interpolate',
+                    ['linear'],
+                    ['get', ['to-string', ['get', 'parcel_id']], ['literal', scoreObject]],
+                    0, '#ffffff',
+                    0.2, '#ffdddd', 
+                    0.4, '#ffaaaa',
+                    0.6, '#ff6666',
+                    0.8, '#ff3333',
+                    1, '#990000'
+                ],
+                '#eeeeee' // Default color for parcels without scores
+            ]);
+            
+            // Update top 500 filter
+            map.setFilter('parcels-top500', ['in', ['to-string', ['get', 'parcel_id']], ['literal', top500Ids]]);
+            
+            console.log('VECTOR TILES: Map styling updated successfully');
         }
         
 
@@ -3088,19 +3140,45 @@
                 
                 console.log(`Added ${selectionType} to selection areas. Total: ${selectionAreas.length}`);
             } 
-            // Legacy single selection (kept for compatibility)
+            // Legacy single selection (kept for compatibility) - updated for vector tiles
             else {
                 // Regular single selection for weight inference (legacy mode)
                 document.getElementById('infer-weights').disabled = false;
                 
-                if (currentData && window.turf) {
-                    selectedParcels = currentData.features.filter(feature => {
-                        return turf.booleanIntersects(feature, selection);
-                    });
+                console.log('VECTOR TILES: Legacy selection mode - using queryRenderedFeatures...');
+                
+                if (window.turf) {
+                    // Use queryRenderedFeatures for vector tile selection
+                    const bbox = window.turf.bbox(selection);
+                    const pixelBounds = [
+                        map.project([bbox[0], bbox[1]]),
+                        map.project([bbox[2], bbox[3]])
+                    ];
+                    
+                    const selectedFeatures = map.queryRenderedFeatures(
+                        pixelBounds,
+                        { layers: ['parcels-fill'] }
+                    );
+                    
+                    // Filter geometrically and map to attribute data
+                    selectedParcels = selectedFeatures
+                        .filter(feature => window.turf.booleanIntersects(feature, selection))
+                        .map(feature => {
+                            const parcelId = feature.properties.parcel_id || feature.id;
+                            const attributes = window.fireRiskScoring.getAttributesByParcelId(parcelId);
+                            return {
+                                type: "Feature",
+                                geometry: null, // Don't need geometry for weight inference
+                                properties: attributes
+                            };
+                        })
+                        .filter(feature => feature.properties); // Remove any missing attributes
                     
                     const selectedCount = selectedParcels.length;
-                    const totalRisk = selectedParcels.reduce((sum, f) => sum + f.properties.score, 0);
+                    const totalRisk = selectedParcels.reduce((sum, f) => sum + (f.properties.score || 0), 0);
                     const avgRisk = selectedCount > 0 ? totalRisk / selectedCount : 0;
+                    
+                    console.log(`VECTOR TILES: Legacy selection found ${selectedCount} parcels`);
                     
                     document.getElementById('selected-parcels').textContent = selectedCount.toLocaleString();
                     document.getElementById('total-risk').textContent = totalRisk.toFixed(2);
@@ -3211,11 +3289,24 @@
                 return;
             }
             
-            const props = e.features[0].properties;
-            new mapboxgl.Popup()
-                .setLngLat(e.lngLat)
-                .setHTML(createPopupContent(props))
-                .addTo(map);
+            console.log('VECTOR TILES: Parcel clicked, looking up attributes...');
+            
+            const parcelId = e.features[0].properties.parcel_id || e.features[0].id;
+            const attributes = window.fireRiskScoring.getAttributesByParcelId(parcelId);
+            
+            if (attributes) {
+                console.log(`VECTOR TILES: Found attributes for parcel ${parcelId}`);
+                new mapboxgl.Popup()
+                    .setLngLat(e.lngLat)
+                    .setHTML(createPopupContent(attributes))
+                    .addTo(map);
+            } else {
+                console.warn(`VECTOR TILES: No attributes found for parcel ${parcelId}`);
+                new mapboxgl.Popup()
+                    .setLngLat(e.lngLat)
+                    .setHTML(`<div>Parcel ID: ${parcelId}<br/>No attribute data available</div>`)
+                    .addTo(map);
+            }
         });
         
         map.on('mouseenter', 'parcels-fill', () => {
@@ -3257,26 +3348,39 @@
 
         // Initialize layers function
         function initializeLayers() {
-            map.addSource('parcels', {
-                type: 'geojson',
-                data: currentData || { type: 'FeatureCollection', features: [] }
+            console.log('VECTOR TILES: Initializing layers with vector tile source...');
+            
+            // Add vector tile source for parcels
+            map.addSource('parcel-tiles', {
+                type: 'vector',
+                url: 'mapbox://theo1158.d77x09xc'
             });
+            
+            // Global data object for attribute lookup in paint expressions
+            window.parcelScores = {}; // Will be updated by updateMap()
+            window.top500ParcelIds = []; // Will be updated by updateMap()
             
             map.addLayer({
                 id: 'parcels-fill',
                 type: 'fill',
-                source: 'parcels',
+                source: 'parcel-tiles',
+                'source-layer': 'parcels', // Layer name within the tileset
                 paint: {
                     'fill-color': [
-                        'interpolate',
-                        ['linear'],
-                        ['get', 'score'],
-                        0, '#ffffff',
-                        0.2, '#ffdddd',
-                        0.4, '#ffaaaa',
-                        0.6, '#ff6666',
-                        0.8, '#ff3333',
-                        1, '#990000'
+                        'case',
+                        ['has', ['to-string', ['get', 'parcel_id']], ['literal', window.parcelScores]],
+                        [
+                            'interpolate',
+                            ['linear'],
+                            ['get', ['to-string', ['get', 'parcel_id']], ['literal', window.parcelScores]],
+                            0, '#ffffff',
+                            0.2, '#ffdddd',
+                            0.4, '#ffaaaa',
+                            0.6, '#ff6666',
+                            0.8, '#ff3333',
+                            1, '#990000'
+                        ],
+                        '#eeeeee' // Default color for parcels without scores
                     ],
                     'fill-opacity': 0.8
                 }
@@ -3285,7 +3389,8 @@
             map.addLayer({
                 id: 'parcels-boundary',
                 type: 'line',
-                source: 'parcels',
+                source: 'parcel-tiles',
+                'source-layer': 'parcels',
                 minzoom: 14,
                 paint: {
                     'line-color': '#ffffff',
@@ -3297,13 +3402,16 @@
             map.addLayer({
                 id: 'parcels-top500',
                 type: 'line',
-                source: 'parcels',
-                filter: ['==', ['get', 'top500'], true],
+                source: 'parcel-tiles',
+                'source-layer': 'parcels',
+                filter: ['in', ['to-string', ['get', 'parcel_id']], ['literal', window.top500ParcelIds]],
                 paint: {
                     'line-color': '#0066ff',
                     'line-width': 2
                 }
             });
+            
+            console.log('VECTOR TILES: Parcel layers initialized with vector tile source');
             
             const auxiliaryLayers = [
                 {

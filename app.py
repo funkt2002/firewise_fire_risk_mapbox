@@ -892,13 +892,12 @@ def prepare_data():
         query = f"""
         SELECT
             id,
-            geom_geojson::json as geometry,
             {', '.join(all_columns)}
         FROM parcels
         {where_clause}
         """
         timings['query_building'] = time.time() - query_build_start
-        logger.info(f"🔍 SQL query built in {timings['query_building']:.3f}s with {len(params)} parameters")
+        logger.info(f"VECTOR TILES: SQL query built (no geometry) in {timings['query_building']:.3f}s with {len(params)} parameters")
         
         # Execute query
         query_exec_start = time.time()
@@ -948,66 +947,46 @@ def prepare_data():
         timings['data_preparation'] = time.time() - prep_start
         logger.info(f"📋 Data preparation completed in {timings['data_preparation']:.3f}s - processed {len(scored_results):,} rows")
         
-        # Create GeoJSON features
-        feature_creation_start = time.time()
-        features = []
+        # Create attribute records (no geometry for vector tiles)
+        attribute_creation_start = time.time()
+        attributes = []
         
-        geom_processing_time = 0
         properties_processing_time = 0
-        feature_building_time = 0
         
         for i, row in enumerate(scored_results):
             row_dict = dict(row)
             
-            # Extract geometry
-            geom_start = time.time()
-            geometry = row_dict['geometry']
-            geom_processing_time += time.time() - geom_start
-            
-            # Build properties
+            # Build attribute record (no geometry)
             props_start = time.time()
-            properties = {
+            attribute_record = {
                 "id": row_dict['id'],
-                **{k: row_dict[k] for k in row_dict.keys() if k not in ['id', 'geometry']}
+                **{k: row_dict[k] for k in row_dict.keys() if k not in ['id']}
             }
             properties_processing_time += time.time() - props_start
             
-            # Build feature
-            feature_start = time.time()
-            features.append({
-                "type": "Feature",
-                "id": row_dict['id'],
-                "geometry": geometry,
-                "properties": properties
-            })
-            feature_building_time += time.time() - feature_start
+            attributes.append(attribute_record)
             
             # Log progress for large datasets
             if i > 0 and i % 10000 == 0:
-                logger.info(f"🏗️ Built {i:,}/{len(scored_results):,} features ({i/len(scored_results)*100:.1f}%)")
+                logger.info(f"VECTOR TILES: Built {i:,}/{len(scored_results):,} attribute records ({i/len(scored_results)*100:.1f}%)")
         
-        timings['feature_creation'] = time.time() - feature_creation_start
-        timings['geometry_processing'] = geom_processing_time
+        timings['attribute_creation'] = time.time() - attribute_creation_start
         timings['properties_processing'] = properties_processing_time
-        timings['feature_building'] = feature_building_time
         
-        logger.info(f"🏗️ Feature creation completed in {timings['feature_creation']:.3f}s:")
-        logger.info(f"  - Geometry processing: {timings['geometry_processing']:.3f}s")
+        logger.info(f"VECTOR TILES: Attribute creation completed in {timings['attribute_creation']:.3f}s:")
         logger.info(f"  - Properties processing: {timings['properties_processing']:.3f}s") 
-        logger.info(f"  - Feature building: {timings['feature_building']:.3f}s")
-        logger.info(f"  - Created {len(features):,} GeoJSON features")
+        logger.info(f"  - Created {len(attributes):,} attribute records (no geometry)")
         
         # Build response
         response_start = time.time()
         response_data = {
-            "type": "FeatureCollection",
-            "features": features,
+            "type": "AttributeCollection",
+            "attributes": attributes,
             "status": "prepared",
             "total_parcels_before_filter": total_parcels_before_filter,
             "total_parcels_after_filter": len(raw_results),
             "use_local_normalization": use_local_normalization,
             "use_quantile": use_quantile,
-
             "max_parcels": max_parcels,
             "timings": timings,
             "total_time": time.time() - start_time,
@@ -1052,7 +1031,7 @@ def prepare_data():
         logger.info(f"🗜️ Expected compressed size: ~{payload_size_mb * 0.3:.1f}-{payload_size_mb * 0.4:.1f} MB (60-70% reduction)")
         logger.info(f"🎯 === PREPARE COMPLETED ===")
         logger.info(f"🕐 Total server time: {total_time:.3f}s")
-        logger.info(f"📊 Sent {len(features):,} parcels with raw data for client-side calculation")
+        logger.info(f"VECTOR TILES: Sent {len(attributes):,} parcels attributes for client-side calculation")
         logger.info(f"🚀 Server processing breakdown:")
         for operation, timing in timings.items():
             percentage = (timing / total_time) * 100

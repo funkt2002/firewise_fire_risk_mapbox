@@ -4,6 +4,7 @@ class FireRiskScoring {
     constructor() {
         this.completeDataset = null;
         this.currentDataset = null;
+        this.attributeMap = new Map();        // NEW: parcel_id -> attributes lookup for vector tiles
         this.timings = {};
         this.lastWeights = null;
         this.lastFilters = null;
@@ -11,23 +12,63 @@ class FireRiskScoring {
         this.firstCalculationDone = false;
     }
 
-    // Store complete dataset from server (unfiltered)
-    storeCompleteData(geojsonData) {
+    // Store complete dataset from server (attributes only for vector tiles)
+    storeCompleteData(attributeData) {
         const start = performance.now();
         
-        console.log('Storing complete dataset for client-side processing...');
+        console.log('VECTOR TILES: Storing complete attribute dataset for client-side processing...');
+        
+        // Clear existing data
+        this.attributeMap.clear();
+        
+        // Handle both old FeatureCollection and new AttributeCollection formats
+        let attributes;
+        if (attributeData.type === "AttributeCollection") {
+            // New format from vector tile backend
+            attributes = attributeData.attributes;
+            console.log('VECTOR TILES: Received AttributeCollection format');
+        } else if (attributeData.type === "FeatureCollection") {
+            // Legacy format - extract properties
+            attributes = attributeData.features.map(feature => feature.properties);
+            console.log('VECTOR TILES: Converting legacy FeatureCollection format');
+        } else {
+            console.error('VECTOR TILES: Unknown data format:', attributeData.type);
+            return 0;
+        }
+        
+        // Build fast lookup map by parcel_id for vector tile interactions
+        attributes.forEach(attr => {
+            if (attr.parcel_id) {
+                this.attributeMap.set(attr.parcel_id, attr);
+            }
+        });
+        
+        // Create FeatureCollection format for compatibility with existing filtering logic
+        const featureCollection = {
+            type: "FeatureCollection",
+            features: attributes.map(attr => ({
+                type: "Feature", 
+                geometry: null, // No geometry for vector tiles
+                properties: attr
+            }))
+        };
         
         // Store in both filtering and scoring systems
-        window.clientFilterManager.storeCompleteDataset(geojsonData);
+        window.clientFilterManager.storeCompleteDataset(featureCollection);
         
-        this.completeDataset = geojsonData;
-        this.currentDataset = geojsonData;
+        this.completeDataset = featureCollection;
+        this.currentDataset = featureCollection;
         
         const loadTime = performance.now() - start;
         this.logTiming('Complete Data Storage', loadTime);
         
-        console.log(`Stored ${geojsonData.features.length} parcels for client-side processing`);
-        return geojsonData.features.length;
+        console.log(`VECTOR TILES: Stored ${attributes.length} parcel attributes (${this.attributeMap.size} with parcel_id) for client-side processing`);
+        return attributes.length;
+    }
+
+    // NEW: Get attributes by parcel ID for vector tile interactions
+    getAttributesByParcelId(parcelId) {
+        return this.attributeMap.get(parcelId);
     }
 
     // Legacy method for compatibility
@@ -238,6 +279,7 @@ class FireRiskScoring {
     clear() {
         this.completeDataset = null;
         this.currentDataset = null;
+        this.attributeMap.clear(); // NEW: Clear vector tile attribute map
         this.timings = {};
         this.lastWeights = null;
         this.lastFilters = null;
@@ -248,7 +290,7 @@ class FireRiskScoring {
             window.clientFilterManager.clear();
         }
         
-        console.log('Client-side scoring and filtering data cleared');
+        console.log('VECTOR TILES: Client-side scoring and filtering data cleared');
     }
 
     // Logging utilities
