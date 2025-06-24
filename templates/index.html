@@ -2123,22 +2123,7 @@
                 }
             });
             
-            // CRITICAL FIX: Also update the currentDataset features for plotting
-            if (window.fireRiskScoring.currentDataset && window.fireRiskScoring.currentDataset.features) {
-                window.fireRiskScoring.currentDataset.features.forEach(feature => {
-                    const parcelId = feature.properties.parcel_id;
-                    if (parcelId && scoreObject[parcelId.toString()] !== undefined) {
-                        feature.properties.score = scoreObject[parcelId.toString()];
-                        // Also find and update top500 and rank
-                        const attr = attributes.find(a => a.parcel_id === parcelId);
-                        if (attr) {
-                            feature.properties.rank = attr.rank;
-                            feature.properties.top500 = attr.top500;
-                        }
-                    }
-                });
-                console.log(`🔧 SCORE DISTRIBUTION FIX: Updated scores in currentDataset features for plotting`);
-            }
+
             
             // Update global variables for expressions
             window.parcelScores = scoreObject;

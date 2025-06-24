@@ -698,11 +698,16 @@ class PlottingManager {
 
             console.log(`📊 SCORE DISTRIBUTION: Found ${dataSource.features.length} parcels`);
 
-            // Extract scores - simplified approach
-            const scores = dataSource.features.map(f => f.properties.score);
-            const selectedScores = dataSource.features
-                .filter(f => f.properties.top500)
-                .map(f => f.properties.score);
+            // Extract scores - use attributeMap directly (Option A fix)
+            const scores = dataSource.features.map(f => {
+                const attrs = window.fireRiskScoring.getAttributesByParcelId(f.properties.parcel_id);
+                return attrs ? attrs.score : null;
+            }).filter(s => s !== null);
+            
+            const selectedScores = dataSource.features.map(f => {
+                const attrs = window.fireRiskScoring.getAttributesByParcelId(f.properties.parcel_id);
+                return attrs && attrs.top500 ? attrs.score : null;
+            }).filter(s => s !== null);
 
             console.log(`📊 SCORE DISTRIBUTION: Extracted ${scores.length} total scores, ${selectedScores.length} top scores`);
             
