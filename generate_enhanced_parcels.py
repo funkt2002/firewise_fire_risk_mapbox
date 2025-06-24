@@ -308,9 +308,9 @@ class EnhancedParcelGenerator:
             print("Transforming to WGS84 (EPSG:4326)...")
             output_gdf = output_gdf.to_crs('EPSG:4326')
         
-        # Simplify geometries for smaller file size
-        print("Simplifying geometries...")
-        output_gdf.geometry = output_gdf.geometry.simplify(tolerance=0.0001, preserve_topology=True)
+        # Apply minimal simplification to reduce file size while preserving detail
+        print("Applying minimal geometry simplification...")
+        output_gdf.geometry = output_gdf.geometry.simplify(tolerance=0.00001, preserve_topology=True)
         
         # Export to GeoJSON
         print("Writing GeoJSON...")
@@ -370,8 +370,9 @@ def main():
         
         print("=" * 40)
         print("NEXT STEPS:")
-        print("1. Convert to MBTiles:")
-        print(f"   tippecanoe -o parcels_enhanced.mbtiles -Z 0 -z 16 --force {OUTPUT_GEOJSON}")
+        print("1. Convert to MBTiles with preserved geometry:")
+        print(f"   tippecanoe -o parcels_enhanced.mbtiles -Z 0 -z 16 --simplification=2 --no-simplification-of-shared-nodes --force {OUTPUT_GEOJSON}")
+        print("   (Using lower simplification and preserving shared nodes for better precision)")
         print("2. Upload to Mapbox Studio")
         print("3. Update app to use precomputed scores")
         print("=" * 40)

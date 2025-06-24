@@ -729,6 +729,7 @@
                             <div class="dist-buttons">
                                 <button class="dist-button" onclick="window.plottingManager.showDistribution('qtrmi_cnt')">Raw</button>
                                 <button class="dist-button" onclick="window.plottingManager.showDistribution('qtrmi_s')">Score</button>
+                                <button class="dist-button" onclick="window.plottingManager.showVariableCorrelation('qtrmi')">Corr</button>
                             </div>
                         </div>
                     </div>
@@ -749,6 +750,7 @@
                             <div class="dist-buttons">
                                 <button class="dist-button" onclick="window.plottingManager.showDistribution('neigh1_d')">Raw</button>
                                 <button class="dist-button" onclick="window.plottingManager.showDistribution('neigh1d_s')">Score</button>
+                                <button class="dist-button" onclick="window.plottingManager.showVariableCorrelation('neigh1d')">Corr</button>
                             </div>
                         </div>
                     </div>
@@ -769,6 +771,7 @@
                             <div class="dist-buttons">
                                 <button class="dist-button" onclick="window.plottingManager.showDistribution('hlfmi_wui')">Raw</button>
                                 <button class="dist-button" onclick="window.plottingManager.showDistribution('hwui_s')">Score</button>
+                                <button class="dist-button" onclick="window.plottingManager.showVariableCorrelation('hwui')">Corr</button>
                             </div>
                         </div>
                     </div>
@@ -788,6 +791,7 @@
                             <div class="dist-buttons">
                                 <button class="dist-button" onclick="window.plottingManager.showDistribution('hlfmi_vhsz')">Raw</button>
                                 <button class="dist-button" onclick="window.plottingManager.showDistribution('hvhsz_s')">Score</button>
+                                <button class="dist-button" onclick="window.plottingManager.showVariableCorrelation('hvhsz')">Corr</button>
                             </div>
                         </div>
                     </div>
@@ -808,6 +812,7 @@
                             <div class="dist-buttons">
                                 <button class="dist-button" onclick="window.plottingManager.showDistribution('hlfmi_agfb')">Raw</button>
                                 <button class="dist-button" onclick="window.plottingManager.showDistribution('hlfmi_agfb_s')">Score</button>
+                                <button class="dist-button" onclick="window.plottingManager.showVariableCorrelation('hlfmi_agfb')">Corr</button>
                             </div>
                         </div>
                     </div>
@@ -828,6 +833,7 @@
                             <div class="dist-buttons">
                                 <button class="dist-button" onclick="window.plottingManager.showDistribution('par_buf_sl')">Raw</button>
                                 <button class="dist-button" onclick="window.plottingManager.showDistribution('par_buf_sl_s')">Score</button>
+                                <button class="dist-button" onclick="window.plottingManager.showVariableCorrelation('par_buf_sl')">Corr</button>
                             </div>
                         </div>
                     </div>
@@ -848,6 +854,7 @@
                             <div class="dist-buttons">
                                 <button class="dist-button" onclick="window.plottingManager.showDistribution('hlfmi_agri')">Raw</button>
                                 <button class="dist-button" onclick="window.plottingManager.showDistribution('hagri_s')">Score</button>
+                                <button class="dist-button" onclick="window.plottingManager.showVariableCorrelation('hagri')">Corr</button>
                             </div>
                         </div>
                     </div>
@@ -867,6 +874,7 @@
                             <div class="dist-buttons">
                                 <button class="dist-button" onclick="window.plottingManager.showDistribution('hlfmi_fb')">Raw</button>
                                 <button class="dist-button" onclick="window.plottingManager.showDistribution('hfb_s')">Score</button>
+                                <button class="dist-button" onclick="window.plottingManager.showVariableCorrelation('hfb')">Corr</button>
                             </div>
                         </div>
                     </div>
@@ -886,6 +894,7 @@
                             <div class="dist-buttons">
                                 <button class="dist-button" onclick="window.plottingManager.showDistribution('hlfmi_brn')">Raw</button>
                                 <button class="dist-button" onclick="window.plottingManager.showDistribution('hbrn_s')">Score</button>
+                                <button class="dist-button" onclick="window.plottingManager.showVariableCorrelation('hbrn')">Corr</button>
                             </div>
                         </div>
                     </div>
@@ -905,6 +914,7 @@
                             <div class="dist-buttons">
                                 <button class="dist-button" onclick="window.plottingManager.showDistribution('slope_s')">Raw</button>
                                 <button class="dist-button" onclick="window.plottingManager.showDistribution('slope_s')">Score</button>
+                                <button class="dist-button" onclick="window.plottingManager.showVariableCorrelation('slope')">Corr</button>
                             </div>
                         </div>
                     </div>
@@ -1777,19 +1787,23 @@
             
             // Set initial statistics based on precomputed default scores  
             document.getElementById('total-parcels').textContent = '62,416';
-            document.getElementById('selected-parcels').textContent = '500';
-            document.getElementById('total-risk').textContent = '147.5';
-            document.getElementById('avg-risk').textContent = '0.295';
+            document.getElementById('selected-parcels').textContent = '0';
+            document.getElementById('total-risk').textContent = '0';
+            document.getElementById('avg-risk').textContent = '0';
             
-            // Initialize top 500 parcels based on default_score
-            // This will be replaced when user clicks Calculate, but gives initial blue outlines
-            console.log('🔵 Initializing top 500 parcels based on precomputed default_score...');
+            // NO blue outlines initially - only show white-red symbology
+            console.log('🔴 Initializing without blue outlines - only showing default score colors...');
             
-            // For now, just set an empty filter - the actual top 500 would require querying
-            // the vector tiles or API to get the sorted list based on default_score
-            map.setFilter('parcels-top500', ['>', ['get', 'default_score'], 0.4]); // Top ~500 parcels
+            // Set empty filter for top 500 layer (no blue outlines initially)
+            map.setFilter('parcels-top500', ['==', 'parcel_id', '']);
             
-            console.log('✅ Map initialized with precomputed scores and top 500 filter - ready for user interaction');
+            console.log('✅ Map initialized with precomputed scores only - ready for Calculate button');
+            
+            // Auto-trigger calculate button after a short delay to ensure everything is loaded
+            setTimeout(() => {
+                console.log('🚀 AUTO-TRIGGERING CALCULATE BUTTON...');
+                document.getElementById('calculate-btn').click();
+            }, 500);
         }
 
         // Enhanced update scores function with comprehensive client-side processing
@@ -3394,7 +3408,7 @@
             // Add vector tile source for parcels (enhanced with precomputed scores)
             map.addSource('parcel-tiles', {
                 type: 'vector',
-                url: 'mapbox://theo1158.79msfn8y'
+                url: 'mapbox://theo1158.98je7gx6'
             });
             
             // Global data object for attribute lookup in paint expressions
@@ -3408,7 +3422,7 @@
                 type: 'fill',
                 source: 'parcel-tiles',
                 'source-layer': 'parcels_enhanced', // Layer name from enhanced tileset
-                minzoom: 0, // Force visibility at all zoom levels
+                minzoom: 0,
                 maxzoom: 22,
                 paint: {
                     'fill-color': [

@@ -10,7 +10,9 @@ class PlottingManager {
             'hfb': 'hlfmi_fb',
             'slope': 'slope_s',
             'neigh1d': 'neigh1_d',
-            'hbrn': 'hlfmi_brn'
+            'hbrn': 'hlfmi_brn',
+            'par_buf_sl': 'par_buf_sl',
+            'hlfmi_agfb': 'hlfmi_agfb'
         };
 
         this.varNameMap = {
@@ -21,7 +23,9 @@ class PlottingManager {
             'hlfmi_fb': 'Fuel Breaks',
             'slope_s': 'Slope',
             'neigh1_d': 'Neighbor Distance',
-            'hlfmi_brn': 'Burn Scars'
+            'hlfmi_brn': 'Burn Scars',
+            'par_buf_sl': 'Structure Surrounding Slope',
+            'hlfmi_agfb': 'Agriculture & Fuelbreaks'
         };
     }
 
@@ -40,6 +44,185 @@ class PlottingManager {
         const denominator = Math.sqrt((n * sumX2 - sumX * sumX) * (n * sumY2 - sumY * sumY));
 
         return denominator === 0 ? 0 : numerator / denominator;
+    }
+
+    // Show correlation for a specific variable vs all others  
+    async showVariableCorrelation(targetVariable) {
+        // Try to get data from multiple sources
+        let features = null;
+        
+        if (window.fireRiskScoring && window.fireRiskScoring.currentDataset && window.fireRiskScoring.currentDataset.features) {
+            features = window.fireRiskScoring.currentDataset.features;
+        } else if (window.currentData && window.currentData.features) {
+            features = window.currentData.features;
+        }
+        
+        if (!features || features.length === 0) {
+            alert('No data available. Please load data first.');
+            return;
+        }
+
+        // Get current normalization settings
+        const filters = window.getCurrentFilters ? window.getCurrentFilters() : {};
+        const useQuantile = filters.use_quantile || false;
+        const suffix = useQuantile ? '_z' : '_s';
+        
+        // Determine if we should use score or raw data
+        const isScoreVariable = targetVariable.endsWith('_s') || targetVariable.endsWith('_z');
+        let targetVarName, targetData;
+        
+        if (isScoreVariable) {
+            // Already a score variable - use as is but respect current settings
+            const baseVar = targetVariable.replace(/_[sz]$/, '');
+            targetVarName = baseVar + suffix;
+            targetData = features
+                .map(f => f.properties[targetVarName])
+                .filter(v => v !== null && v !== undefined && !isNaN(v));
+        } else {
+            // Raw variable - get the mapped column name and apply transformations
+            const rawVar = this.rawVarMap[targetVariable] || targetVariable;
+            targetVarName = this.varNameMap[rawVar] || targetVariable;
+            
+            targetData = features
+                .map(f => {
+                    let rawValue = f.properties[rawVar];
+                    if (rawValue === null || rawValue === undefined || isNaN(rawValue)) {
+                        return null;
+                    }
+                    rawValue = parseFloat(rawValue);
+                    
+                    // Apply same transformations as in correlation matrix
+                    if (targetVariable === 'neigh1d') {
+                        const cappedValue = Math.min(rawValue, 5280);
+                        return Math.log(1 + cappedValue);
+                    } else if (targetVariable === 'hagri' || targetVariable === 'hfb' || targetVariable === 'hlfmi_agfb') {
+                        return Math.log(1 + rawValue);
+                    }
+                    return rawValue;
+                })
+                .filter(v => v !== null);
+        }
+        
+        if (targetData.length === 0) {
+            alert(`No data available for ${targetVariable}`);
+            return;
+        }
+
+        // Get all variables for comparison
+        const allVariables = Object.keys(this.rawVarMap);
+        const correlations = [];
+        const labels = [];
+        
+        for (const compareVar of allVariables) {
+            const rawVar = this.rawVarMap[compareVar];
+            const compareData = features
+                .map(f => {
+                    let rawValue = f.properties[rawVar];
+                    if (rawValue === null || rawValue === undefined || isNaN(rawValue)) {
+                        return null;
+                    }
+                    rawValue = parseFloat(rawValue);
+                    
+                    // Apply same transformations
+                    if (compareVar === 'neigh1d') {
+                        const cappedValue = Math.min(rawValue, 5280);
+                        return Math.log(1 + cappedValue);
+                    } else if (compareVar === 'hagri' || compareVar === 'hfb') {
+                        return Math.log(1 + rawValue);
+                    }
+                    return rawValue;
+                })
+                .filter(v => v !== null);
+            
+            // Find common indices where both variables have data
+            const minLength = Math.min(targetData.length, compareData.length);
+            const commonIndices = [];
+            
+            for (let k = 0; k < minLength; k++) {
+                if (!isNaN(targetData[k]) && !isNaN(compareData[k])) {
+                    commonIndices.push(k);
+                }
+            }
+            
+            let correlation = 0;
+            if (commonIndices.length > 10) {
+                const x = commonIndices.map(idx => targetData[idx]);
+                const y = commonIndices.map(idx => compareData[idx]);
+                correlation = this.calculateCorrelation(x, y);
+            }
+            
+            correlations.push(correlation);
+            labels.push(this.varNameMap[rawVar] || compareVar);
+        }
+        
+        // Create bar chart showing correlations
+        const trace = {
+            x: labels,
+            y: correlations,
+            type: 'bar',
+            marker: {
+                color: correlations.map(corr => {
+                    const absCorr = Math.abs(corr);
+                    if (absCorr < 0.1) return '#888888';
+                    else if (absCorr < 0.3) return corr > 0 ? '#ffaa88' : '#88aaff';
+                    else if (absCorr < 0.5) return corr > 0 ? '#ff7744' : '#4477ff';
+                    else return corr > 0 ? '#ff4422' : '#2244ff';
+                }),
+                line: {
+                    color: 'rgba(100,100,100,0.3)',
+                    width: 1
+                }
+            },
+            text: correlations.map(corr => corr.toFixed(2)),
+            textposition: 'auto',
+            textfont: { color: '#fff', size: 11 }
+        };
+        
+        const normalizationText = filters.use_local_normalization ? ' (Local Norm)' : '';
+        const scoreTypeText = useQuantile ? ' (Quantile)' : ' (Min-Max)';
+        const titleSuffix = isScoreVariable ? scoreTypeText + normalizationText : '';
+        
+        const layout = {
+            title: `${targetVarName} - Correlations with All Variables${titleSuffix}`,
+            paper_bgcolor: '#1a1a1a',
+            plot_bgcolor: '#1a1a1a',
+            font: { color: '#fff' },
+            xaxis: {
+                title: 'Variables',
+                tickangle: -45,
+                gridcolor: 'rgba(255,255,255,0.1)'
+            },
+            yaxis: {
+                title: 'Correlation (r)',
+                range: [-1, 1],
+                gridcolor: 'rgba(255,255,255,0.1)',
+                zeroline: true,
+                zerolinecolor: 'rgba(255,255,255,0.3)',
+                zerolinewidth: 2
+            },
+            showlegend: false,
+            margin: { l: 80, r: 50, t: 80, b: 150 },
+            annotations: [{
+                x: 0.98,
+                y: 0.98,
+                xref: 'paper',
+                yref: 'paper',
+                text: `n = ${targetData.length} parcels<br>Range: ${Math.min(...correlations).toFixed(2)} to ${Math.max(...correlations).toFixed(2)}`,
+                showarrow: false,
+                font: { color: '#fff', size: 12 },
+                bgcolor: 'rgba(0,0,0,0.5)',
+                bordercolor: 'rgba(255,255,255,0.3)',
+                borderwidth: 1,
+                borderpad: 4,
+                xanchor: 'right',
+                yanchor: 'top'
+            }]
+        };
+        
+        // Clear and show plot
+        document.getElementById('correlation-plot').innerHTML = '';
+        Plotly.newPlot('correlation-plot', [trace], layout);
+        document.getElementById('correlation-modal').style.display = 'block';
     }
 
     // Show variable correlation matrix
