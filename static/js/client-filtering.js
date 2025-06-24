@@ -182,15 +182,31 @@ class ClientFilterManager {
             }
             
             const bbox = window.turf.bbox(polygon);
+            
+            // Add buffer to bbox to capture more features (expand by ~10% in each direction)
+            const bboxWidth = bbox[2] - bbox[0];
+            const bboxHeight = bbox[3] - bbox[1];
+            const buffer = Math.max(bboxWidth, bboxHeight) * 0.1;
+            
+            const expandedBbox = [
+                bbox[0] - buffer,
+                bbox[1] - buffer, 
+                bbox[2] + buffer,
+                bbox[3] + buffer
+            ];
+            
             const pixelBounds = [
-                mapInstance.project([bbox[0], bbox[1]]), // SW corner
-                mapInstance.project([bbox[2], bbox[3]])  // NE corner
+                mapInstance.project([expandedBbox[0], expandedBbox[1]]), // SW corner
+                mapInstance.project([expandedBbox[2], expandedBbox[3]])  // NE corner
             ];
 
-            // Query visible vector tile features in bounding box
+            // Query visible vector tile features in expanded bounding box
             const visibleFeatures = mapInstance.queryRenderedFeatures(
                 pixelBounds, 
-                { layers: ['parcels-fill'] }
+                { 
+                    layers: ['parcels-fill'],
+                    validate: false  // Skip validation for better performance and coverage
+                }
             );
 
             // Extract parcel IDs from visible features
@@ -203,7 +219,8 @@ class ClientFilterManager {
                 }
             });
 
-            console.log(`VECTOR TILES: Spatial filter found ${visibleParcelIds.size} visible parcels in viewport`);
+            console.log(`VECTOR TILES: Spatial filter found ${visibleParcelIds.size} visible parcels in expanded viewport`);
+            console.log(`VECTOR TILES: Current zoom level: ${mapInstance.getZoom().toFixed(1)}, Original bbox size: ${bboxWidth.toFixed(4)} x ${bboxHeight.toFixed(4)}, Buffer added: ${buffer.toFixed(4)}`);
             
             // DEBUG: Log sample parcel IDs from vector tiles
             const sampleVectorIds = Array.from(visibleParcelIds).slice(0, 5);

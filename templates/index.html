@@ -3509,7 +3509,8 @@
             // Add vector tile source for parcels (enhanced with precomputed scores)
             map.addSource('parcel-tiles', {
                 type: 'vector',
-                url: 'mapbox://theo1158.awcli4s0'
+                url: 'mapbox://theo1158.awcli4s0',
+                promoteId: 'parcel_id'  // Promote parcel_id to feature.id for better identification
             });
             
             // Global data object for attribute lookup in paint expressions
@@ -3525,6 +3526,9 @@
                 'source-layer': 'parcels_with_score', // Layer name from hybrid tileset
                 minzoom: 0,
                 maxzoom: 22,
+                layout: {
+                    'visibility': 'visible'
+                },
                 paint: {
                     'fill-color': [
                         'case',
@@ -3553,6 +3557,9 @@
                 'source-layer': 'parcels_with_score',
                 minzoom: 10, // Show boundaries at zoom 10+ (was 12+) for better visibility
                 maxzoom: 22,
+                layout: {
+                    'visibility': 'visible'
+                },
                 paint: {
                     'line-color': '#ffffff',
                     'line-width': 0.5,
@@ -3806,6 +3813,8 @@
         const script = document.createElement('script');
         script.src = 'https://unpkg.com/@turf/turf@6/turf.min.js';
         document.head.appendChild(script);
+
+
     </script>
 </body>
 </html>
