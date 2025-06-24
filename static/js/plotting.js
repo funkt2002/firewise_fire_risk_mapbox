@@ -16,17 +16,70 @@ class PlottingManager {
         };
 
         this.varNameMap = {
-            'qtrmi_cnt': 'Structures (1/4 mile)',
-            'hlfmi_wui': 'WUI Coverage',
-            'hlfmi_agri': 'Agricultural Protection',
-            'hlfmi_vhsz': 'Fire Hazard',
-            'hlfmi_fb': 'Fuel Breaks',
-            'slope_s': 'Slope',
-            'neigh1_d': 'Neighbor Distance',
-            'hlfmi_brn': 'Burn Scars',
-            'par_buf_sl': 'Structure Surrounding Slope',
-            'hlfmi_agfb': 'Agriculture & Fuelbreaks'
+            // Raw variable mappings
+            'qtrmi_cnt': 'Number of Structures Within Window (1/4 mile)',
+            'hlfmi_wui': 'WUI coverage percentage (1/2 mile)',
+            'hlfmi_agri': 'Agricultural Coverage (1/2 Mile)',
+            'hlfmi_vhsz': 'Very High Fire Hazard Zone coverage (1/2 mile)',
+            'hlfmi_fb': 'Fuel Break coverage (1/2 mile)',
+            'slope_s': 'Mean Parcel Slope',
+            'neigh1_d': 'Distance to Nearest Neighbor',
+            'hlfmi_brn': 'Burn Scar Coverage (1/2 mile)',
+            'par_buf_sl': 'Structure Surrounding Slope (100 foot buffer)',
+            'hlfmi_agfb': 'Agriculture & Fuelbreaks (1/2 mile)',
+            
+            // Score variable mappings (_s suffix)
+            'qtrmi_s': 'Number of Structures Within Window (1/4 mile)',
+            'hwui_s': 'WUI coverage percentage (1/2 mile)',
+            'hagri_s': 'Agricultural Coverage (1/2 Mile)',
+            'hvhsz_s': 'Very High Fire Hazard Zone coverage (1/2 mile)',
+            'hfb_s': 'Fuel Break coverage (1/2 mile)',
+            'slope_s': 'Mean Parcel Slope',
+            'neigh1d_s': 'Distance to Nearest Neighbor',
+            'hbrn_s': 'Burn Scar Coverage (1/2 mile)',
+            'par_buf_sl_s': 'Structure Surrounding Slope (100 foot buffer)',
+            'hlfmi_agfb_s': 'Agriculture & Fuelbreaks (1/2 mile)',
+            
+            // Score variable mappings (_z suffix)
+            'qtrmi_z': 'Number of Structures Within Window (1/4 mile)',
+            'hwui_z': 'WUI coverage percentage (1/2 mile)',
+            'hagri_z': 'Agricultural Coverage (1/2 Mile)',
+            'hvhsz_z': 'Very High Fire Hazard Zone coverage (1/2 mile)',
+            'hfb_z': 'Fuel Break coverage (1/2 mile)',
+            'slope_z': 'Mean Parcel Slope',
+            'neigh1d_z': 'Distance to Nearest Neighbor',
+            'hbrn_z': 'Burn Scar Coverage (1/2 mile)',
+            'par_buf_sl_z': 'Structure Surrounding Slope (100 foot buffer)',
+            'hlfmi_agfb_z': 'Agriculture & Fuelbreaks (1/2 mile)'
         };
+    }
+
+    // Helper function to get the best human-readable title for any variable
+    getVariableTitle(variable) {
+        // Direct lookup first
+        if (this.varNameMap[variable]) {
+            return this.varNameMap[variable];
+        }
+        
+        // If it's a score variable, try without suffix
+        if (variable.endsWith('_s') || variable.endsWith('_z')) {
+            const baseVar = variable.slice(0, -2);
+            const rawVar = this.rawVarMap[baseVar];
+            if (rawVar && this.varNameMap[rawVar]) {
+                return this.varNameMap[rawVar];
+            }
+        }
+        
+        // If it's a raw variable in rawVarMap, get the title
+        if (this.rawVarMap[variable]) {
+            const mappedVar = this.rawVarMap[variable];
+            if (this.varNameMap[mappedVar]) {
+                return this.varNameMap[mappedVar];
+            }
+        }
+        
+        // Fallback to variable name
+        return variable;
     }
 
     // Calculate Pearson correlation coefficient
@@ -74,14 +127,15 @@ class PlottingManager {
         if (isScoreVariable) {
             // Already a score variable - use as is but respect current settings
             const baseVar = targetVariable.replace(/_[sz]$/, '');
-            targetVarName = baseVar + suffix;
+            targetVarName = this.getVariableTitle(targetVariable);
+            const scoreVar = baseVar + suffix;
             targetData = features
-                .map(f => f.properties[targetVarName])
+                .map(f => f.properties[scoreVar])
                 .filter(v => v !== null && v !== undefined && !isNaN(v));
         } else {
             // Raw variable - get the mapped column name and apply transformations
             const rawVar = this.rawVarMap[targetVariable] || targetVariable;
-            targetVarName = this.varNameMap[rawVar] || targetVariable;
+            targetVarName = this.getVariableTitle(targetVariable);
             
             targetData = features
                 .map(f => {
@@ -152,7 +206,7 @@ class PlottingManager {
             }
             
             correlations.push(correlation);
-            labels.push(this.varNameMap[rawVar] || compareVar);
+            labels.push(this.getVariableTitle(rawVar));
         }
         
         // Create bar chart showing correlations
@@ -275,7 +329,7 @@ class PlottingManager {
         
         for (let i = 0; i < variables.length; i++) {
             correlationMatrix[i] = [];
-            labels[i] = this.varNameMap[this.rawVarMap[variables[i]]];
+            labels[i] = this.getVariableTitle(this.rawVarMap[variables[i]]);
             
             for (let j = 0; j < variables.length; j++) {
                 if (i === j) {
@@ -576,15 +630,18 @@ class PlottingManager {
         const logSuffix = usesLogTransform ? ' (Log Transformed)' : '';
         const normSuffix = data.normalization === 'local_client' ? ' (Local Normalization)' : '';
         
+        // Get the best human-readable title for this variable
+        const variableTitle = this.getVariableTitle(variable);
+        
         const layout = {
-            title: `${this.varNameMap[variable] || variable} Distribution${logSuffix}${normSuffix}`,
+            title: `${variableTitle} Distribution${logSuffix}${normSuffix}`,
             paper_bgcolor: '#1a1a1a',
             plot_bgcolor: '#1a1a1a',
             font: {
                 color: '#fff'
             },
             xaxis: {
-                title: `${this.varNameMap[variable] || variable}`,
+                title: variableTitle,
                 gridcolor: 'rgba(255,255,255,0.1)'
             },
             yaxis: {
