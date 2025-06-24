@@ -1216,13 +1216,18 @@ def solve_weight_optimization(parcel_data, include_vars):
     # STEP 4: Solve (now much smaller problem for CBC)
     solver_result = prob.solve(COIN_CMD(msg=False))
     
-    # STEP 5: Extract solution
-    best_weights = {var + '_s': value(w_vars[var]) for var in include_vars_base}
+    # STEP 5: Extract solution (preserve original suffixes)
+    best_weights = {}
+    for i, var_base in enumerate(include_vars_base):
+        # Use the original suffix from include_vars
+        original_var = include_vars[i]
+        best_weights[original_var] = value(w_vars[var_base])
     
     # STEP 6: Calculate total score using original method for accuracy
     total_score = sum(
-        best_weights[var + '_s'] * parcel['scores'][var]
-        for parcel in parcel_data for var in include_vars_base
+        best_weights[include_vars[i]] * parcel['scores'][var_base]
+        for parcel in parcel_data 
+        for i, var_base in enumerate(include_vars_base)
     )
     
     # STEP 7: Clean up immediately
