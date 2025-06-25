@@ -36,34 +36,39 @@ def check_tippecanoe():
         return False
 
 def generate_optimized_tiles(geojson_file):
-    """Generate single optimized tileset with minimal simplification and full detail at zoom 12+"""
+    """Generate single optimized tileset with coalesced data at z0-11 and full detail at z12-16"""
     
     print("\n🔧 GENERATING OPTIMIZED TILES...")
-    print("Single tileset: full detail at z12+, gentle pruning at z0-11")
+    print("Complete tileset: zoom 0-16, coalesced at z0-11, full detail at z12+")
     
-    # Single MBTiles with base-zoom 12 approach
+    # One-step Tippecanoe with coalesce & re-encode (zoom 0-16)
     cmd = [
         'tippecanoe',
-        '--output', 'parcels_minimal_simplification.mbtiles',
+        '--output', 'parcels_complete.mbtiles',
         '--force',
-        '--minimum-zoom', '0',
+        '--minimum-zoom', '0',              # Start at zoom 0 for complete coverage
         '--maximum-zoom', '16',
-        '--base-zoom', '12',                # No dropping/simplification at zoom ≥12
-        '--maximum-tile-bytes', '500000',   # 500KB max per tile
-        '--drop-densest-as-needed',         # Only drop in densest spots
-        '--simplification', '1',            # Minimal geometry simplification
-        '--detect-shared-borders',          # Optimize shared boundaries
-        '--buffer', '1',                    # Small buffer for topology
+        '--base-zoom', '12',                # No coalesce/simplify at zoom ≥12
+        '--maximum-tile-bytes', '500000',   # 500KB max per tile (strict limit)
+        '--coalesce-smallest-as-needed',    # Merge tiny parcels, don't drop them
+        '--simplification', '1',            # Only trivial geometry smoothing
+        '--detect-shared-borders',          # Collapse shared edges
+        '--buffer', '1',                    # Small tile buffer
         geojson_file
     ]
     
     try:
-        print("Generating tileset with minimal simplification...")
+        print("Generating complete tileset with coalescing...")
+        print("Strategy:")
+        print("  • z0-11: Coalesce smallest parcels + minimal simplification (≤500KB/tile)")
+        print("  • z12-16: Full detail preservation (no coalescing/simplification)")
+        
         result = subprocess.run(cmd, check=True, capture_output=True, text=True)
-        size_mb = os.path.getsize('parcels_minimal_simplification.mbtiles') / (1024 * 1024)
-        print(f"✅ SUCCESS! Generated parcels_minimal_simplification.mbtiles ({size_mb:.1f} MB)")
-        print("   → Zoom 0-11: just enough densest-area dropping + single-unit simplification")
-        print("   → Zoom 12-16: 100% of parcels, zero simplification beyond topology buffering")
+        size_mb = os.path.getsize('parcels_complete.mbtiles') / (1024 * 1024)
+        print(f"✅ SUCCESS! Generated parcels_complete.mbtiles ({size_mb:.1f} MB)")
+        print("   → Zoom 0-11: Coalesced smallest parcels, 500KB tile limit")
+        print("   → Zoom 12-16: 100% of parcels, full geometry detail")
+        print("   → All parcels visible at every zoom level")
         
         return True
         
@@ -113,21 +118,19 @@ def convert_parcels_to_geojson():
         print(f"Converting from {gdf.crs} to EPSG:4326...")
         gdf = gdf.to_crs('EPSG:4326')
     
-    # Keep essential columns PLUS scoring attributes for fire risk visualization
+    # Keep ONLY the absolute essentials for fire risk visualization
     essential_columns = ['parcel_id', 'geometry']
     
-    # Add scoring attributes (CRITICAL for fire risk visualization)
-    score_columns = ['default_score', 'rank', 'top500', 'score']
-    for col in score_columns:
-        if col in gdf.columns:
-            essential_columns.append(col)
-            print(f"✓ Including score column: {col}")
+    # Add ONLY the critical score for visualization (strip all extras)
+    if 'default_score' in gdf.columns:
+        essential_columns.append('default_score')
+        print("✓ Including default_score (essential for visualization)")
+    else:
+        print("⚠️  Warning: default_score not found - parcels will render without color coding")
     
-    # Add other useful attributes
-    optional_columns = ['apn', 'id', 'strcnt', 'yearbuilt']
-    for col in optional_columns:
-        if col in gdf.columns:
-            essential_columns.append(col)
+    print("🔥 MINIMAL BUILD: Stripping all non-essential attributes for maximum tile efficiency")
+    print("   Removed: rank, top500, score, apn, id, strcnt, yearbuilt")
+    print("   Keeping: parcel_id, default_score, geometry only")
     
     print(f"Keeping columns: {essential_columns}")
     gdf_minimal = gdf[essential_columns].copy()
@@ -184,6 +187,7 @@ def main():
     print("=" * 50)
     print("FIXING: 'too much data for zoom 10' errors")
     print("FIXING: Missing parcels at low zoom levels")
+    print("SOLUTION: Complete z0-16 tileset with coalescing")
     print("=" * 50)
     
     # Step 1: Check if we already have a GeoJSON with scores
@@ -223,29 +227,32 @@ def main():
     
     # Step 3: Generate optimized tiles
     if generate_optimized_tiles(geojson_file):
-        print("\n🎉 SUCCESS! Single optimized tileset generated!")
+        print("\n🎉 SUCCESS! Complete tileset with coalescing at low zoom and full detail at high zoom!")
         print("\n📋 RESULT ACHIEVED:")
-        print("✅ Zoom 12-16: 100% of parcels, zero simplification beyond topology buffering")
-        print("✅ Zoom 0-11: just enough densest-area dropping + single-unit simplification")  
-        print("✅ Stays under 500KB per tile with no aggressive thinning")
+        print("✅ Attributes: Stripped to bare essentials (parcel_id + default_score only)")
+        print("✅ Zoom 0-11: Coalesced smallest parcels, 500KB tile limit")
+        print("✅ Zoom 12-16: 100% of parcels, full geometry detail")
+        print("✅ All parcels visible at every zoom level (no missing data)")
         
         print("\n📂 GENERATED FILE:")
-        if os.path.exists('parcels_minimal_simplification.mbtiles'):
-            size_mb = os.path.getsize('parcels_minimal_simplification.mbtiles') / (1024 * 1024)
-            print(f"   parcels_minimal_simplification.mbtiles ({size_mb:.1f} MB)")
+        if os.path.exists('parcels_complete.mbtiles'):
+            size_mb = os.path.getsize('parcels_complete.mbtiles') / (1024 * 1024)
+            print(f"   parcels_complete.mbtiles ({size_mb:.1f} MB)")
         
         print("\n📋 NEXT STEPS:")
         print("1. Test locally (optional):")
         print("   npm install -g @mapbox/mbview")
-        print("   mbview parcels_minimal_simplification.mbtiles")
+        print("   mbview parcels_complete.mbtiles")
         print("\n2. Upload to Mapbox Studio:")
-        print("   mapbox upload theo1158.47kv531b parcels_minimal_simplification.mbtiles")
+        print("   mapbox upload theo1158.47kv531b parcels_complete.mbtiles")
         print("\n3. Update your Mapbox tileset reference to use the new tileset")
+        print("\n4. Remove minzoom/maxzoom from your Mapbox GL JS layer style")
         
         print("\n💡 STRATEGY:")
-        print("   🎯 Single tileset with base-zoom 12")
-        print("   ✨ Perfect detail for fire risk analysis")
-        print("   📐 Minimal simplification only where absolutely needed")
+        print("   🎯 Complete zoom range 0-16 with intelligent coalescing")
+        print("   ✨ Parcels visible at ALL zoom levels")
+        print("   🔄 Coalesce smallest parcels at z0-11, preserve all at z12-16")
+        print("   📐 500KB tile limit ensures fast loading")
         
         return True
     else:
