@@ -162,12 +162,14 @@ class PlottingManager {
             return;
         }
 
-        // Get enabled variables for comparison
+        // Get enabled variables for comparison (excluding the target variable itself)
         const allVariables = Object.keys(this.rawVarMap);
+        const targetVarBase = targetVariable.replace(/_[sz]$/, ''); // Remove score suffix if present
         const enabledVariables = allVariables.filter(varBase => {
             // Check if the corresponding enable checkbox is checked
             const enableCheckbox = document.getElementById(`enable-${varBase}_s`);
-            return enableCheckbox && enableCheckbox.checked;
+            // Exclude the target variable from correlating with itself
+            return enableCheckbox && enableCheckbox.checked && varBase !== targetVarBase;
         });
 
         if (enabledVariables.length === 0) {
