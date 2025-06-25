@@ -3003,6 +3003,8 @@
                 promoteId: 'parcel_id'  // Promote parcel_id to feature.id for better identification
             });
             
+
+            
             // Global data object for attribute lookup in paint expressions
             window.parcelScores = {}; // Will be updated by updateMap()
             window.top500ParcelIds = []; // Will be updated by updateMap()
@@ -3013,7 +3015,7 @@
                 id: 'parcels-fill',
                 type: 'fill',
                 source: 'parcel-tiles',
-                'source-layer': 'parcels_with_score', // Layer name that was working before
+                'source-layer': 'tmp3nwzuj83', // Correct source layer name from your tileset
                 minzoom: 10, // Start at zoom 10 (no-scores tileset range)
                 maxzoom: 22,
                 layout: {
@@ -3029,7 +3031,7 @@
                 id: 'parcels-boundary',
                 type: 'line',
                 source: 'parcel-tiles',
-                'source-layer': 'parcels_with_score',
+                'source-layer': 'tmp3nwzuj83', // Correct source layer name from your tileset
                 minzoom: 10, // Show boundaries at zoom 10+ (matches tileset range)
                 maxzoom: 22,
                 layout: {
@@ -3046,7 +3048,7 @@
                 id: 'parcels-top500',
                 type: 'line',
                 source: 'parcel-tiles',
-                'source-layer': 'parcels_no_scores',
+                'source-layer': 'tmp3nwzuj83', // Correct source layer name from your tileset
                 minzoom: 10, // Start at zoom 10 (matches tileset range)
                 maxzoom: 22,
                 filter: ['in', ['to-string', ['get', 'parcel_id']], ['literal', window.top500ParcelIds]],
