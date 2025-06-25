@@ -298,11 +298,11 @@ def main():
         print("\n2. Upload to Mapbox Studio:")
         print("   mapbox upload theo1158.parcels_new parcels_better_balanced.mbtiles")
         print("\n3. Update your code in templates/index.html:")
-        print("   ✅ INTEGRATED: 'parcels_zoom11plus.mbtiles' → 'mapbox://theo1158.1o8xk01u'")
+        print("   ✅ INTEGRATED: 'parcels_with_score_z10-16.mbtiles' → 'mapbox://theo1158.4ryjjgnx'")
         print("   Current tileset uses zoom 11+ only approach!")
         
         print("\n💡 RECOMMENDATIONS:")
-        print("   ✅ Current: 'theo1158.1o8xk01u' (zoom 11+ only - ALL parcels, no gaps)")
+        print("   ✅ Current: 'theo1158.4ryjjgnx' (zoom 10-16 - ALL parcels, optimized for all zooms)")
         print("   🎯 This shows ALL 62,416 parcels with full detail at zoom 11-16")
         print("      (Completely avoids problematic zoom 6-10, focuses on decision-making zoom)")
         print("      (No simplification, no dropping, perfect for detailed fire risk analysis)")
