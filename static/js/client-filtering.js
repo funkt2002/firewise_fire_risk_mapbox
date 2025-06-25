@@ -9,48 +9,11 @@ class ClientFilterManager {
         this.timings = {};
     }
 
-    // Memory usage tracking
-    getMemoryUsage() {
-        if (!performance.memory) {
-            return { available: false };
-        }
-        
-        return {
-            available: true,
-            usedJSHeapSize: Math.round(performance.memory.usedJSHeapSize / 1024 / 1024 * 100) / 100,
-            totalJSHeapSize: Math.round(performance.memory.totalJSHeapSize / 1024 / 1024 * 100) / 100,
-            jsHeapSizeLimit: Math.round(performance.memory.jsHeapSizeLimit / 1024 / 1024 * 100) / 100
-        };
-    }
-
-    logMemoryUsage(operation) {
-        const memory = this.getMemoryUsage();
-        if (memory.available) {
-            console.log(`MEMORY: ${operation} - Used: ${memory.usedJSHeapSize}MB, Total: ${memory.totalJSHeapSize}MB`);
-        }
-        
-        // Log dataset sizes
-        const completeSize = this.completeDataset ? this.completeDataset.features.length : 0;
-        const filteredSize = this.filteredDataset ? this.filteredDataset.features.length : 0;
-        const windowScores = window.parcelScores ? Object.keys(window.parcelScores).length : 0;
-        const windowTop500 = window.top500ParcelIds ? window.top500ParcelIds.length : 0;
-        const windowSpatial = window.spatialFilterParcelIds ? window.spatialFilterParcelIds.size : 0;
-        
-        console.log(`MEMORY: ${operation} - Complete Dataset: ${completeSize}, Filtered: ${filteredSize}, Window Scores: ${windowScores}, Top500 IDs: ${windowTop500}, Spatial Filter IDs: ${windowSpatial}`);
-        
-        // Check for data duplication
-        if (this.completeDataset && this.filteredDataset) {
-            const isSameReference = this.completeDataset === this.filteredDataset;
-            console.log(`MEMORY: ${operation} - Complete/Filtered same reference: ${isSameReference}`);
-        }
-    }
-
     // Store the complete unfiltered dataset from server
     storeCompleteDataset(geojsonData) {
-        // const start = performance.now(); // COMMENTED OUT TIMING
+        const start = performance.now();
         
         console.log('Storing complete dataset for client-side filtering...');
-        this.logMemoryUsage('Before Dataset Storage');
         
         this.completeDataset = {
             type: "FeatureCollection",
@@ -62,11 +25,10 @@ class ClientFilterManager {
         
         this.filteredDataset = this.completeDataset; // Initially no filtering
         
-        // const loadTime = performance.now() - start; // COMMENTED OUT TIMING
-        // this.logTiming('Complete Dataset Storage', loadTime); // COMMENTED OUT TIMING
+        const loadTime = performance.now() - start;
+        this.logTiming('Complete Dataset Storage', loadTime);
         
         console.log(`Stored ${this.completeDataset.features.length} parcels for client-side filtering`);
-        this.logMemoryUsage('After Dataset Storage');
         return this.completeDataset.features.length;
     }
 
@@ -77,33 +39,29 @@ class ClientFilterManager {
             return null;
         }
 
-        // const start = performance.now(); // COMMENTED OUT TIMING
+        const start = performance.now();
         console.log('Starting client-side filtering...');
-        this.logMemoryUsage('Before Filtering');
         
         this.currentFilters = { ...filters };
         
         // Filter parcels
-        // const filterStart = performance.now(); // COMMENTED OUT TIMING
+        const filterStart = performance.now();
         let filteredFeatures = this.completeDataset.features.filter(feature => 
             this.passesAllFilters(feature, filters)
         );
-        // this.logTiming('Basic Filtering', performance.now() - filterStart); // COMMENTED OUT TIMING
+        this.logTiming('Basic Filtering', performance.now() - filterStart);
 
         // Apply spatial filter if present
         if (filters.subset_area) {
-            // const spatialStart = performance.now(); // COMMENTED OUT TIMING
-            this.logMemoryUsage('Before Spatial Filtering');
+            const spatialStart = performance.now();
             filteredFeatures = this.applySpatialFilter(filteredFeatures, filters.subset_area, window.map);
-            // this.logTiming('Spatial Filtering', performance.now() - spatialStart); // COMMENTED OUT TIMING
-            this.logMemoryUsage('After Spatial Filtering');
+            this.logTiming('Spatial Filtering', performance.now() - spatialStart);
         } else {
             // Clear spatial filter - show all parcels
             if (window.spatialFilterActive) {
                 window.spatialFilterActive = false;
                 window.spatialFilterParcelIds.clear();
                 console.log(`VECTOR TILES: Cleared spatial filter - showing all parcels`);
-                this.logMemoryUsage('After Clearing Spatial Filter');
                 
                 // Remove map layer filters to show all parcels
                 if (window.map && window.map.isStyleLoaded()) {
@@ -124,12 +82,11 @@ class ClientFilterManager {
             features: filteredFeatures
         };
 
-        // const totalTime = performance.now() - start; // COMMENTED OUT TIMING
-        // this.logTiming('Total Filtering', totalTime); // COMMENTED OUT TIMING
+        const totalTime = performance.now() - start;
+        this.logTiming('Total Filtering', totalTime);
         
-        // console.log(`Client-side filtering completed in ${totalTime.toFixed(1)}ms`); // COMMENTED OUT TIMING
+        console.log(`Client-side filtering completed in ${totalTime.toFixed(1)}ms`);
         console.log(`Filtered from ${this.completeDataset.features.length} to ${filteredFeatures.length} parcels`);
-        this.logMemoryUsage('After Filtering Complete');
         
         return this.filteredDataset;
     }
@@ -241,9 +198,8 @@ class ClientFilterManager {
             );
 
             console.log(`VECTOR TILES: Found ${visibleFeatures.length} parcels in bounding box`);
-            this.logMemoryUsage('After queryRenderedFeatures');
 
-            // Filter to parcels that actually intersect the drawn polygon
+            // MISSING STEP: Filter to parcels that actually intersect the drawn polygon
             const geometricallyFilteredFeatures = [];
             if (window.turf && window.turf.booleanIntersects) {
                 for (const feature of visibleFeatures) {
@@ -257,7 +213,6 @@ class ClientFilterManager {
                     }
                 }
                 console.log(`VECTOR TILES: Geometric intersection reduced from ${visibleFeatures.length} to ${geometricallyFilteredFeatures.length} parcels`);
-                this.logMemoryUsage('After Geometric Intersection');
             } else {
                 console.warn('VECTOR TILES: Turf.js booleanIntersects not available, using bbox-only filtering');
                 geometricallyFilteredFeatures.push(...visibleFeatures);
@@ -288,7 +243,6 @@ class ClientFilterManager {
             window.spatialFilterActive = true;
             window.spatialFilterParcelIds = new Set(filteredFeatures.map(f => f.properties.parcel_id.toString()));
             console.log(`VECTOR TILES: Spatial filter activated with ${window.spatialFilterParcelIds.size} parcels`);
-            this.logMemoryUsage('After Updating Window Variables');
             
             // Update map layers to only show filtered parcels
             if (window.map && window.map.isStyleLoaded()) {
@@ -376,14 +330,13 @@ class ClientFilterManager {
         this.currentFilters = {};
         this.timings = {};
         console.log('Client-side filter manager cleared');
-        this.logMemoryUsage('After Clear');
     }
 
     // Logging utilities
-    // logTiming(operation, timeMs) { // COMMENTED OUT TIMING
-    //     this.timings[operation] = timeMs;
-    //     console.log(`${operation}: ${timeMs.toFixed(1)}ms`);
-    // }
+    logTiming(operation, timeMs) {
+        this.timings[operation] = timeMs;
+        console.log(`${operation}: ${timeMs.toFixed(1)}ms`);
+    }
 
     getTimings() {
         return { ...this.timings };
@@ -398,7 +351,7 @@ class ClientNormalizationManager {
 
     // Calculate local normalization on filtered dataset
     calculateLocalNormalization(filteredFeatures, use_quantile) {
-        // const start = performance.now(); // COMMENTED OUT TIMING
+        const start = performance.now();
         console.log(`Calculating local normalization for ${filteredFeatures.length} filtered parcels`);
 
         const rawVarMap = {
@@ -425,117 +378,140 @@ class ClientNormalizationManager {
             const values = [];
 
             for (const feature of filteredFeatures) {
-                const val = feature.properties[rawVar];
-                if (val !== null && val !== undefined && !isNaN(val)) {
-                    values.push(val);
+                let rawValue = feature.properties[rawVar];
+                if (rawValue !== null && rawValue !== undefined) {
+                    rawValue = parseFloat(rawValue);
+                    
+                    // Apply log transformations
+                    if (varBase === 'neigh1d') {
+                        // Skip parcels without structures (neigh1d = 0)
+                        if (rawValue === 0) {
+                            continue;
+                        }
+                        const cappedValue = Math.min(rawValue, 5280);
+                        rawValue = Math.log(1 + cappedValue);
+                    } else if (varBase === 'hagri' || varBase === 'hfb' || varBase === 'hlfmi_agfb') {
+                        // Apply log transformation to agriculture, fuel breaks, and combined agriculture & fuelbreaks
+                        rawValue = Math.log(1 + rawValue);
+                    }
+                    
+                    values.push(rawValue);
                 }
             }
 
-            if (values.length === 0) {
-                console.warn(`No valid values found for variable ${rawVar}`);
-                continue;
-            }
-
-            values.sort((a, b) => a - b);
-
-            if (use_quantile) {
-                // True quantile normalization
-                const q25 = this.quantile(values, 0.25);
-                const q75 = this.quantile(values, 0.75);
-                const median = this.quantile(values, 0.5);
-                
-                normData[varBase] = {
-                    type: 'quantile',
-                    q25: q25,
-                    q75: q75,
-                    median: median
-                };
-                
-                console.log(`${varBase}: Using quantile normalization - Q25: ${q25.toFixed(2)}, Median: ${median.toFixed(2)}, Q75: ${q75.toFixed(2)}`);
-            } else {
-                // Basic min-max normalization with 97th percentile cap
-                const min = Math.min(...values);
-                let max = Math.max(...values);
-                
-                // Use 97th percentile as max to handle outliers (similar to server logic)
-                const p97 = this.quantile(values, 0.97);
-                if (p97 < max) {
-                    max = p97;
-                    console.log(`${varBase}: Using 97th percentile (${max.toFixed(1)}) as max instead of actual max (${Math.max(...values).toFixed(1)})`);
+                        if (values.length > 0) {
+                if (use_quantile) {
+                    // True quantile normalization - create equal-sized bins
+                    const sortedValues = [...values].sort((a, b) => a - b);
+                    
+                    normData[varBase] = {
+                        sorted_values: sortedValues,
+                        total_count: sortedValues.length,
+                        norm_type: 'true_quantile'
+                    };
+                    console.log(`${varBase}: True quantile normalization with ${sortedValues.length} values (min: ${sortedValues[0].toFixed(3)}, max: ${sortedValues[sortedValues.length-1].toFixed(3)})`);
+                } else {
+                    // Basic min-max
+                    const min = Math.min(...values);
+                    let max;
+                    if (varBase === 'qtrmi') {
+                        // Use 97th percentile as max for structures to reduce outlier impact
+                        values.sort((a, b) => a - b);
+                        const p97Index = Math.floor(values.length * 0.97);
+                        max = values[p97Index];
+                        console.log(`qtrmi: Using 97th percentile (${max.toFixed(1)}) as max instead of actual max (${Math.max(...values).toFixed(1)})`);
+                    } else {
+                        max = Math.max(...values);
+                    }
+                    const range = max > min ? max - min : 1.0;
+                    
+                    normData[varBase] = {
+                        min: min,
+                        max: max,
+                        range: range,
+                        norm_type: 'minmax'
+                    };
                 }
-                
-                normData[varBase] = {
-                    type: 'minmax',
-                    min: min,
-                    max: max
-                };
             }
         }
 
-        // Second pass: apply normalization to features
+        // Second pass: calculate normalized scores for each feature
         const normalizedFeatures = filteredFeatures.map(feature => {
-            const newProperties = { ...feature.properties };
-            
+            const newFeature = {
+                ...feature,
+                properties: { ...feature.properties }
+            };
+
             for (const varBase of weightVarsBase) {
                 const rawVar = rawVarMap[varBase];
-                const rawValue = feature.properties[rawVar];
-                
-                if (rawValue === null || rawValue === undefined || isNaN(rawValue)) {
-                    newProperties[`${varBase}_s`] = 0;
-                    newProperties[`${varBase}_z`] = 0;
-                    continue;
-                }
-                
-                const params = normData[varBase];
-                if (!params) {
-                    newProperties[`${varBase}_s`] = 0;
-                    newProperties[`${varBase}_z`] = 0;
-                    continue;
-                }
-                
-                let normalizedValue;
-                
-                if (use_quantile && params.type === 'quantile') {
-                    // Quantile-based scoring: 0 if below Q25, 1 if above Q75, interpolated between
-                    if (rawValue <= params.q25) {
-                        normalizedValue = 0;
-                    } else if (rawValue >= params.q75) {
-                        normalizedValue = 1;
-                    } else {
-                        normalizedValue = (rawValue - params.q25) / (params.q75 - params.q25);
+                let rawValue = newFeature.properties[rawVar];
+
+                if (rawValue !== null && rawValue !== undefined && varBase in normData) {
+                    rawValue = parseFloat(rawValue);
+                    
+                    // Apply log transformations  
+                    if (varBase === 'neigh1d') {
+                        // Assign score of 0 for parcels without structures (neigh1d = 0)
+                        if (rawValue === 0) {
+                            newFeature.properties[varBase + '_s'] = 0.0;
+                            continue;
+                        }
+                        const cappedValue = Math.min(rawValue, 5280);
+                        rawValue = Math.log(1 + cappedValue);
+                    } else if (varBase === 'hagri' || varBase === 'hfb' || varBase === 'hlfmi_agfb') {
+                        // Apply log transformation to agriculture, fuel breaks, and combined agriculture & fuelbreaks
+                        rawValue = Math.log(1 + rawValue);
                     }
-                } else if (params.type === 'minmax') {
-                    // Min-max normalization
-                    if (params.max === params.min) {
-                        normalizedValue = 0;
+
+                    const normInfo = normData[varBase];
+                    let normalizedScore;
+
+                    if (normInfo.norm_type === 'true_quantile') {
+                        // True quantile normalization - find percentile rank
+                        const sortedValues = normInfo.sorted_values;
+                        const totalCount = normInfo.total_count;
+                        
+                        // Binary search to find rank
+                        let left = 0;
+                        let right = sortedValues.length;
+                        while (left < right) {
+                            const mid = Math.floor((left + right) / 2);
+                            if (sortedValues[mid] <= rawValue) {
+                                left = mid + 1;
+                            } else {
+                                right = mid;
+                            }
+                        }
+                        const rank = left;
+                        
+                        // Convert rank to percentile (0.0 to 1.0)
+                        normalizedScore = rank / totalCount;
+                        normalizedScore = Math.max(0.0, Math.min(1.0, normalizedScore));
                     } else {
-                        normalizedValue = Math.min(Math.max((rawValue - params.min) / (params.max - params.min), 0), 1);
+                        normalizedScore = (rawValue - normInfo.min) / normInfo.range;
+                        normalizedScore = Math.max(0, Math.min(1, normalizedScore));
                     }
+
+                    // Apply inversion for certain variables
+                    if (invertVars.has(varBase)) {
+                        normalizedScore = 1 - normalizedScore;
+                    }
+
+                    // Store the normalized score
+                    newFeature.properties[varBase + '_s'] = normalizedScore;
                 }
-                
-                // Apply inversion for variables where lower is better
-                if (invertVars.has(varBase)) {
-                    normalizedValue = 1 - normalizedValue;
-                }
-                
-                // Store in both _s and _z formats for compatibility
-                newProperties[`${varBase}_s`] = normalizedValue;
-                newProperties[`${varBase}_z`] = normalizedValue;
             }
-            
-            return {
-                ...feature,
-                properties: newProperties
-            };
+
+            return newFeature;
         });
 
-        // const totalTime = performance.now() - start; // COMMENTED OUT TIMING
-        // console.log(`Local normalization completed in ${totalTime.toFixed(1)}ms`); // COMMENTED OUT TIMING
-        console.log(`Local normalization completed for ${filteredFeatures.length} parcels`);
+        const totalTime = performance.now() - start;
+        console.log(`Local normalization completed in ${totalTime.toFixed(1)}ms`);
 
         return {
             features: normalizedFeatures,
-            normalizationParams: normData
+            normalization_stats: normData,
+            calculation_time: totalTime
         };
     }
 

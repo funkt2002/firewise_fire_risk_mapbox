@@ -10,49 +10,13 @@ class FireRiskScoring {
         this.lastFilters = null;
         this.lastNormalizationSettings = null;
         this.firstCalculationDone = false;
-        this.operations = {}; // Track operations for debugging
-    }
-
-    // Memory usage tracking
-    getMemoryUsage() {
-        if (!performance.memory) {
-            return { available: false };
-        }
-        
-        return {
-            available: true,
-            usedJSHeapSize: Math.round(performance.memory.usedJSHeapSize / 1024 / 1024 * 100) / 100,
-            totalJSHeapSize: Math.round(performance.memory.totalJSHeapSize / 1024 / 1024 * 100) / 100,
-            jsHeapSizeLimit: Math.round(performance.memory.jsHeapSizeLimit / 1024 / 1024 * 100) / 100
-        };
-    }
-
-    logMemoryUsage(operation) {
-        const memory = this.getMemoryUsage();
-        if (memory.available) {
-            console.log(`MEMORY: ${operation} - Used: ${memory.usedJSHeapSize}MB, Total: ${memory.totalJSHeapSize}MB`);
-        }
-        
-        // Log dataset sizes
-        const attributeMapSize = this.attributeMap.size;
-        const completeSize = this.completeDataset ? this.completeDataset.features.length : 0;
-        const currentSize = this.currentDataset ? this.currentDataset.features.length : 0;
-        
-        console.log(`MEMORY: ${operation} - AttributeMap: ${attributeMapSize}, Complete Dataset: ${completeSize}, Current Dataset: ${currentSize}`);
-        
-        // Check for data duplication
-        if (this.completeDataset && this.currentDataset) {
-            const isSameReference = this.completeDataset === this.currentDataset;
-            console.log(`MEMORY: ${operation} - Complete/Current same reference: ${isSameReference}`);
-        }
     }
 
     // Store complete dataset from server (attributes only for vector tiles)
     storeCompleteData(attributeData) {
-        // const start = performance.now(); // COMMENTED OUT TIMING
+        const start = performance.now();
         
         console.log('VECTOR TILES: Storing complete attribute dataset for client-side processing...');
-        this.logMemoryUsage('Before Storing Complete Data');
         
         // Clear existing data
         this.attributeMap.clear();
@@ -95,11 +59,10 @@ class FireRiskScoring {
         this.completeDataset = featureCollection;
         this.currentDataset = featureCollection;
         
-        // const loadTime = performance.now() - start; // COMMENTED OUT TIMING
-        // this.logTiming('Complete Data Storage', loadTime); // COMMENTED OUT TIMING
+        const loadTime = performance.now() - start;
+        this.logTiming('Complete Data Storage', loadTime);
         
-        console.log(`VECTOR TILES: Stored ${attributes.length} parcel attributes for client-side processing`);
-        this.logMemoryUsage('After Storing Complete Data');
+        console.log(`VECTOR TILES: Stored ${attributes.length} parcel attributes (${this.attributeMap.size} with parcel_id) for client-side processing`);
         return attributes.length;
     }
 
@@ -113,44 +76,43 @@ class FireRiskScoring {
         return this.storeCompleteData(geojsonData);
     }
  
-    // Main processing function - comprehensive client-side processing
+    // Process data with filters and calculate scores (comprehensive client-side)
     processData(weights, filters, maxParcels = 500, use_local_normalization = false, use_quantile = false) {
-        // const start = performance.now(); // COMMENTED OUT TIMING
-        console.log('Starting complete client-side data processing...');
-        this.logMemoryUsage('Start of Process Data');
-        
         if (!this.completeDataset) {
-            console.error('No complete dataset available for client-side processing');
+            console.error('No complete dataset stored. Call storeCompleteData() first.');
             return null;
         }
 
-        // Check if filters have changed to avoid unnecessary reprocessing
+        const start = performance.now();
+        const isFirstCalculation = !this.firstCalculationDone;
+        if (isFirstCalculation) {
+            console.log('🔄 FIRST CLIENT-SIDE CALCULATION: Starting complete client-side data processing...');
+        } else {
+            console.log('Starting complete client-side data processing...');
+        }
+        
+        // Check if we need to reprocess filters
         const filtersChanged = this.filtersChanged(filters) || 
-                             this.lastNormalizationSettings?.use_local_normalization !== use_local_normalization ||
-                             this.lastNormalizationSettings?.use_quantile !== use_quantile;
-
+                              this.normalizationChanged(use_local_normalization, use_quantile);
+        
         let currentFeatures;
         
         if (filtersChanged) {
             // Apply filters
-            // const filterStart = performance.now(); // COMMENTED OUT TIMING
-            this.logMemoryUsage('Before Filtering');
+            const filterStart = performance.now();
             const filteredDataset = window.clientFilterManager.applyFilters(filters);
-            // this.logTiming('Client-side Filtering', performance.now() - filterStart); // COMMENTED OUT TIMING
-            this.logMemoryUsage('After Filtering');
+            this.logTiming('Client-side Filtering', performance.now() - filterStart);
             
             currentFeatures = filteredDataset.features;
             
             // Apply local normalization if needed
             if (use_local_normalization && currentFeatures.length > 0) {
-                // const normStart = performance.now(); // COMMENTED OUT TIMING
-                this.logMemoryUsage('Before Local Normalization');
+                const normStart = performance.now();
                 const normalizedResult = window.clientNormalizationManager.calculateLocalNormalization(
                     currentFeatures, use_quantile
                 );
                 currentFeatures = normalizedResult.features;
-                // this.logTiming('Local Normalization', performance.now() - normStart); // COMMENTED OUT TIMING
-                this.logMemoryUsage('After Local Normalization');
+                this.logTiming('Local Normalization', performance.now() - normStart);
             }
             
             // Update current dataset
@@ -176,90 +138,93 @@ class FireRiskScoring {
             weights, maxParcels, use_local_normalization, use_quantile, currentFeatures
         );
 
-        // const totalTime = performance.now() - start; // COMMENTED OUT TIMING
-        // this.logTiming('Total Processing', totalTime); // COMMENTED OUT TIMING
-
-        console.log('Complete processing finished');
-        this.logMemoryUsage('End of Process Data');
+        const totalTime = performance.now() - start;
+        this.logTiming('Total Processing', totalTime);
+        
+        if (isFirstCalculation) {
+            console.log(`✅ FIRST CLIENT-SIDE CALCULATION: Complete processing finished in ${totalTime.toFixed(1)}ms`);
+            this.firstCalculationDone = true;
+        } else {
+            console.log(`Complete processing finished in ${totalTime.toFixed(1)}ms`);
+        }
         
         return scoringResult;
     }
 
-    // Calculate scores client-side using current filtered dataset
-    calculateScores(weights, maxParcels, use_local_normalization, use_quantile, features = null) {
-        // const start = performance.now(); // COMMENTED OUT TIMING
-        const currentFeatures = features || this.currentDataset?.features || [];
-        console.log(`Starting client-side scoring for ${currentFeatures.length} parcels...`);
-        this.logMemoryUsage('Start of Score Calculation');
+    // Calculate composite scores using weights (client-side)
+    calculateScores(weights, maxParcels = 500, use_local_normalization = false, use_quantile = false, features = null) {
+        const parcelsToScore = features || this.currentDataset?.features || this.completeDataset?.features;
         
-        // Weight normalization
-        // const weightStart = performance.now(); // COMMENTED OUT TIMING
-        const weightVars = ['qtrmi_s', 'neigh1d_s', 'hwui_s', 'hvhsz_s', 'hlfmi_agfb_s', 'par_buf_sl_s', 'hagri_s', 'hfb_s', 'hbrn_s', 'slope_s'];
+        if (!parcelsToScore) {
+            console.error('No data available for scoring.');
+            return null;
+        }
+
+        const start = performance.now();
+        console.log(`Starting client-side scoring for ${parcelsToScore.length} parcels...`);
+
+        // Normalize weights
+        const weightStart = performance.now();
         const totalWeight = Object.values(weights).reduce((sum, w) => sum + w, 0);
         const normalizedWeights = totalWeight > 0 ? 
-            Object.fromEntries(Object.entries(weights).map(([k, v]) => [k, v / totalWeight])) : 
+            Object.fromEntries(Object.entries(weights).map(([k, v]) => [k, v / totalWeight])) :
             weights;
-        // this.logTiming('Weight Normalization', performance.now() - weightStart); // COMMENTED OUT TIMING
+        
+        this.logTiming('Weight Normalization', performance.now() - weightStart);
 
-        // Score calculation
-        // const scoringStart = performance.now(); // COMMENTED OUT TIMING
-        const scoredFeatures = currentFeatures.map(feature => {
-            let score = 0;
-            let scoreComponents = {};
+        // Calculate scores for each parcel
+        const scoringStart = performance.now();
+        const scoredParcels = parcelsToScore.map(parcel => {
+            let compositeScore = 0;
             
-            for (const [weightVar, weight] of Object.entries(normalizedWeights)) {
-                if (weight > 0) {
-                    // Get the score variable name (use quantile version if enabled)
-                    const scoreVar = use_quantile ? weightVar.replace('_s', '_z') : weightVar;
-                    const value = feature.properties[scoreVar] || 0;
-                    const contribution = value * weight;
-                    score += contribution;
-                    scoreComponents[weightVar] = {
-                        value: value,
-                        weight: weight,
-                        contribution: contribution
-                    };
-                }
+            // Get factor scores based on normalization settings
+            const factorScores = window.clientNormalizationManager.getFactorScores(
+                parcel, use_local_normalization, use_quantile
+            );
+            
+            // Calculate weighted sum of factor scores
+            for (const [weightKey, weight] of Object.entries(normalizedWeights)) {
+                const factorScore = factorScores[weightKey] || 0;
+                compositeScore += weight * factorScore;
             }
-            
+
             return {
-                ...feature,
+                ...parcel,
                 properties: {
-                    ...feature.properties,
-                    score: score,
-                    scoreComponents: scoreComponents
+                    ...parcel.properties,
+                    score: compositeScore
                 }
             };
         });
-        // this.logTiming('Score Calculation', performance.now() - scoringStart); // COMMENTED OUT TIMING
 
-        // Sort and rank
-        // const sortingStart = performance.now(); // COMMENTED OUT TIMING
-        scoredFeatures.sort((a, b) => b.properties.score - a.properties.score);
+        this.logTiming('Score Calculation', performance.now() - scoringStart);
+
+        // Sort by score and add ranking
+        const sortingStart = performance.now();
+        scoredParcels.sort((a, b) => b.properties.score - a.properties.score);
         
-        const topFeatures = scoredFeatures.slice(0, maxParcels);
-        topFeatures.forEach((feature, index) => {
-            feature.properties.rank = index + 1;
-            feature.properties.top500 = true;
+        scoredParcels.forEach((parcel, index) => {
+            parcel.properties.rank = index + 1;
+            parcel.properties.top500 = index < maxParcels;
         });
-        // this.logTiming('Sorting and Ranking', performance.now() - sortingStart); // COMMENTED OUT TIMING
 
-        // const totalTime = performance.now() - start; // COMMENTED OUT TIMING
-        // this.logTiming('Client Scoring', totalTime); // COMMENTED OUT TIMING
+        this.logTiming('Sorting and Ranking', performance.now() - sortingStart);
+
+        const totalTime = performance.now() - start;
+        this.logTiming('Client Scoring', totalTime);
+
+        console.log(`Client-side scoring completed in ${totalTime.toFixed(1)}ms`);
         
-        console.log('Client-side scoring completed');
-        this.logMemoryUsage('End of Score Calculation');
-        
-        // Return in AttributeCollection format for compatibility
+        // Store last weights for comparison
+        this.lastWeights = { ...normalizedWeights };
+
         return {
-            type: "AttributeCollection",
-            attributes: scoredFeatures.map(f => ({
-                ...f.properties,
-                top500: f.properties.rank ? true : false,
-                selected_count: topFeatures.length
-            })),
-            selected_count: topFeatures.length,
-            total_count: currentFeatures.length
+            type: "FeatureCollection",
+            features: scoredParcels,
+            total_parcels: scoredParcels.length,
+            selected_count: scoredParcels.filter(p => p.properties.top500).length,
+            client_calculated: true,
+            calculation_time: totalTime
         };
     }
 
@@ -280,18 +245,7 @@ class FireRiskScoring {
     filtersChanged(newFilters) {
         if (!this.lastFilters) return true;
         
-        const oldKeys = Object.keys(this.lastFilters);
-        const newKeys = Object.keys(newFilters);
-        
-        if (oldKeys.length !== newKeys.length) return true;
-        
-        for (const key of newKeys) {
-            if (this.lastFilters[key] !== newFilters[key]) {
-                return true;
-            }
-        }
-        
-        return false;
+        return window.clientFilterManager.filtersChanged(newFilters);
     }
 
     // Check if normalization settings have changed

@@ -1783,7 +1783,7 @@
 
         // Initialize with precomputed scores from vector tiles (no API call)
         async function initializeWithPrecomputedScores() {
-            console.log('INITIALIZING WITH PRECOMPUTED SCORES (no API call)');
+            console.log('🚀 INITIALIZING WITH PRECOMPUTED SCORES (no API call)');
             
             // Set initial statistics based on precomputed default scores  
             document.getElementById('total-parcels').textContent = '62,416';
@@ -1792,23 +1792,23 @@
             document.getElementById('avg-risk').textContent = '0';
             
             // NO blue outlines initially - only show white-red symbology
-            console.log('Initializing without blue outlines - only showing default score colors...');
+            console.log('🔴 Initializing without blue outlines - only showing default score colors...');
             
             // Set empty filter for top 500 layer (no blue outlines initially)
             map.setFilter('parcels-top500', ['==', 'parcel_id', '']);
             
-            console.log('Map initialized with precomputed scores only - ready for Calculate button');
+            console.log('✅ Map initialized with precomputed scores only - ready for Calculate button');
             
             // Auto-trigger calculate button after a short delay to ensure everything is loaded
             setTimeout(() => {
-                console.log('AUTO-TRIGGERING CALCULATE BUTTON...');
+                console.log('🚀 AUTO-TRIGGERING CALCULATE BUTTON...');
                 document.getElementById('calculate-btn').click();
             }, 500);
         }
 
         // Enhanced update scores function with comprehensive client-side processing
         async function updateScores(isFilterChange = false) {
-            // const overallStartTime = performance.now(); // COMMENTED OUT TIMING
+            const overallStartTime = performance.now();
             console.log(`=== ${isFilterChange ? 'FULL LOAD' : 'CLIENT PROCESSING'} STARTED ===`);
             
             document.getElementById('spinner').style.display = 'block';
@@ -1856,8 +1856,8 @@
                             refreshScoreDistributionPlot();
                         }
                         
-                        // const totalTime = performance.now() - overallStartTime; // COMMENTED OUT TIMING
-                        console.log(`=== CLIENT PROCESSING COMPLETED ===`);
+                        const totalTime = performance.now() - overallStartTime;
+                        console.log(`=== CLIENT PROCESSING COMPLETED in ${totalTime.toFixed(1)}ms ===`);
                         return;
                     }
                 }
@@ -1876,17 +1876,17 @@
                 
                 // Store complete dataset for future client-side processing
                 const storedCount = window.fireRiskScoring.storeCompleteData(responseData);
-                console.log(`Stored ${storedCount} parcels for client-side processing`);
+                console.log(`✓ Stored ${storedCount} parcels for client-side processing`);
                 
                 // ALWAYS use client-side score calculation, even on first load
-                console.log('FIRST CLIENT-SIDE CALCULATION STARTING...');
+                console.log('🔄 FIRST CLIENT-SIDE CALCULATION STARTING...');
                 console.log(`   - Weights:`, weights);
                 console.log(`   - Max parcels: ${maxParcels}`);
                 console.log(`   - Local normalization: ${filters.use_local_normalization}`);
                 console.log(`   - Use quantile: ${filters.use_quantile}`);
 
                 
-                // const firstCalcStart = performance.now(); // COMMENTED OUT TIMING
+                const firstCalcStart = performance.now();
                 const clientResult = window.fireRiskScoring.processData(
                     weights, 
                     filters, 
@@ -1894,17 +1894,17 @@
                     filters.use_local_normalization,
                     filters.use_quantile
                 );
-                // const firstCalcTime = performance.now() - firstCalcStart; // COMMENTED OUT TIMING
+                const firstCalcTime = performance.now() - firstCalcStart;
                 
                 // Use client-calculated scores, not server precomputed scores
                 if (clientResult) {
                     currentData = clientResult;
-                    console.log(`FIRST CLIENT-SIDE CALCULATION SUCCEEDED`);
-                    console.log(`   - Calculated scores for ${clientResult.attributes.length} parcels`);
+                    console.log(`✅ FIRST CLIENT-SIDE CALCULATION SUCCEEDED in ${firstCalcTime.toFixed(1)}ms`);
+                    console.log(`   - Calculated scores for ${clientResult.features.length} parcels`);
                     console.log(`   - Top ${clientResult.selected_count} parcels selected`);
                     console.log(`   - Using client-calculated composite scores (not precomputed)`);
                 } else {
-                    console.error(`FIRST CLIENT-SIDE CALCULATION FAILED`);
+                    console.error(`❌ FIRST CLIENT-SIDE CALCULATION FAILED after ${firstCalcTime.toFixed(1)}ms`);
                     console.error('   - Falling back to server precomputed scores');
                     currentData = responseData;
                 }
@@ -1919,8 +1919,8 @@
                     refreshScoreDistributionPlot();
                 }
                 
-                // const totalTime = performance.now() - overallStartTime; // COMMENTED OUT TIMING
-                console.log(`=== INITIAL LOAD COMPLETED ===`);
+                const totalTime = performance.now() - overallStartTime;
+                console.log(`=== INITIAL LOAD COMPLETED in ${totalTime.toFixed(1)}ms ===`);
                 
             } catch (error) {
                 console.error('Error updating scores:', error);
@@ -3177,19 +3177,19 @@
 
         // Map load
         map.on('load', () => {
-            console.log('Map loaded - starting application initialization...');
+            console.log('🚀 Map loaded - starting application initialization...');
             initializeLayers();
             normalizeWeights();
             updateMaxParcels();
             updateSelectionCount(); // Initialize multi-area selection UI
             updateDistributionButtons(); // Initialize distribution buttons with correct score type
-            console.log('Initializing with precomputed scores from vector tiles...');
+            console.log('🎯 Initializing with precomputed scores from vector tiles...');
             initializeWithPrecomputedScores();  // Use precomputed scores, no API call
             
             document.querySelectorAll('input[type="range"]').forEach(slider => {
                 updateSliderFill(slider);
             });
-            console.log('Application initialization complete - map ready with precomputed scores');
+            console.log('✅ Application initialization complete - map ready with precomputed scores');
         });
 
 
