@@ -9,6 +9,7 @@ import os
 import time
 import subprocess
 import sys
+import tempfile
 
 def check_tippecanoe():
     """Check if tippecanoe is installed, install if needed"""
@@ -223,6 +224,69 @@ def generate_densest_tiles(geojson_file):
             print(f"Error details: {e.stderr}")
         return False
 
+def generate_no_scores_tiles(geojson_file):
+    """Generate geometry-only tileset for zoom 10-16 with no scores"""
+    
+    print("\n🔧 GENERATING NO-SCORES TILESET...")
+    print("Strategy: Zoom 10-16 only, no scores, geometry simplification only")
+    
+    # First create a version without scores
+    print("🔄 Creating geometry-only version...")
+    gdf = gpd.read_file(geojson_file)
+    gdf_no_scores = gdf[['parcel_id', 'geometry']].copy()
+    
+    # Write to temporary file
+    with tempfile.NamedTemporaryFile(suffix='.geojson', delete=False) as tmp:
+        temp_geojson = tmp.name
+    
+    gdf_no_scores.to_file(temp_geojson, driver='GeoJSON')
+    temp_size_mb = os.path.getsize(temp_geojson) / (1024 * 1024)
+    print(f"   Temporary no-scores file: {temp_size_mb:.1f} MB")
+    
+    # Generate tiles: zoom 10-16, geometry simplification only
+    cmd = [
+        'tippecanoe',
+        '--output', 'parcels_no_scores.mbtiles',
+        '--force',
+        '--minimum-zoom', '10',             # Start at zoom 10 (no low zoom complexity)
+        '--maximum-zoom', '16',
+        '--base-zoom', '12',                # No simplification at zoom ≥12
+        '--maximum-tile-bytes', '500000',   # 500KB max per tile
+        '--simplification', '2',            # Moderate geometry simplification at z10-11 only
+        '--detect-shared-borders',          # Preserve topology
+        '--buffer', '1',                    # Small tile buffer
+        temp_geojson
+    ]
+    
+    try:
+        print("Generating no-scores tileset...")
+        print("Strategy:")
+        print("  • z10-11: Geometry simplification only (no dropping/coalescing)")
+        print("  • z12-16: Full geometry detail preserved")
+        print("  • No attribute data except parcel_id")
+        
+        result = subprocess.run(cmd, check=True, capture_output=True, text=True)
+        size_mb = os.path.getsize('parcels_no_scores.mbtiles') / (1024 * 1024)
+        print(f"✅ SUCCESS! Generated parcels_no_scores.mbtiles ({size_mb:.1f} MB)")
+        print("   → Zoom 10-16: Pure geometry tileset")
+        print("   → No fire risk scores (for performance testing)")
+        print("   → Minimal file size, maximum geometry detail")
+        
+        # Clean up temporary file
+        os.remove(temp_geojson)
+        print(f"   🗑️  Cleaned up temporary file")
+        
+        return True
+        
+    except subprocess.CalledProcessError as e:
+        print(f"❌ Tile generation failed: {e}")
+        if e.stderr:
+            print(f"Error details: {e.stderr}")
+        # Clean up on failure
+        if os.path.exists(temp_geojson):
+            os.remove(temp_geojson)
+        return False
+
 def convert_parcels_to_geojson():
     """Convert parcels shapefile to GeoJSON with parcel_id for vector tiles"""
     
@@ -270,6 +334,10 @@ def convert_parcels_to_geojson():
     if 'default_score' in gdf.columns:
         essential_columns.append('default_score')
         print("✓ Including default_score (essential for visualization)")
+        # Optimize precision: 18 decimals → 4 decimals (saves ~870KB)
+        print("🔧 Optimizing default_score precision: 18 → 4 decimals")
+        gdf['default_score'] = gdf['default_score'].round(4)
+        print(f"   Precision reduced from avg 18.5 to 6 characters per score")
     else:
         print("⚠️  Warning: default_score not found - parcels will render without color coding")
     
@@ -370,48 +438,54 @@ def main():
         print("Install tippecanoe manually, then run this script again")
         return False
     
-    # Step 3: Generate optimized tiles (Both approaches for comparison)
-    print("\n🔄 GENERATING BOTH TILESET APPROACHES FOR COMPARISON...")
+    # Step 3: Generate all three tileset approaches for comparison
+    print("\n🔄 GENERATING THREE TILESET APPROACHES FOR COMPARISON...")
+    print("   1. Optimized smallest coalescing (z0-16)")
+    print("   2. Optimized densest coalescing (z0-16)")  
+    print("   3. No-scores geometry-only (z10-16)")
     
-    # Generate original coalesce-smallest approach
+    # Generate all three approaches
     smallest_success = generate_optimized_tiles(geojson_file)
-    
-    # Generate new coalesce-densest approach  
     densest_success = generate_densest_tiles(geojson_file)
+    no_scores_success = generate_no_scores_tiles(geojson_file)
     
-    if smallest_success and densest_success:
-        print("\n🎉 SUCCESS! Generated BOTH tilesets for comparison!")
-        print("\n📋 COMPARISON RESULTS:")
-        
+    # Report results
+    success_count = sum([smallest_success, densest_success, no_scores_success])
+    
+    if success_count >= 2:
+        print(f"\n🎉 SUCCESS! Generated {success_count}/3 tilesets!")
         print("\n📂 GENERATED FILES:")
-        if os.path.exists('parcels_complete.mbtiles'):
+        
+        if smallest_success and os.path.exists('parcels_complete.mbtiles'):
             size_mb = os.path.getsize('parcels_complete.mbtiles') / (1024 * 1024)
-            print(f"   parcels_complete.mbtiles ({size_mb:.1f} MB) - Coalesce SMALLEST")
+            print(f"   parcels_complete.mbtiles ({size_mb:.1f} MB) - Coalesce SMALLEST + optimized scores")
         
-        if os.path.exists('parcels_densest.mbtiles'):
+        if densest_success and os.path.exists('parcels_densest.mbtiles'):
             size_mb = os.path.getsize('parcels_densest.mbtiles') / (1024 * 1024)
-            print(f"   parcels_densest.mbtiles ({size_mb:.1f} MB) - Coalesce DENSEST")
+            print(f"   parcels_densest.mbtiles ({size_mb:.1f} MB) - Coalesce DENSEST + optimized scores")
+            
+        if no_scores_success and os.path.exists('parcels_no_scores.mbtiles'):
+            size_mb = os.path.getsize('parcels_no_scores.mbtiles') / (1024 * 1024)
+            print(f"   parcels_no_scores.mbtiles ({size_mb:.1f} MB) - NO SCORES, geometry only z10-16")
         
-        print("\n📋 TESTING BOTH:")
-        print("1. Test smallest approach:")
+        print("\n📋 TESTING ALL THREE:")
+        print("1. Test smallest (z0-16, optimized scores):")
         print("   mbview parcels_complete.mbtiles")
-        print("\n2. Test densest approach:")
+        print("\n2. Test densest (z0-16, optimized scores):")
         print("   mbview parcels_densest.mbtiles")
-        
-        print("\n3. Upload the better one:")
-        print("   mapbox upload theo1158.NEW_ID parcels_[complete|densest].mbtiles")
+        print("\n3. Test no-scores (z10-16, pure geometry):")
+        print("   mbview parcels_no_scores.mbtiles")
         
         print("\n💡 COMPARISON:")
-        print("   📊 SMALLEST: Merges tiniest parcels everywhere")
-        print("   🏘️  DENSEST: Merges parcels in crowded areas, preserves sparse ones")
-        print("   🎯 Test both to see which works better for spatial filtering!")
+        print("   📊 SMALLEST: Merges tiniest parcels, 4-decimal scores")
+        print("   🏘️  DENSEST: Merges dense areas, preserves sparse parcels, 4-decimal scores")
+        print("   ⚡ NO-SCORES: Pure geometry, minimal size, no attributes")
+        print("   🎯 Test all three for performance and spatial filtering!")
         
-    elif smallest_success:
-        print("\n✅ Generated parcels_complete.mbtiles (smallest approach)")
-    elif densest_success:
-        print("\n✅ Generated parcels_densest.mbtiles (densest approach)")
+    elif success_count == 1:
+        print(f"\n⚠️  Generated only 1/3 tilesets successfully")
     else:
-        print("❌ Both tileset generations failed")
+        print("❌ All tileset generations failed")
         return False
         
     return True
