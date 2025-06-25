@@ -1345,7 +1345,16 @@ def generate_solution_files(include_vars, best_weights, weights_pct, total_score
     # Generate LP file
     lp_lines = ["Maximize"]
     obj_terms = []
-    for i, parcel in enumerate(parcel_data):
+    
+    # Handle different data structures for LP file generation
+    if optimization_type == 'relative' and isinstance(parcel_data, dict):
+        # For relative optimization, use selected parcels for LP file
+        parcels_to_process = parcel_data['selected']
+    else:
+        # For absolute optimization, use all parcel data
+        parcels_to_process = parcel_data
+    
+    for i, parcel in enumerate(parcels_to_process):
         for var_base in include_vars_base:
             score = parcel['scores'][var_base]
             if score != 0:
@@ -1528,12 +1537,19 @@ def infer_weights():
             f.write(lp_content)
         with open(os.path.join(session_dir, 'solution.txt'), 'w') as f:
             f.write(txt_content)
+        # Handle different data structures for parcel count in metadata
+        if optimization_type == 'relative' and isinstance(parcel_data, dict):
+            num_parcels = len(parcel_data['selected'])
+        else:
+            num_parcels = len(parcel_data) if isinstance(parcel_data, list) else 0
+
         with open(os.path.join(session_dir, 'metadata.json'), 'w') as f:
             json.dump({
                 'weights': weights_pct,
                 'total_score': total_score,
-                'num_parcels': len(parcel_data),
+                'num_parcels': num_parcels,
                 'solver_status': solver_status,
+                'optimization_type': optimization_type,
                 'timestamp': time.time(),
                 'ttl': time.time() + 3600  # 1 hour expiry
             }, f)
@@ -1546,10 +1562,11 @@ def infer_weights():
         return jsonify({
             "weights": weights_pct,           # ~200 bytes
             "total_score": total_score,       # ~20 bytes
-            "num_parcels": len(parcel_data),  # ~20 bytes
+            "num_parcels": num_parcels,       # ~20 bytes
             "solver_status": solver_status,   # ~20 bytes
             "session_id": session_id,         # ~40 bytes
-            "timing_log": f"Weight inference completed in {total_time:.2f}s for {len(parcel_data)} parcels.",
+            "optimization_type": optimization_type,  # ~20 bytes
+            "timing_log": f"{optimization_type.title()} optimization completed in {total_time:.2f}s for {num_parcels} parcels.",
             "files_available": True           # Files stored on disk, not in memory
         })
         
