@@ -179,6 +179,50 @@ def generate_split_merge_tiles(geojson_file):
             print(f"Error details: {e.stderr}")
         return False
 
+def generate_densest_tiles(geojson_file):
+    """Generate tileset using densest coalescing strategy for better spatial integrity"""
+    
+    print("\n🔧 GENERATING DENSEST COALESCING TILES...")
+    print("Strategy: Coalesce dense areas, preserve sparse areas")
+    
+    # Densest coalescing with shared border detection
+    cmd = [
+        'tippecanoe',
+        '--output', 'parcels_densest.mbtiles',
+        '--force',
+        '--minimum-zoom', '0',              # Start at zoom 0 for complete coverage
+        '--maximum-zoom', '16',
+        '--base-zoom', '12',                # No coalesce/simplify at zoom ≥12
+        '--maximum-tile-bytes', '500000',   # 500KB max per tile (strict limit)
+        '--coalesce-densest-as-needed',     # Merge in DENSE areas, preserve sparse areas
+        '--detect-shared-borders',          # Preserve topology between features
+        '--simplification', '1',            # Only trivial geometry smoothing
+        '--buffer', '1',                    # Small tile buffer
+        geojson_file
+    ]
+    
+    try:
+        print("Generating tileset with densest coalescing...")
+        print("Strategy:")
+        print("  • z0-11: Coalesce DENSE areas + preserve sparse parcels (≤500KB/tile)")
+        print("  • z12-16: Full detail preservation (no coalescing/simplification)")
+        print("  • Better spatial integrity for filtering")
+        
+        result = subprocess.run(cmd, check=True, capture_output=True, text=True)
+        size_mb = os.path.getsize('parcels_densest.mbtiles') / (1024 * 1024)
+        print(f"✅ SUCCESS! Generated parcels_densest.mbtiles ({size_mb:.1f} MB)")
+        print("   → Zoom 0-11: Dense areas coalesced, sparse areas preserved")
+        print("   → Zoom 12-16: 100% of parcels, full geometry detail")
+        print("   → Shared borders preserved for topology")
+        
+        return True
+        
+    except subprocess.CalledProcessError as e:
+        print(f"❌ Tile generation failed: {e}")
+        if e.stderr:
+            print(f"Error details: {e.stderr}")
+        return False
+
 def convert_parcels_to_geojson():
     """Convert parcels shapefile to GeoJSON with parcel_id for vector tiles"""
     
@@ -326,39 +370,51 @@ def main():
         print("Install tippecanoe manually, then run this script again")
         return False
     
-    # Step 3: Generate optimized tiles (Coalesce approach)
-    if generate_optimized_tiles(geojson_file):
-        print("\n🎉 SUCCESS! Complete tileset with coalescing at low zoom and full detail at high zoom!")
-        print("\n📋 RESULT ACHIEVED:")
-        print("✅ Attributes: Stripped to bare essentials (parcel_id + default_score only)")
-        print("✅ Zoom 0-11: Coalesced smallest parcels, 500KB tile limit")
-        print("✅ Zoom 12-16: 100% of parcels, full geometry detail")
-        print("✅ All parcels visible at every zoom level (no missing data)")
+    # Step 3: Generate optimized tiles (Both approaches for comparison)
+    print("\n🔄 GENERATING BOTH TILESET APPROACHES FOR COMPARISON...")
+    
+    # Generate original coalesce-smallest approach
+    smallest_success = generate_optimized_tiles(geojson_file)
+    
+    # Generate new coalesce-densest approach  
+    densest_success = generate_densest_tiles(geojson_file)
+    
+    if smallest_success and densest_success:
+        print("\n🎉 SUCCESS! Generated BOTH tilesets for comparison!")
+        print("\n📋 COMPARISON RESULTS:")
         
-        print("\n📂 GENERATED FILE:")
+        print("\n📂 GENERATED FILES:")
         if os.path.exists('parcels_complete.mbtiles'):
             size_mb = os.path.getsize('parcels_complete.mbtiles') / (1024 * 1024)
-            print(f"   parcels_complete.mbtiles ({size_mb:.1f} MB)")
+            print(f"   parcels_complete.mbtiles ({size_mb:.1f} MB) - Coalesce SMALLEST")
         
-        print("\n📋 NEXT STEPS:")
-        print("1. Test locally (optional):")
-        print("   npm install -g @mapbox/mbview")
+        if os.path.exists('parcels_densest.mbtiles'):
+            size_mb = os.path.getsize('parcels_densest.mbtiles') / (1024 * 1024)
+            print(f"   parcels_densest.mbtiles ({size_mb:.1f} MB) - Coalesce DENSEST")
+        
+        print("\n📋 TESTING BOTH:")
+        print("1. Test smallest approach:")
         print("   mbview parcels_complete.mbtiles")
-        print("\n2. Upload to Mapbox Studio:")
-        print("   mapbox upload theo1158.NEW_TILESET_ID parcels_complete.mbtiles")
-        print("\n3. Update your Mapbox tileset reference to use the new tileset")
-        print("\n4. Remove minzoom/maxzoom from your Mapbox GL JS layer style")
+        print("\n2. Test densest approach:")
+        print("   mbview parcels_densest.mbtiles")
         
-        print("\n💡 STRATEGY:")
-        print("   🎯 Complete zoom range 0-16 with intelligent coalescing")
-        print("   ✨ Parcels visible at ALL zoom levels")
-        print("   🔄 Coalesce smallest parcels at z0-11, preserve all at z12-16")
-        print("   📐 500KB tile limit ensures fast loading")
+        print("\n3. Upload the better one:")
+        print("   mapbox upload theo1158.NEW_ID parcels_[complete|densest].mbtiles")
         
-        return True
+        print("\n💡 COMPARISON:")
+        print("   📊 SMALLEST: Merges tiniest parcels everywhere")
+        print("   🏘️  DENSEST: Merges parcels in crowded areas, preserves sparse ones")
+        print("   🎯 Test both to see which works better for spatial filtering!")
+        
+    elif smallest_success:
+        print("\n✅ Generated parcels_complete.mbtiles (smallest approach)")
+    elif densest_success:
+        print("\n✅ Generated parcels_densest.mbtiles (densest approach)")
     else:
-        print("❌ Tile generation failed")
+        print("❌ Both tileset generations failed")
         return False
+        
+    return True
 
 if __name__ == "__main__":
     success = main()
