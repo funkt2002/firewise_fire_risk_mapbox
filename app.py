@@ -1246,6 +1246,12 @@ def solve_weight_optimization(parcel_data, include_vars):
         unselected_parcels = parcel_data['unselected']
         logger.info(f"RELATIVE OPTIMIZATION: {len(selected_parcels):,} selected vs {len(unselected_parcels):,} unselected parcels, {len(include_vars_base)} variables")
         
+        # DEBUG: Log structure of first parcel to understand data format
+        if selected_parcels:
+            sample_parcel = selected_parcels[0]
+            logger.info(f"DEBUG: Sample parcel structure - Keys: {list(sample_parcel.keys())}")
+            logger.info(f"DEBUG: Sample parcel content: {sample_parcel}")
+        
         # STEP 1: Constraint-based approach - ensure at least one selected parcel ranks in top N
         # This is a more complex optimization that guarantees actual top ranking
         
@@ -1266,7 +1272,11 @@ def solve_weight_optimization(parcel_data, include_vars):
             # Count how many parcels could potentially beat this score
             competitors = 0
             for parcel in all_parcels:
-                if parcel['parcel_id'] != sel_parcel['parcel_id']:
+                # Use 'id' field (as processed by process_parcel_scores)
+                sel_id = sel_parcel.get('id', str(id(sel_parcel)))  # Use object id as fallback
+                parcel_id = parcel.get('id', str(id(parcel)))  # Use object id as fallback
+                
+                if parcel_id != sel_id:
                     competitor_max = sum(parcel['scores'][var_base] for var_base in include_vars_base if parcel['scores'][var_base] > 0)
                     if competitor_max > max_possible_score:
                         competitors += 1
@@ -1363,7 +1373,9 @@ def solve_weight_optimization(parcel_data, include_vars):
         for parcel in all_parcels:
             sim_score = sum(best_weights[include_vars[i]] * parcel['scores'][var_base] 
                           for i, var_base in enumerate(include_vars_base))
-            all_simulated_scores.append((parcel['parcel_id'], sim_score, parcel in selected_parcels))
+            # Use 'id' field (as processed by process_parcel_scores)
+            parcel_id = parcel.get('id', str(id(parcel)))
+            all_simulated_scores.append((parcel_id, sim_score, parcel in selected_parcels))
         
         # Sort by score and check rankings
         all_simulated_scores.sort(key=lambda x: x[1], reverse=True)
