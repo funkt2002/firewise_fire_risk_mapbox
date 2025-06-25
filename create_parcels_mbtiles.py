@@ -65,6 +65,7 @@ def create_mbtiles(input_file, output_file, options=None):
         '--simplify-only-low-zooms',     # Critical: Only simplify below base-zoom (12)
         '--full-detail', '12',           # Start full detail at z12 (no simplification z12-16)
         '--low-detail', '8',             # Lower detail for z10-11 to reduce tile sizes
+        '--no-tiny-polygon-reduction-at-maximum-zoom',  # No polygon reduction at max zoom
         
         # Feature limits - more restrictive for z10-11 to stay under 500k
         '--maximum-tile-features', '40000',   # Tighter limit for z10-11 performance
