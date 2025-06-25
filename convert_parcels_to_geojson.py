@@ -36,41 +36,39 @@ def check_tippecanoe():
         return False
 
 def generate_optimized_tiles(geojson_file):
-    """Generate single optimized tileset with geometry simplification instead of coalescing"""
+    """Generate single optimized tileset with coalesced data at z0-11 and full detail at z12-16"""
     
     print("\n🔧 GENERATING OPTIMIZED TILES...")
-    print("Complete tileset: zoom 0-16, simplification at z0-11, full detail at z12+")
+    print("Complete tileset: zoom 0-16, coalesced at z0-11, full detail at z12+")
     
-    # Use simplification instead of coalescing to preserve spatial integrity
+    # One-step Tippecanoe with coalesce & re-encode (zoom 0-16)
     cmd = [
         'tippecanoe',
         '--output', 'parcels_complete.mbtiles',
         '--force',
         '--minimum-zoom', '0',              # Start at zoom 0 for complete coverage
         '--maximum-zoom', '16',
-        '--base-zoom', '12',                # No simplification at zoom ≥12
+        '--base-zoom', '12',                # No coalesce/simplify at zoom ≥12
         '--maximum-tile-bytes', '500000',   # 500KB max per tile (strict limit)
-        '--drop-smallest-as-needed',        # Drop only when absolutely necessary
-        '--simplification', '2',            # Geometry simplification (higher = more aggressive)
+        '--coalesce-smallest-as-needed',    # Merge tiny parcels, don't drop them
+        '--simplification', '1',            # Only trivial geometry smoothing
         '--detect-shared-borders',          # Collapse shared edges
         '--buffer', '1',                    # Small tile buffer
-        '--preserve-input-order',           # Maintain spatial relationships
         geojson_file
     ]
     
     try:
-        print("Generating tileset with geometry simplification...")
+        print("Generating complete tileset with coalescing...")
         print("Strategy:")
-        print("  • z0-11: Simplified geometry + drop smallest only when needed (≤500KB/tile)")
-        print("  • z12-16: Full detail preservation (no dropping/simplification)")
-        print("  • Preserves spatial integrity for filtering")
+        print("  • z0-11: Coalesce smallest parcels + minimal simplification (≤500KB/tile)")
+        print("  • z12-16: Full detail preservation (no coalescing/simplification)")
         
         result = subprocess.run(cmd, check=True, capture_output=True, text=True)
         size_mb = os.path.getsize('parcels_complete.mbtiles') / (1024 * 1024)
         print(f"✅ SUCCESS! Generated parcels_complete.mbtiles ({size_mb:.1f} MB)")
-        print("   → Zoom 0-11: Simplified geometry, spatial integrity preserved")
+        print("   → Zoom 0-11: Coalesced smallest parcels, 500KB tile limit")
         print("   → Zoom 12-16: 100% of parcels, full geometry detail")
-        print("   → Spatial filtering will work correctly")
+        print("   → All parcels visible at every zoom level")
         
         return True
         
@@ -328,34 +326,34 @@ def main():
         print("Install tippecanoe manually, then run this script again")
         return False
     
-    # Step 3: Generate optimized tiles (Split & Merge approach)
-    if generate_split_merge_tiles(geojson_file):
-        print("\n🎉 SUCCESS! Split & merge tileset with fine-tuned zoom optimization!")
+    # Step 3: Generate optimized tiles (Coalesce approach)
+    if generate_optimized_tiles(geojson_file):
+        print("\n🎉 SUCCESS! Complete tileset with coalescing at low zoom and full detail at high zoom!")
         print("\n📋 RESULT ACHIEVED:")
         print("✅ Attributes: Stripped to bare essentials (parcel_id + default_score only)")
-        print("✅ Zoom 0-11: Minimal simplification, 500KB tile limit")
-        print("✅ Zoom 12-16: Maximum precision, all parcel details preserved")
-        print("✅ Spatial integrity maintained throughout")
+        print("✅ Zoom 0-11: Coalesced smallest parcels, 500KB tile limit")
+        print("✅ Zoom 12-16: 100% of parcels, full geometry detail")
+        print("✅ All parcels visible at every zoom level (no missing data)")
         
         print("\n📂 GENERATED FILE:")
-        if os.path.exists('parcels_split_merge.mbtiles'):
-            size_mb = os.path.getsize('parcels_split_merge.mbtiles') / (1024 * 1024)
-            print(f"   parcels_split_merge.mbtiles ({size_mb:.1f} MB)")
+        if os.path.exists('parcels_complete.mbtiles'):
+            size_mb = os.path.getsize('parcels_complete.mbtiles') / (1024 * 1024)
+            print(f"   parcels_complete.mbtiles ({size_mb:.1f} MB)")
         
         print("\n📋 NEXT STEPS:")
         print("1. Test locally (optional):")
         print("   npm install -g @mapbox/mbview")
-        print("   mbview parcels_split_merge.mbtiles")
+        print("   mbview parcels_complete.mbtiles")
         print("\n2. Upload to Mapbox Studio:")
-        print("   mapbox upload theo1158.NEW_TILESET_ID parcels_split_merge.mbtiles")
+        print("   mapbox upload theo1158.NEW_TILESET_ID parcels_complete.mbtiles")
         print("\n3. Update your Mapbox tileset reference to use the new tileset")
-        print("\n4. Test spatial filtering functionality")
+        print("\n4. Remove minzoom/maxzoom from your Mapbox GL JS layer style")
         
         print("\n💡 STRATEGY:")
-        print("   🎯 Split & merge: separate optimization per zoom range")
-        print("   ✨ Low zoom: simplified but complete spatial coverage")
-        print("   🔍 High zoom: maximum precision for detailed analysis")
-        print("   📐 Fine-tuned tile sizes: 500KB low-zoom, 750KB high-zoom")
+        print("   🎯 Complete zoom range 0-16 with intelligent coalescing")
+        print("   ✨ Parcels visible at ALL zoom levels")
+        print("   🔄 Coalesce smallest parcels at z0-11, preserve all at z12-16")
+        print("   📐 500KB tile limit ensures fast loading")
         
         return True
     else:
