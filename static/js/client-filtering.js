@@ -57,22 +57,11 @@ class ClientFilterManager {
             filteredFeatures = this.applySpatialFilter(filteredFeatures, filters.subset_area, window.map);
             this.logTiming('Spatial Filtering', performance.now() - spatialStart);
         } else {
-            // Clear spatial filter - show all parcels
+            // Clear spatial filter tracking
             if (window.spatialFilterActive) {
                 window.spatialFilterActive = false;
                 window.spatialFilterParcelIds.clear();
-                console.log(`VECTOR TILES: Cleared spatial filter - showing all parcels`);
-                
-                // Remove map layer filters to show all parcels
-                if (window.map && window.map.isStyleLoaded()) {
-                    try {
-                        window.map.setFilter('parcels-fill', null);
-                        window.map.setFilter('parcels-boundary', null);
-                        console.log(`VECTOR TILES: Removed spatial filter from map layers`);
-                    } catch (e) {
-                        console.warn(`VECTOR TILES: Could not remove map filter:`, e);
-                    }
-                }
+                console.log(`VECTOR TILES: Cleared spatial filter tracking`);
             }
         }
 
@@ -81,6 +70,9 @@ class ClientFilterManager {
             type: "FeatureCollection",
             features: filteredFeatures
         };
+
+        // Update map visibility using paint expressions (much more efficient than setFilter)
+        this.updateMapVisibility(filteredFeatures);
 
         const totalTime = performance.now() - start;
         this.logTiming('Total Filtering', totalTime);
@@ -239,23 +231,12 @@ class ClientFilterManager {
 
             console.log(`VECTOR TILES: Spatial filter reduced from ${features.length} to ${filteredFeatures.length} parcels`);
             
-            // Update global spatial filter state for map styling
+            // Update global spatial filter state for tracking
             window.spatialFilterActive = true;
             window.spatialFilterParcelIds = new Set(filteredFeatures.map(f => f.properties.parcel_id.toString()));
             console.log(`VECTOR TILES: Spatial filter activated with ${window.spatialFilterParcelIds.size} parcels`);
             
-            // Update map layers to only show filtered parcels
-            if (window.map && window.map.isStyleLoaded()) {
-                const filterExpression = ['in', ['to-string', ['get', 'parcel_id']], ['literal', Array.from(window.spatialFilterParcelIds)]];
-                
-                try {
-                    window.map.setFilter('parcels-fill', filterExpression);
-                    window.map.setFilter('parcels-boundary', filterExpression);
-                    console.log(`VECTOR TILES: Applied spatial filter to map layers`);
-                } catch (e) {
-                    console.warn(`VECTOR TILES: Could not apply map filter:`, e);
-                }
-            }
+            // Note: Map visibility will be updated by updateMapVisibility() method using paint expressions
             
             // DEBUG: Enhanced debugging for troubleshooting
             if (filteredFeatures.length === 0 && visibleParcelIds.size > 0 && features.length > 0) {
@@ -340,6 +321,64 @@ class ClientFilterManager {
 
     getTimings() {
         return { ...this.timings };
+    }
+
+    // NEW: Update map visibility to show only filtered parcels
+    updateMapVisibility(filteredFeatures) {
+        if (!window.map || !window.map.isStyleLoaded()) {
+            console.warn('VECTOR TILES: Map not ready for visibility update');
+            return;
+        }
+
+        try {
+            if (filteredFeatures.length === this.completeDataset.features.length) {
+                // All parcels pass filters - show all parcels normally
+                console.log('VECTOR TILES: All parcels pass filters - showing all parcels normally');
+                
+                // Remove any filters and use normal paint properties
+                window.map.setFilter('parcels-fill', null);
+                window.map.setFilter('parcels-boundary', null);
+                
+                // Reset to normal paint properties (will be overridden by score-based colors in updateMap())
+                window.map.setPaintProperty('parcels-fill', 'fill-opacity', 0.8);
+                window.map.setPaintProperty('parcels-boundary', 'line-opacity', 0.3);
+                
+                console.log('VECTOR TILES: Reset to normal visibility for all parcels');
+            } else {
+                // Some parcels filtered out - use paint expressions to make excluded parcels transparent
+                console.log(`VECTOR TILES: Applying transparency to show ${filteredFeatures.length} of ${this.completeDataset.features.length} parcels`);
+                
+                // Create lookup object for visible parcels (more efficient than arrays)
+                const visibleParcelIds = {};
+                filteredFeatures.forEach(f => {
+                    visibleParcelIds[f.properties.parcel_id.toString()] = true;
+                });
+                
+                // Remove any existing filters since we're using paint expressions now
+                window.map.setFilter('parcels-fill', null);
+                window.map.setFilter('parcels-boundary', null);
+                
+                // Update fill opacity: normal for included parcels, transparent for excluded
+                window.map.setPaintProperty('parcels-fill', 'fill-opacity', [
+                    'case',
+                    ['has', ['to-string', ['get', 'parcel_id']], ['literal', visibleParcelIds]],
+                    0.8,  // Normal opacity for included parcels
+                    0.05  // Very faint for excluded parcels (so we can see it working)
+                ]);
+                
+                // Update boundary opacity: normal for included parcels, very faint for excluded
+                window.map.setPaintProperty('parcels-boundary', 'line-opacity', [
+                    'case',
+                    ['has', ['to-string', ['get', 'parcel_id']], ['literal', visibleParcelIds]],
+                    0.3,   // Normal opacity for included parcels  
+                    0.1    // Very faint outline for excluded parcels
+                ]);
+                
+                console.log('VECTOR TILES: Applied transparency-based filtering to map layers');
+            }
+        } catch (e) {
+            console.warn('VECTOR TILES: Could not update map visibility:', e);
+        }
     }
 }
 
