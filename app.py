@@ -1114,18 +1114,33 @@ def prepare_data():
 # ====================
 
 def get_parcel_scores_for_optimization(data, include_vars):
-    """Get parcel scores within selection area(s) for optimization - uses client-sent scores"""
+    """Get parcel scores for optimization - handles both absolute and relative modes"""
     
     # Correct any corrupted variable names
     include_vars = correct_variable_names(include_vars)
     logger.info(f"Processing include_vars: {include_vars}")
     
-    # Client must send pre-computed parcel scores for consistency
-    parcel_scores_data = data.get('parcel_scores')
-    if not parcel_scores_data:
-        raise ValueError("No client-computed parcel scores provided. Client must send 'parcel_scores' array for optimization.")
+    # Get optimization type
+    optimization_type = data.get('optimization_type', 'absolute')
+    logger.info(f"Optimization type: {optimization_type}")
     
-    logger.info(f"Using pre-computed scores from client for {len(parcel_scores_data)} parcels")
+    # Get parcel score data
+    if optimization_type == 'relative':
+        # Relative mode: need both selected and unselected parcels
+        selected_scores_data = data.get('selected_parcel_scores', [])
+        unselected_scores_data = data.get('unselected_parcel_scores', [])
+        
+        if not selected_scores_data:
+            raise ValueError("No selected parcel scores provided for relative optimization.")
+        
+        logger.info(f"Relative optimization: {len(selected_scores_data)} selected, {len(unselected_scores_data)} unselected parcels")
+    else:
+        # Absolute mode: backward compatibility with old 'parcel_scores' key
+        parcel_scores_data = data.get('selected_parcel_scores') or data.get('parcel_scores')
+        if not parcel_scores_data:
+            raise ValueError("No client-computed parcel scores provided. Client must send parcel scores for optimization.")
+        
+        logger.info(f"Absolute optimization: {len(parcel_scores_data)} selected parcels")
     
     # Process variable names to get base names (remove suffixes)
     include_vars_base = []
@@ -1138,84 +1153,157 @@ def get_parcel_scores_for_optimization(data, include_vars):
     
     logger.info(f"Base variables: {include_vars_base}")
     
-    # Format client data for optimization - directly use the sent scores
-    parcel_data = []
-    for parcel in parcel_scores_data:
-        parcel_scores = {}
-        client_scores = parcel.get('scores', {})
-        
-        # Map the client scores to our expected format
-        for var_base in include_vars_base:
-            # Client might send scores with suffixes, try different keys
-            score_value = None
-            for suffix in ['_s', '_z', '']:
-                key = var_base + suffix
-                if key in client_scores:
-                    score_value = client_scores[key]
-                    break
+    def process_parcel_scores(parcel_list):
+        """Helper to process parcel scores consistently"""
+        processed_parcels = []
+        for parcel in parcel_list:
+            parcel_scores = {}
+            client_scores = parcel.get('scores', {})
             
-            if score_value is not None:
-                try:
-                    parcel_scores[var_base] = float(score_value)
-                except (ValueError, TypeError):
-                    logger.warning(f"Could not convert score value {score_value} for {var_base}")
+            # Map the client scores to our expected format
+            for var_base in include_vars_base:
+                # Client might send scores with suffixes, try different keys
+                score_value = None
+                for suffix in ['_s', '_z', '']:
+                    key = var_base + suffix
+                    if key in client_scores:
+                        score_value = client_scores[key]
+                        break
+                
+                if score_value is not None:
+                    try:
+                        parcel_scores[var_base] = float(score_value)
+                    except (ValueError, TypeError):
+                        logger.warning(f"Could not convert score value {score_value} for {var_base}")
+                        parcel_scores[var_base] = 0.0
+                else:
+                    logger.warning(f"No score found for {var_base} in client data")
                     parcel_scores[var_base] = 0.0
-            else:
-                logger.warning(f"No score found for {var_base} in client data")
-                parcel_scores[var_base] = 0.0
+            
+            processed_parcels.append({
+                'id': parcel.get('parcel_id'),
+                'scores': parcel_scores
+            })
+        return processed_parcels
+    
+    # Process data based on optimization type
+    if optimization_type == 'relative':
+        selected_parcels = process_parcel_scores(selected_scores_data)
+        unselected_parcels = process_parcel_scores(unselected_scores_data)
         
-        parcel_data.append({
-            'id': parcel.get('parcel_id'),
-            'scores': parcel_scores
-        })
-    
-    logger.info(f"Successfully processed {len(parcel_data)} parcels from client")
-    
-    # Log sample data for debugging
-    if parcel_data:
-        sample = parcel_data[0]
-        logger.info(f"Sample parcel data - ID: {sample['id']}, Scores: {sample['scores']}")
-    
-    # Log selection area info
-    selection_areas = data.get('selection_areas', [])
-    if selection_areas:
-        area_types = [area.get('type', 'unknown') for area in selection_areas]
-        logger.info(f"Multi-area optimization: {len(selection_areas)} areas ({', '.join(area_types)}) containing {len(parcel_data)} parcels")
+        # Return dictionary with both datasets
+        result = {
+            'type': 'relative',
+            'selected': selected_parcels,
+            'unselected': unselected_parcels
+        }
+        
+        logger.info(f"Relative optimization: processed {len(selected_parcels)} selected and {len(unselected_parcels)} unselected parcels")
+        
+        # Log sample data for debugging
+        if selected_parcels:
+            sample = selected_parcels[0]
+            logger.info(f"Sample selected parcel - ID: {sample['id']}, Scores: {sample['scores']}")
+        if unselected_parcels:
+            sample = unselected_parcels[0]
+            logger.info(f"Sample unselected parcel - ID: {sample['id']}, Scores: {sample['scores']}")
+            
+        return result
+        
     else:
-        logger.info(f"Single-area optimization containing {len(parcel_data)} parcels")
-    
-    return parcel_data
+        # Absolute mode: return selected parcels only (backward compatibility)
+        selected_parcels = process_parcel_scores(parcel_scores_data)
+        
+        logger.info(f"Absolute optimization: processed {len(selected_parcels)} selected parcels")
+        
+        # Log sample data for debugging
+        if selected_parcels:
+            sample = selected_parcels[0]
+            logger.info(f"Sample parcel data - ID: {sample['id']}, Scores: {sample['scores']}")
+        
+        # Log selection area info
+        selection_areas = data.get('selection_areas', [])
+        if selection_areas:
+            area_types = [area.get('type', 'unknown') for area in selection_areas]
+            logger.info(f"Multi-area optimization: {len(selection_areas)} areas ({', '.join(area_types)}) containing {len(selected_parcels)} parcels")
+        else:
+            logger.info(f"Single-area optimization containing {len(selected_parcels)} parcels")
+        
+        return selected_parcels
 
 def solve_weight_optimization(parcel_data, include_vars):
-    """Memory-efficient LP solver - aggregates coefficients first"""
+    """Memory-efficient LP solver - handles both absolute and relative optimization"""
     import gc
     
     # Process variable names efficiently
     include_vars_base = [var[:-2] if var.endswith(('_s', '_q', '_z')) else var for var in include_vars]
     
-    logger.info(f"EFFICIENT: Starting optimization for {len(parcel_data):,} parcels, {len(include_vars_base)} variables")
+    # Check if this is relative optimization based on data structure
+    is_relative = isinstance(parcel_data, dict) and parcel_data.get('type') == 'relative'
     
-    # STEP 1: Pre-aggregate coefficients (instead of 500K terms, just 10)
-    coefficients = {}
-    for var_base in include_vars_base:
-        total_score = sum(parcel['scores'][var_base] for parcel in parcel_data)
-        coefficients[var_base] = total_score
-        logger.info(f"Aggregated {var_base}: {total_score:.2f} (sum of {len(parcel_data):,} parcel scores)")
+    if is_relative:
+        selected_parcels = parcel_data['selected']
+        unselected_parcels = parcel_data['unselected']
+        logger.info(f"RELATIVE OPTIMIZATION: {len(selected_parcels):,} selected vs {len(unselected_parcels):,} unselected parcels, {len(include_vars_base)} variables")
+        
+        # STEP 1: Calculate relative coefficients (mean_selected - mean_unselected)
+        coefficients = {}
+        for var_base in include_vars_base:
+            # Calculate mean scores for selected parcels
+            selected_scores = [parcel['scores'][var_base] for parcel in selected_parcels]
+            selected_mean = sum(selected_scores) / len(selected_scores) if selected_scores else 0
+            
+            # Calculate mean scores for unselected parcels  
+            unselected_scores = [parcel['scores'][var_base] for parcel in unselected_parcels]
+            unselected_mean = sum(unselected_scores) / len(unselected_scores) if unselected_scores else 0
+            
+            # Relative coefficient = difference in means
+            coefficients[var_base] = selected_mean - unselected_mean
+            
+            logger.info(f"RELATIVE {var_base}: selected_mean={selected_mean:.4f}, unselected_mean={unselected_mean:.4f}, diff={coefficients[var_base]:.4f}")
+        
+        # Calculate total score for reporting (selected parcels only)
+        def calculate_total_score(weights):
+            return sum(
+                weights[include_vars[i]] * parcel['scores'][var_base]
+                for parcel in selected_parcels
+                for i, var_base in enumerate(include_vars_base)
+            )
+            
+    else:
+        # Absolute optimization (backward compatibility)
+        logger.info(f"ABSOLUTE OPTIMIZATION: {len(parcel_data):,} parcels, {len(include_vars_base)} variables")
+        
+        # STEP 1: Pre-aggregate coefficients (sum of all selected scores)
+        coefficients = {}
+        for var_base in include_vars_base:
+            total_score = sum(parcel['scores'][var_base] for parcel in parcel_data)
+            coefficients[var_base] = total_score
+            logger.info(f"ABSOLUTE {var_base}: {total_score:.2f} (sum of {len(parcel_data):,} parcel scores)")
+        
+        # Calculate total score for reporting
+        def calculate_total_score(weights):
+            return sum(
+                weights[include_vars[i]] * parcel['scores'][var_base]
+                for parcel in parcel_data 
+                for i, var_base in enumerate(include_vars_base)
+            )
     
-    # STEP 2: Create lightweight LP problem (only 10 terms!)
+    # STEP 2: Create lightweight LP problem (only 10 terms for both modes!)
     prob = LpProblem("Maximize_Score", LpMaximize)
     w_vars = LpVariable.dicts('w', include_vars_base, lowBound=0)
     
-    # Create objective with just 10 terms instead of 500,000!
+    # Create objective with aggregated coefficients
     objective = lpSum(w_vars[var] * coefficients[var] for var in include_vars_base)
     prob += objective
     
-    logger.info(f"EFFICIENT: Created LP with {len(include_vars_base)} terms (vs {len(parcel_data) * len(include_vars_base):,} in old method)")
+    optimization_type = "RELATIVE" if is_relative else "ABSOLUTE"
+    logger.info(f"{optimization_type}: Created LP with {len(include_vars_base)} terms")
     
     # STEP 3: Add constraint
     prob += lpSum(w_vars[var] for var in include_vars_base) == 1
     
-    # STEP 4: Solve (now much smaller problem for CBC)
+    # STEP 4: Solve
     solver_result = prob.solve(COIN_CMD(msg=False))
     
     # STEP 5: Extract solution (preserve original suffixes)
@@ -1225,12 +1313,8 @@ def solve_weight_optimization(parcel_data, include_vars):
         original_var = include_vars[i]
         best_weights[original_var] = value(w_vars[var_base])
     
-    # STEP 6: Calculate total score using original method for accuracy
-    total_score = sum(
-        best_weights[include_vars[i]] * parcel['scores'][var_base]
-        for parcel in parcel_data 
-        for i, var_base in enumerate(include_vars_base)
-    )
+    # STEP 6: Calculate total score for reporting
+    total_score = calculate_total_score(best_weights)
     
     # STEP 7: Clean up immediately
     del prob
@@ -1238,12 +1322,12 @@ def solve_weight_optimization(parcel_data, include_vars):
     del coefficients
     gc.collect()
     
-    logger.info(f"EFFICIENT: LP solved and cleaned up. Memory optimized!")
+    logger.info(f"{optimization_type}: LP solved and cleaned up. Memory optimized!")
     
     return best_weights, total_score, LpStatus[solver_result]
 
 def generate_solution_files(include_vars, best_weights, weights_pct, total_score, 
-                           parcel_data, request_data):
+                           parcel_data, request_data, optimization_type='absolute'):
     """Generate LP and TXT solution files"""
     # Process variable names - properly remove only the suffix, not all occurrences
     include_vars_base = []
@@ -1304,18 +1388,63 @@ def generate_solution_files(include_vars, best_weights, weights_pct, total_score
     else:
         area_info = "Selection Area: Single area"
     
+    # Handle different data structures for parcel count
+    if optimization_type == 'relative' and isinstance(parcel_data, dict):
+        parcel_count = len(parcel_data['selected'])
+        unselected_count = len(parcel_data['unselected'])
+        avg_score = total_score / parcel_count if parcel_count > 0 else 0
+    else:
+        parcel_count = len(parcel_data) if isinstance(parcel_data, list) else 0
+        unselected_count = 0
+        avg_score = total_score / parcel_count if parcel_count > 0 else 0
+    
+    optimization_title = f"{optimization_type.upper()} OPTIMIZATION RESULTS"
+    if selection_areas:
+        optimization_title = f"MULTI-AREA {optimization_title}"
+    
     txt_lines.extend([
-        "=" * 50,
-        "MULTI-AREA OPTIMIZATION RESULTS" if selection_areas else "OPTIMIZATION RESULTS",
-        "=" * 50,
+        "=" * 60,
+        optimization_title,
+        "=" * 60,
         "",
         area_info,
-        f"Total Score: {total_score:.2f}",
-        f"Parcels: {len(parcel_data):,}",
-        f"Average Score: {total_score/len(parcel_data):.3f}",
+    ])
+    
+    if optimization_type == 'relative':
+        txt_lines.extend([
+            "",
+            "OPTIMIZATION TYPE: Relative Ranking",
+            "OBJECTIVE: Find weights that make selected areas rank highest vs entire county",
+            "",
+            f"Selected parcels analyzed: {parcel_count:,}",
+            f"Unselected parcels compared: {unselected_count:,}",
+            f"Total score of selected parcels: {total_score:.2f}",
+            f"Average score of selected parcels: {avg_score:.3f}",
+            "",
+            "MATHEMATICAL APPROACH:",
+            "  maximize (mean_score_selected - mean_score_unselected)",
+            "  This finds weights that maximize the difference between your",
+            "  selected areas and the general population of parcels.",
+        ])
+    else:
+        txt_lines.extend([
+            "",
+            "OPTIMIZATION TYPE: Absolute Maximization", 
+            "OBJECTIVE: Maximize total risk score within selected areas",
+            "",
+            f"Total parcels analyzed: {parcel_count:,}",
+            f"Total optimized score: {total_score:.2f}",
+            f"Average score: {avg_score:.3f}",
+            "",
+            "MATHEMATICAL APPROACH:",
+            "  maximize sum(score_i for all selected parcels i)",
+            "  This finds weights that give highest total scores to your selection.",
+        ])
+    
+    txt_lines.extend([
         "",
         "OPTIMAL WEIGHTS:",
-        "-" * 20
+        "-" * 30
     ])
     
     sorted_weights = sorted(weights_pct.items(), key=lambda x: x[1], reverse=True)
@@ -1369,6 +1498,9 @@ def infer_weights():
         if not parcel_data:
             return jsonify({"error": "No parcels found in selection"}), 400
         
+        # Get optimization type
+        optimization_type = data.get('optimization_type', 'absolute')
+        
         # Solve optimization problem
         best_weights, total_score, solver_status = solve_weight_optimization(
             parcel_data, include_vars
@@ -1381,7 +1513,7 @@ def infer_weights():
         weights_pct = {var: round(best_weights[var] * 100, 1) for var in best_weights}
         lp_content, txt_content = generate_solution_files(
             include_vars, best_weights, weights_pct, total_score, 
-            parcel_data, data
+            parcel_data, data, optimization_type
         )
         
         # Create session ID and directory for file storage

@@ -1173,6 +1173,27 @@
         <div class="control-section">
             <h2>Weight Inference</h2>
             <p style="font-size: 11px; color: #aaa; margin-bottom: 10px;">Draw multiple areas to optimize weights for combined selection</p>
+            
+            <!-- Optimization Type Selection -->
+            <div style="margin-bottom: 12px; padding: 8px; background: rgba(255,255,255,0.05); border-radius: 3px;">
+                <h4 style="font-size: 11px; color: #aaa; margin-bottom: 6px;">Optimization Type:</h4>
+                <div class="toggle-container">
+                    <label class="toggle-label">
+                        <input type="radio" name="optimization-type" id="optimization-absolute" value="absolute" checked>
+                        Absolute: Maximize scores in selection
+                    </label>
+                </div>
+                <div class="toggle-container">
+                    <label class="toggle-label">
+                        <input type="radio" name="optimization-type" id="optimization-relative" value="relative">
+                        Relative: Make selection rank highest vs all parcels
+                    </label>
+                </div>
+                <div id="relative-info" style="font-size: 10px; color: #888; margin-top: 4px; display: none;">
+                    ℹ️ Relative optimization finds weights that make your selected areas stand out from the entire county dataset
+                </div>
+            </div>
+            
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 5px;">
                 <button class="button" id="draw-rectangle">Add Rectangle</button>
                 <button class="button" id="draw-lasso">Add Lasso</button>
@@ -1191,7 +1212,10 @@
                                         <button class="button" id="download-lp-btn" disabled>Download .LP File</button>
                             <button class="button" id="download-txt-btn" disabled>Download .TXT Report</button>
                             <button class="button" id="view-solution-btn" disabled>View Solution Report</button>
-            <p style="font-size: 10px; color: #888; margin: 5px 0;">↑ Maximizes total risk score across all selected areas</p>
+            <div id="optimization-description" style="font-size: 10px; color: #888; margin: 5px 0;">
+                <span id="absolute-desc">↑ Maximizes total risk score across all selected areas</span>
+                <span id="relative-desc" style="display: none;">↑ Finds weights that make selected areas rank highest compared to entire county</span>
+            </div>
             
 
         </div>
@@ -2398,6 +2422,23 @@
         document.getElementById('clear-all-selections').addEventListener('click', () => {
             clearAllSelectionAreas();
         });
+
+        // Optimization type toggle handlers
+        document.getElementById('optimization-absolute').addEventListener('change', () => {
+            if (document.getElementById('optimization-absolute').checked) {
+                document.getElementById('relative-info').style.display = 'none';
+                document.getElementById('absolute-desc').style.display = 'inline';
+                document.getElementById('relative-desc').style.display = 'none';
+            }
+        });
+
+        document.getElementById('optimization-relative').addEventListener('change', () => {
+            if (document.getElementById('optimization-relative').checked) {
+                document.getElementById('relative-info').style.display = 'block';
+                document.getElementById('absolute-desc').style.display = 'none';
+                document.getElementById('relative-desc').style.display = 'inline';
+            }
+        });
         
         // Subset selection event handlers
         document.getElementById('subset-rectangle').addEventListener('click', () => {
@@ -2444,20 +2485,22 @@
         function collectParcelScoresInSelection() {
             if (!currentData || !currentData.features) {
                 console.error('No current data available for score collection');
-                return [];
+                return { selectedParcels: [], unselectedParcels: [] };
             }
 
             if (!window.turf) {
                 console.error('Turf.js not available for geometry operations');
-                return [];
+                return { selectedParcels: [], unselectedParcels: [] };
             }
 
             const use_quantile = document.getElementById('use-quantile').checked;
             const use_local_normalization = document.getElementById('use-local-normalization').checked;
+            const optimizationType = document.querySelector('input[name="optimization-type"]:checked').value;
             
-            console.log(`Collecting parcel scores: quantile=${use_quantile}, local=${use_local_normalization}`);
+            console.log(`Collecting parcel scores: quantile=${use_quantile}, local=${use_local_normalization}, type=${optimizationType}`);
 
             const selectedParcels = [];
+            const unselectedParcels = [];
             const turf = window.turf;
             const selectedParcelIds = new Set();
 
@@ -2497,35 +2540,67 @@
 
             console.log(`Found ${selectedParcelIds.size} unique parcels in selection areas`);
 
-            // Now get the factor scores for each selected parcel
-            for (const parcelId of selectedParcelIds) {
-                // Get attributes for this parcel
+            // Function to get factor scores for a parcel
+            function getParcelFactorScores(parcelId) {
                 const attributes = window.fireRiskScoring.getAttributesByParcelId(parcelId);
                 if (!attributes) {
-                    console.warn(`No attributes found for parcel ${parcelId}`);
-                    continue;
+                    return null;
                 }
 
-                // Create a fake feature object for the normalization manager
                 const fakeFeature = {
                     type: "Feature",
                     geometry: null,
                     properties: attributes
                 };
 
-                // Get factor scores from the normalization manager
-                const factorScores = window.clientNormalizationManager.getFactorScores(
+                return window.clientNormalizationManager.getFactorScores(
                     fakeFeature, use_local_normalization, use_quantile
                 );
-
-                selectedParcels.push({
-                    parcel_id: parcelId,
-                    scores: factorScores
-                });
             }
 
-            console.log(`Collected scores for ${selectedParcels.length} parcels in selection areas`);
-            return selectedParcels;
+            // Collect selected parcel scores
+            for (const parcelId of selectedParcelIds) {
+                const factorScores = getParcelFactorScores(parcelId);
+                if (factorScores) {
+                    selectedParcels.push({
+                        parcel_id: parcelId,
+                        scores: factorScores
+                    });
+                }
+            }
+
+            // For relative optimization, collect ALL parcel scores (selected + unselected)
+            if (optimizationType === 'relative') {
+                console.log('🔄 RELATIVE MODE: Collecting scores for all parcels in dataset...');
+                const allParcelIds = window.fireRiskScoring.getAllParcelIds();
+                console.log(`Processing ${allParcelIds.length} total parcels for relative optimization`);
+                
+                const startTime = performance.now();
+                let processedCount = 0;
+                
+                for (const parcelId of allParcelIds) {
+                    if (!selectedParcelIds.has(parcelId)) {
+                        const factorScores = getParcelFactorScores(parcelId);
+                        if (factorScores) {
+                            unselectedParcels.push({
+                                parcel_id: parcelId,
+                                scores: factorScores
+                            });
+                        }
+                    }
+                    
+                    processedCount++;
+                    if (processedCount % 10000 === 0) {
+                        console.log(`Processed ${processedCount}/${allParcelIds.length} parcels (${(processedCount/allParcelIds.length*100).toFixed(1)}%)`);
+                    }
+                }
+                
+                const totalTime = performance.now() - startTime;
+                console.log(`✅ RELATIVE MODE: Collected ${unselectedParcels.length} unselected parcels in ${totalTime.toFixed(1)}ms`);
+            }
+
+            console.log(`Collected scores for ${selectedParcels.length} selected parcels and ${unselectedParcels.length} unselected parcels`);
+            return { selectedParcels, unselectedParcels };
         }
 
         // Multi-area infer weights handler
@@ -2547,8 +2622,8 @@
             }
 
             // Collect parcel scores from client-side calculations
-            const parcelScores = collectParcelScoresInSelection();
-            if (parcelScores.length === 0) {
+            const parcelScoreData = collectParcelScoresInSelection();
+            if (parcelScoreData.selectedParcels.length === 0) {
                 alert('No parcels found in selection areas. Please ensure selection areas overlap with parcels.');
                 return;
             }
@@ -2565,16 +2640,19 @@
             document.getElementById('spinner').style.display = 'block';
 
             try {
-                console.log(`Optimizing weights for ${selectionAreas.length} selection areas:`, 
+                const optimizationType = document.querySelector('input[name="optimization-type"]:checked').value;
+                console.log(`Optimizing weights for ${selectionAreas.length} selection areas (${optimizationType} mode):`, 
                     selectionAreas.map(area => area.type));
-                console.log(`Sending ${parcelScores.length} parcel scores to server for optimization`);
+                console.log(`Sending ${parcelScoreData.selectedParcels.length} selected and ${parcelScoreData.unselectedParcels.length} unselected parcel scores to server`);
 
                 const data = await window.apiClient.inferWeights({
                     selection: combinedSelection,
                     selection_areas: selectionAreas, // Send all individual areas for reference
                     max_parcels: maxParcels,
                     include_vars: includeVars,
-                    parcel_scores: parcelScores, // NEW: Send calculated scores
+                    selected_parcel_scores: parcelScoreData.selectedParcels, // NEW: Send selected scores
+                    unselected_parcel_scores: parcelScoreData.unselectedParcels, // NEW: Send unselected scores (for relative mode)
+                    optimization_type: optimizationType, // NEW: Send optimization type
                     use_quantile: document.getElementById('use-quantile').checked,
                     ...getCurrentFilters()
                 });
