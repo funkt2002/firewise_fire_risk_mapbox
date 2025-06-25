@@ -56,18 +56,19 @@ def create_mbtiles(input_file, output_file, options=None):
         '--layer', 'parcels_with_score',  # Layer name
         '--minimum-zoom', '10',  # Start at zoom 10
         '--maximum-zoom', '16',  # Go up to zoom 16
-        '--base-zoom', '12',     # Use zoom 12 as base for detail
+        '--base-zoom', '12',     # Use zoom 12 as base - no simplification at z12+ 
         '--drop-rate', '0',      # Don't drop features at higher zooms
         '--buffer', '5',         # Small buffer to prevent edge artifacts
         
-        # Precision settings - aggressive simplification for z10-11, full detail for z12-16
-        '--simplification', '2',         # More aggressive simplification for low zooms (lower = more simplified)
-        '--full-detail', '12',           # High detail level starting at z12
+        # Precision settings - simplification ONLY for z10-11, NO simplification for z12-16
+        '--simplification', '1',         # Minimal simplification for z10-11 to stay under 500k
+        '--simplify-only-low-zooms',     # Critical: Only simplify below base-zoom (12)
+        '--full-detail', '12',           # Start full detail at z12 (no simplification z12-16)
         '--low-detail', '8',             # Lower detail for z10-11 to reduce tile sizes
         
-        # Feature limits - reduced for z10-11 performance
-        '--maximum-tile-features', '50000',   # Reduced limit for better z10-11 performance
-        '--maximum-tile-bytes', '500000',     # 500KB tile size limit for z10 compatibility
+        # Feature limits - more restrictive for z10-11 to stay under 500k
+        '--maximum-tile-features', '40000',   # Tighter limit for z10-11 performance
+        '--maximum-tile-bytes', '500000',     # 500KB tile size limit for z10-11 compatibility
         
         # Attribute preservation
         '--include', 'parcel_id',     # Always include parcel ID
@@ -92,6 +93,8 @@ def create_mbtiles(input_file, output_file, options=None):
         # Zoom-specific detail preservation
         '--preserve-input-order', # Maintain feature order
         '--extend-zooms-if-still-dropping',  # Extend zooms to preserve features
+        
+
         
         input_file
     ]
@@ -211,7 +214,6 @@ def main():
         'coalesce-fraction-as-needed': True,
         
         # Ensure parcel boundaries remain accurate at higher zooms
-        'simplify-only-low-zooms': True,
         'detect-shared-borders': True,
         
         # Increase gamma for more aggressive overlapping feature removal
