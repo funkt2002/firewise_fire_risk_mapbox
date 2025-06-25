@@ -82,6 +82,72 @@ class PlottingManager {
         return variable;
     }
 
+    // Helper function to get short labels for correlation plots
+    getShortLabel(variable) {
+        const shortMap = {
+            // Raw variables
+            'qtrmi_cnt': 'Structures<br>(1/4 mi)',
+            'hlfmi_wui': 'WUI Coverage<br>(1/2 mi)',
+            'hlfmi_agri': 'Agriculture<br>(1/2 mi)', 
+            'hlfmi_vhsz': 'Fire Hazard<br>(1/2 mi)',
+            'hlfmi_fb': 'Fuel Breaks<br>(1/2 mi)',
+            'slope_s': 'Parcel<br>Slope',
+            'neigh1_d': 'Neighbor<br>Distance',
+            'hlfmi_brn': 'Burn Scars<br>(1/2 mi)',
+            'par_buf_sl': 'Structure<br>Slope (100ft)',
+            'hlfmi_agfb': 'Agri & Fuel<br>(1/2 mi)',
+            
+            // Score variables
+            'qtrmi_s': 'Structures<br>(1/4 mi)',
+            'hwui_s': 'WUI Coverage<br>(1/2 mi)',
+            'hagri_s': 'Agriculture<br>(1/2 mi)',
+            'hvhsz_s': 'Fire Hazard<br>(1/2 mi)',
+            'hfb_s': 'Fuel Breaks<br>(1/2 mi)',
+            'slope_s': 'Parcel<br>Slope',
+            'neigh1d_s': 'Neighbor<br>Distance',
+            'hbrn_s': 'Burn Scars<br>(1/2 mi)',
+            'par_buf_sl_s': 'Structure<br>Slope (100ft)',
+            'hlfmi_agfb_s': 'Agri & Fuel<br>(1/2 mi)',
+            
+            // Quantile score variables
+            'qtrmi_z': 'Structures<br>(1/4 mi)',
+            'hwui_z': 'WUI Coverage<br>(1/2 mi)',
+            'hagri_z': 'Agriculture<br>(1/2 mi)',
+            'hvhsz_z': 'Fire Hazard<br>(1/2 mi)',
+            'hfb_z': 'Fuel Breaks<br>(1/2 mi)',
+            'slope_z': 'Parcel<br>Slope',
+            'neigh1d_z': 'Neighbor<br>Distance',
+            'hbrn_z': 'Burn Scars<br>(1/2 mi)',
+            'par_buf_sl_z': 'Structure<br>Slope (100ft)',
+            'hlfmi_agfb_z': 'Agri & Fuel<br>(1/2 mi)'
+        };
+        
+        // Direct lookup
+        if (shortMap[variable]) {
+            return shortMap[variable];
+        }
+        
+        // If it's a score variable, try without suffix
+        if (variable.endsWith('_s') || variable.endsWith('_z')) {
+            const baseVar = variable.slice(0, -2);
+            const rawVar = this.rawVarMap[baseVar];
+            if (rawVar && shortMap[rawVar]) {
+                return shortMap[rawVar];
+            }
+        }
+        
+        // If it's a raw variable in rawVarMap, get the short label
+        if (this.rawVarMap[variable]) {
+            const mappedVar = this.rawVarMap[variable];
+            if (shortMap[mappedVar]) {
+                return shortMap[mappedVar];
+            }
+        }
+        
+        // Fallback to variable name
+        return variable;
+    }
+
     // Calculate Pearson correlation coefficient
     calculateCorrelation(x, y) {
         const n = x.length;
@@ -219,7 +285,7 @@ class PlottingManager {
             }
             
             correlations.push(correlation);
-            labels.push(this.getVariableTitle(rawVar));
+            labels.push(this.getShortLabel(rawVar));
         }
         
         // Create bar chart showing correlations
@@ -257,7 +323,8 @@ class PlottingManager {
             font: { color: '#fff' },
             xaxis: {
                 title: 'Variables',
-                tickangle: -45,
+                tickangle: 0,  // No angle needed with stacked short labels
+                tickfont: { size: 11 },
                 gridcolor: 'rgba(255,255,255,0.1)',
                 zerolinecolor: 'rgba(255,255,255,0.1)'
             },
@@ -270,7 +337,7 @@ class PlottingManager {
             },
             showlegend: false,
             height: 500,
-            margin: { l: 60, r: 20, t: 80, b: 120 },
+            margin: { l: 60, r: 20, t: 80, b: 140 },  // More bottom margin for 2-line labels
             annotations: [{
                 x: 0.02,
                 y: 0.98,
@@ -355,7 +422,7 @@ class PlottingManager {
         
         for (let i = 0; i < variables.length; i++) {
             correlationMatrix[i] = [];
-            labels[i] = this.getVariableTitle(this.rawVarMap[variables[i]]);
+            labels[i] = this.getShortLabel(this.rawVarMap[variables[i]]);
             
             for (let j = 0; j < variables.length; j++) {
                 if (i === j) {
@@ -418,16 +485,18 @@ class PlottingManager {
             font: { color: '#fff' },
             xaxis: {
                 title: 'Variables',
-                tickangle: -45,
+                tickangle: 0,  // No angle needed with stacked short labels
+                tickfont: { size: 10 },
                 side: 'bottom'
             },
             yaxis: {
                 title: 'Variables',
+                tickfont: { size: 10 },
                 autorange: 'reversed'
             },
             width: 700,
             height: 700,
-            margin: { l: 150, r: 50, t: 80, b: 150 }
+            margin: { l: 120, r: 50, t: 80, b: 120 }  // Reduced margins with shorter labels
         };
 
         // Add text annotations for each cell
