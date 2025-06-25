@@ -3013,7 +3013,7 @@
                 id: 'parcels-fill',
                 type: 'fill',
                 source: 'parcel-tiles',
-                'source-layer': 'parcels_no_scores', // Layer name from no-scores tileset
+                'source-layer': 'parcels_with_score', // Layer name that was working before
                 minzoom: 10, // Start at zoom 10 (no-scores tileset range)
                 maxzoom: 22,
                 layout: {
@@ -3029,7 +3029,7 @@
                 id: 'parcels-boundary',
                 type: 'line',
                 source: 'parcel-tiles',
-                'source-layer': 'parcels_no_scores',
+                'source-layer': 'parcels_with_score',
                 minzoom: 10, // Show boundaries at zoom 10+ (matches tileset range)
                 maxzoom: 22,
                 layout: {
