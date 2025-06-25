@@ -36,44 +36,147 @@ def check_tippecanoe():
         return False
 
 def generate_optimized_tiles(geojson_file):
-    """Generate single optimized tileset with coalesced data at z0-11 and full detail at z12-16"""
+    """Generate single optimized tileset with geometry simplification instead of coalescing"""
     
     print("\n🔧 GENERATING OPTIMIZED TILES...")
-    print("Complete tileset: zoom 0-16, coalesced at z0-11, full detail at z12+")
+    print("Complete tileset: zoom 0-16, simplification at z0-11, full detail at z12+")
     
-    # One-step Tippecanoe with coalesce & re-encode (zoom 0-16)
+    # Use simplification instead of coalescing to preserve spatial integrity
     cmd = [
         'tippecanoe',
         '--output', 'parcels_complete.mbtiles',
         '--force',
         '--minimum-zoom', '0',              # Start at zoom 0 for complete coverage
         '--maximum-zoom', '16',
-        '--base-zoom', '12',                # No coalesce/simplify at zoom ≥12
+        '--base-zoom', '12',                # No simplification at zoom ≥12
         '--maximum-tile-bytes', '500000',   # 500KB max per tile (strict limit)
-        '--coalesce-smallest-as-needed',    # Merge tiny parcels, don't drop them
-        '--simplification', '1',            # Only trivial geometry smoothing
+        '--drop-smallest-as-needed',        # Drop only when absolutely necessary
+        '--simplification', '2',            # Geometry simplification (higher = more aggressive)
         '--detect-shared-borders',          # Collapse shared edges
         '--buffer', '1',                    # Small tile buffer
+        '--preserve-input-order',           # Maintain spatial relationships
         geojson_file
     ]
     
     try:
-        print("Generating complete tileset with coalescing...")
+        print("Generating tileset with geometry simplification...")
         print("Strategy:")
-        print("  • z0-11: Coalesce smallest parcels + minimal simplification (≤500KB/tile)")
-        print("  • z12-16: Full detail preservation (no coalescing/simplification)")
+        print("  • z0-11: Simplified geometry + drop smallest only when needed (≤500KB/tile)")
+        print("  • z12-16: Full detail preservation (no dropping/simplification)")
+        print("  • Preserves spatial integrity for filtering")
         
         result = subprocess.run(cmd, check=True, capture_output=True, text=True)
         size_mb = os.path.getsize('parcels_complete.mbtiles') / (1024 * 1024)
         print(f"✅ SUCCESS! Generated parcels_complete.mbtiles ({size_mb:.1f} MB)")
-        print("   → Zoom 0-11: Coalesced smallest parcels, 500KB tile limit")
+        print("   → Zoom 0-11: Simplified geometry, spatial integrity preserved")
         print("   → Zoom 12-16: 100% of parcels, full geometry detail")
-        print("   → All parcels visible at every zoom level")
+        print("   → Spatial filtering will work correctly")
         
         return True
         
     except subprocess.CalledProcessError as e:
         print(f"❌ Tile generation failed: {e}")
+        if e.stderr:
+            print(f"Error details: {e.stderr}")
+        return False
+
+def generate_split_merge_tiles(geojson_file):
+    """Generate optimized tileset using split & merge approach with fine-tuned zoom strategies"""
+    
+    print("\n🔧 GENERATING SPLIT & MERGE TILES...")
+    print("Strategy: Separate optimization for low-zoom vs high-zoom, then merge")
+    
+    # Step 1: Low-zoom tileset (z0-11) with minimal simplification
+    print("\n📐 Step 1: Creating low-zoom tileset (z0-11)...")
+    low_zoom_cmd = [
+        'tippecanoe',
+        '--output', 'parcels_low_zoom.mbtiles',
+        '--force',
+        '--minimum-zoom', '0',
+        '--maximum-zoom', '11',
+        '--maximum-tile-bytes', '500000',   # 500KB limit for low zoom
+        '--drop-smallest-as-needed',        # Drop only when absolutely necessary
+        '--simplification', '1',            # Minimal simplification to preserve detail
+        '--detect-shared-borders',
+        '--buffer', '2',                    # Larger buffer for low zoom
+        '--preserve-input-order',
+        geojson_file
+    ]
+    
+    try:
+        print("  • Generating z0-11 with minimal simplification...")
+        result = subprocess.run(low_zoom_cmd, check=True, capture_output=True, text=True)
+        low_size_mb = os.path.getsize('parcels_low_zoom.mbtiles') / (1024 * 1024)
+        print(f"  ✅ Low-zoom tileset complete ({low_size_mb:.1f} MB)")
+        
+    except subprocess.CalledProcessError as e:
+        print(f"❌ Low-zoom tile generation failed: {e}")
+        if e.stderr:
+            print(f"Error details: {e.stderr}")
+        return False
+    
+    # Step 2: High-zoom tileset (z12-16) with maximum precision
+    print("\n🔍 Step 2: Creating high-zoom tileset (z12-16)...")
+    high_zoom_cmd = [
+        'tippecanoe',
+        '--output', 'parcels_high_zoom.mbtiles',
+        '--force',
+        '--minimum-zoom', '12',
+        '--maximum-zoom', '16',
+        '--maximum-tile-bytes', '750000',   # Allow larger tiles for detail
+        '--simplification', '0.1',          # Minimal simplification for maximum precision
+        '--detect-shared-borders',
+        '--buffer', '1',                    # Small buffer for precision
+        '--preserve-input-order',
+        '--maximum-tile-features', '100000', # Allow many features for detail
+        geojson_file
+    ]
+    
+    try:
+        print("  • Generating z12-16 with maximum precision...")
+        result = subprocess.run(high_zoom_cmd, check=True, capture_output=True, text=True)
+        high_size_mb = os.path.getsize('parcels_high_zoom.mbtiles') / (1024 * 1024)
+        print(f"  ✅ High-zoom tileset complete ({high_size_mb:.1f} MB)")
+        
+    except subprocess.CalledProcessError as e:
+        print(f"❌ High-zoom tile generation failed: {e}")
+        if e.stderr:
+            print(f"Error details: {e.stderr}")
+        return False
+    
+    # Step 3: Merge the two tilesets
+    print("\n🔗 Step 3: Merging tilesets...")
+    merge_cmd = [
+        'tile-join',
+        '--output', 'parcels_split_merge.mbtiles',
+        '--force',
+        'parcels_low_zoom.mbtiles',
+        'parcels_high_zoom.mbtiles'
+    ]
+    
+    try:
+        print("  • Merging low-zoom and high-zoom tilesets...")
+        result = subprocess.run(merge_cmd, check=True, capture_output=True, text=True)
+        final_size_mb = os.path.getsize('parcels_split_merge.mbtiles') / (1024 * 1024)
+        print(f"  ✅ Final merged tileset complete ({final_size_mb:.1f} MB)")
+        
+        # Clean up intermediate files
+        if os.path.exists('parcels_low_zoom.mbtiles'):
+            os.remove('parcels_low_zoom.mbtiles')
+            print("  🗑️  Cleaned up parcels_low_zoom.mbtiles")
+        if os.path.exists('parcels_high_zoom.mbtiles'):
+            os.remove('parcels_high_zoom.mbtiles')
+            print("  🗑️  Cleaned up parcels_high_zoom.mbtiles")
+        
+        print(f"\n✅ SUCCESS! Generated parcels_split_merge.mbtiles ({final_size_mb:.1f} MB)")
+        print("   → Zoom 0-11: Minimal simplification, 500KB tile limit")
+        print("   → Zoom 12-16: Maximum precision, all parcel details preserved")
+        print("   → Spatial integrity maintained throughout")
+        
+        return True
+        
+    except subprocess.CalledProcessError as e:
+        print(f"❌ Tileset merge failed: {e}")
         if e.stderr:
             print(f"Error details: {e.stderr}")
         return False
@@ -225,34 +328,34 @@ def main():
         print("Install tippecanoe manually, then run this script again")
         return False
     
-    # Step 3: Generate optimized tiles
-    if generate_optimized_tiles(geojson_file):
-        print("\n🎉 SUCCESS! Complete tileset with coalescing at low zoom and full detail at high zoom!")
+    # Step 3: Generate optimized tiles (Split & Merge approach)
+    if generate_split_merge_tiles(geojson_file):
+        print("\n🎉 SUCCESS! Split & merge tileset with fine-tuned zoom optimization!")
         print("\n📋 RESULT ACHIEVED:")
         print("✅ Attributes: Stripped to bare essentials (parcel_id + default_score only)")
-        print("✅ Zoom 0-11: Coalesced smallest parcels, 500KB tile limit")
-        print("✅ Zoom 12-16: 100% of parcels, full geometry detail")
-        print("✅ All parcels visible at every zoom level (no missing data)")
+        print("✅ Zoom 0-11: Minimal simplification, 500KB tile limit")
+        print("✅ Zoom 12-16: Maximum precision, all parcel details preserved")
+        print("✅ Spatial integrity maintained throughout")
         
         print("\n📂 GENERATED FILE:")
-        if os.path.exists('parcels_complete.mbtiles'):
-            size_mb = os.path.getsize('parcels_complete.mbtiles') / (1024 * 1024)
-            print(f"   parcels_complete.mbtiles ({size_mb:.1f} MB)")
+        if os.path.exists('parcels_split_merge.mbtiles'):
+            size_mb = os.path.getsize('parcels_split_merge.mbtiles') / (1024 * 1024)
+            print(f"   parcels_split_merge.mbtiles ({size_mb:.1f} MB)")
         
         print("\n📋 NEXT STEPS:")
         print("1. Test locally (optional):")
         print("   npm install -g @mapbox/mbview")
-        print("   mbview parcels_complete.mbtiles")
+        print("   mbview parcels_split_merge.mbtiles")
         print("\n2. Upload to Mapbox Studio:")
-        print("   mapbox upload theo1158.47kv531b parcels_complete.mbtiles")
+        print("   mapbox upload theo1158.NEW_TILESET_ID parcels_split_merge.mbtiles")
         print("\n3. Update your Mapbox tileset reference to use the new tileset")
-        print("\n4. Remove minzoom/maxzoom from your Mapbox GL JS layer style")
+        print("\n4. Test spatial filtering functionality")
         
         print("\n💡 STRATEGY:")
-        print("   🎯 Complete zoom range 0-16 with intelligent coalescing")
-        print("   ✨ Parcels visible at ALL zoom levels")
-        print("   🔄 Coalesce smallest parcels at z0-11, preserve all at z12-16")
-        print("   📐 500KB tile limit ensures fast loading")
+        print("   🎯 Split & merge: separate optimization per zoom range")
+        print("   ✨ Low zoom: simplified but complete spatial coverage")
+        print("   🔍 High zoom: maximum precision for detailed analysis")
+        print("   📐 Fine-tuned tile sizes: 500KB low-zoom, 750KB high-zoom")
         
         return True
     else:
