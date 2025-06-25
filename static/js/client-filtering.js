@@ -188,18 +188,39 @@ class ClientFilterManager {
                 mapInstance.project([bbox[2], bbox[3]])  // NE corner
             ];
 
-            // Query visible vector tile features in expanded bounding box
+            // Query visible vector tile features in bounding box (required by Mapbox API)
             const visibleFeatures = mapInstance.queryRenderedFeatures(
                 pixelBounds, 
                 { 
                     layers: ['parcels-fill'],
-                    validate: false  // Skip validation for better performance and coverage
+                    validate: false  // Skip validation for better performance
                 }
             );
 
-            // Extract parcel IDs from visible features
+            console.log(`VECTOR TILES: Found ${visibleFeatures.length} parcels in bounding box`);
+
+            // MISSING STEP: Filter to parcels that actually intersect the drawn polygon
+            const geometricallyFilteredFeatures = [];
+            if (window.turf && window.turf.booleanIntersects) {
+                for (const feature of visibleFeatures) {
+                    try {
+                        if (window.turf.booleanIntersects(feature, polygon)) {
+                            geometricallyFilteredFeatures.push(feature);
+                        }
+                    } catch (e) {
+                        // Skip features that cause geometry errors
+                        console.warn('VECTOR TILES: Geometry intersection failed for feature, skipping');
+                    }
+                }
+                console.log(`VECTOR TILES: Geometric intersection reduced from ${visibleFeatures.length} to ${geometricallyFilteredFeatures.length} parcels`);
+            } else {
+                console.warn('VECTOR TILES: Turf.js booleanIntersects not available, using bbox-only filtering');
+                geometricallyFilteredFeatures.push(...visibleFeatures);
+            }
+
+            // Extract parcel IDs from geometrically filtered features
             const visibleParcelIds = new Set();
-            visibleFeatures.forEach(feature => {
+            geometricallyFilteredFeatures.forEach(feature => {
                 // Check both feature.id and feature.properties.parcel_id
                 const parcelId = feature.id || feature.properties.parcel_id;
                 if (parcelId) {
@@ -207,25 +228,10 @@ class ClientFilterManager {
                 }
             });
 
-            console.log(`VECTOR TILES: Spatial filter found ${visibleParcelIds.size} visible parcels in viewport`);
+            console.log(`VECTOR TILES: Spatial filter found ${visibleParcelIds.size} parcels actually intersecting drawn shape`);
             console.log(`VECTOR TILES: Current zoom level: ${mapInstance.getZoom().toFixed(1)}`);
             
-            // DEBUG: Log sample parcel IDs from vector tiles
-            const sampleVectorIds = Array.from(visibleParcelIds).slice(0, 5);
-            console.log(`VECTOR TILES DEBUG: Sample vector tile parcel IDs:`, sampleVectorIds);
-            
-            // DEBUG: Log sample parcel IDs from stored features  
-            const sampleStoredIds = features.slice(0, 5).map(f => f.properties.parcel_id);
-            console.log(`VECTOR TILES DEBUG: Sample stored feature parcel IDs:`, sampleStoredIds);
-
-            // DEBUG: Check all properties of first vector tile feature
-            if (visibleFeatures.length > 0) {
-                console.log(`VECTOR TILES DEBUG: First vector tile feature properties:`, visibleFeatures[0].properties);
-                console.log(`VECTOR TILES DEBUG: First vector tile feature.id:`, visibleFeatures[0].id);
-                console.log(`VECTOR TILES DEBUG: All property keys:`, Object.keys(visibleFeatures[0].properties || {}));
-            }
-
-            // Filter input features to only those visible in viewport
+            // Filter input features to only those that intersect the drawn polygon
             const filteredFeatures = features.filter(feature => {
                 const parcelId = feature.properties.parcel_id;
                 return parcelId && visibleParcelIds.has(parcelId.toString());
@@ -251,21 +257,20 @@ class ClientFilterManager {
                 }
             }
             
-            // DEBUG: If no matches, log more details
+            // DEBUG: Enhanced debugging for troubleshooting
             if (filteredFeatures.length === 0 && visibleParcelIds.size > 0 && features.length > 0) {
                 console.log(`VECTOR TILES DEBUG: NO MATCHES FOUND!`);
-                console.log(`VECTOR TILES DEBUG: Vector tile feature structure:`, visibleFeatures[0]);
-                console.log(`VECTOR TILES DEBUG: Stored feature structure:`, features[0]);
-                console.log(`VECTOR TILES DEBUG: Checking first stored parcel ID ${features[0].properties.parcel_id} against vector tile IDs...`);
-                console.log(`VECTOR TILES DEBUG: Vector tile has this ID?`, visibleParcelIds.has(features[0].properties.parcel_id.toString()));
+                console.log(`VECTOR TILES DEBUG: Query bounds:`, pixelBounds);
+                console.log(`VECTOR TILES DEBUG: Polygon bbox:`, bbox);
+                console.log(`VECTOR TILES DEBUG: Found ${visibleFeatures.length} vector tile features in bbox`);
+                console.log(`VECTOR TILES DEBUG: Found ${geometricallyFilteredFeatures.length} features after geometric intersection`);
+                console.log(`VECTOR TILES DEBUG: Extracted ${visibleParcelIds.size} unique parcel IDs`);
                 
-                // Try to find any matching IDs by checking different formats
-                const firstStoredId = features[0].properties.parcel_id;
-                console.log(`VECTOR TILES DEBUG: Testing ID formats for ${firstStoredId}:`);
-                console.log(`VECTOR TILES DEBUG: - As string: ${visibleParcelIds.has(String(firstStoredId))}`);
-                console.log(`VECTOR TILES DEBUG: - As number: ${visibleParcelIds.has(Number(firstStoredId))}`);
-                console.log(`VECTOR TILES DEBUG: - With p_ prefix: ${visibleParcelIds.has('p_' + firstStoredId)}`);
-                console.log(`VECTOR TILES DEBUG: - Without p_ prefix: ${visibleParcelIds.has(String(firstStoredId).replace('p_', ''))}`);
+                // Sample comparison
+                const sampleVectorIds = Array.from(visibleParcelIds).slice(0, 3);
+                const sampleStoredIds = features.slice(0, 3).map(f => f.properties.parcel_id);
+                console.log(`VECTOR TILES DEBUG: Sample vector IDs:`, sampleVectorIds);
+                console.log(`VECTOR TILES DEBUG: Sample stored IDs:`, sampleStoredIds);
             }
             
             return filteredFeatures;
