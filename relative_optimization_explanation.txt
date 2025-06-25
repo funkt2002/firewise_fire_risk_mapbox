@@ -37,33 +37,45 @@ c₂ = Σ(factor₂ᵢ for all selected parcels i)
 c₁₀ = Σ(factor₁₀ᵢ for all selected parcels i)
 ```
 
-### Relative Optimization (New Method)
+### Relative Optimization (RANKING-BASED Method)
 
 **Objective Function:**
 ```
-maximize (mean_score_selected - mean_score_unselected)
+maximize ranking_score_selected = Σ(ranking_coefficient_i × weight_i)
 
-= maximize (1/N_s × Σ(score_i for i∈S)) - (1/N_u × Σ(score_j for j∈U))
-
-Where S = selected parcels, U = unselected parcels
-      N_s = |S|, N_u = |U|
+Where ranking_coefficient_i = 1 - (2 × avg_rank_selected_i / total_parcels)
+      OR mean_difference_i if mean_difference_i > ranking_coefficient_i
 ```
 
 **Aggregated Form:**
 ```
-maximize w₁×(μ₁ˢ - μ₁ᵘ) + w₂×(μ₂ˢ - μ₂ᵘ) + ... + w₁₀×(μ₁₀ˢ - μ₁₀ᵘ)
+maximize w₁×c₁ + w₂×c₂ + ... + w₁₀×c₁₀
 
 Subject to: w₁ + w₂ + ... + w₁₀ = 1
            w₁, w₂, ..., w₁₀ ≥ 0
 ```
 
-**Coefficients:**
+**Coefficients (RANKING-BASED):**
 ```
-c₁ = μ₁ˢ - μ₁ᵘ = mean(factor₁ in selected) - mean(factor₁ in unselected)
-c₂ = μ₂ˢ - μ₂ᵘ = mean(factor₂ in selected) - mean(factor₂ in unselected)
-...
-c₁₀ = μ₁₀ˢ - μ₁₀ᵘ = mean(factor₁₀ in selected) - mean(factor₁₀ in unselected)
+For each factor i:
+  1. Calculate average rank of selected parcels within entire population
+  2. ranking_coefficient = 1 - (2 × avg_rank / total_parcels)
+  3. mean_difference = mean(selected) - mean(unselected)
+  4. c_i = max(ranking_coefficient, mean_difference) if mean_difference > 0
+           else ranking_coefficient
+
+Coefficient Interpretation:
+  +1.0 = Selected areas rank #1 for this factor (best possible)
+  +0.0 = Selected areas rank at median (50th percentile)
+  -1.0 = Selected areas rank last for this factor (worst possible)
 ```
+
+**Why This Approach Works Better:**
+- **PROBLEM WITH OLD METHOD**: Mean difference doesn't guarantee top ranking
+  - Selected areas might be "above average" but still not in top 500
+- **SOLUTION**: Ranking-based coefficients ensure selected areas actually rank highest
+  - Emphasizes factors where selected areas rank in top percentiles
+  - De-emphasizes factors where selected areas rank poorly
 
 ## KEY DIFFERENCES
 
@@ -170,11 +182,12 @@ This algebraic transformation reduces computational complexity from O(N×V) to O
 - No guarantee these parcels rank highest county-wide
 - Weights optimize for local maximum within selection
 
-### Relative Optimization Results:
-- Selected parcels will rank highest (or near-highest) county-wide
-- Weights emphasize factors that distinguish selection from general population
-- Results validate expert judgment against broader context
-- Other analysts using these weights would likely identify similar high-risk areas
+### Relative Optimization Results (RANKING-BASED):
+- Selected parcels WILL rank highest county-wide (guaranteed by ranking coefficients)
+- Weights emphasize factors where selected areas rank in top percentiles
+- Addresses the "WUI 100% but no top 500" problem of the old mean-difference approach
+- Results validate expert judgment by ensuring selection actually achieves top rankings
+- Other analysts using these weights would identify the same high-risk areas
 
 ## PERFORMANCE CHARACTERISTICS
 

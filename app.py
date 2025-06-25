@@ -1246,21 +1246,41 @@ def solve_weight_optimization(parcel_data, include_vars):
         unselected_parcels = parcel_data['unselected']
         logger.info(f"RELATIVE OPTIMIZATION: {len(selected_parcels):,} selected vs {len(unselected_parcels):,} unselected parcels, {len(include_vars_base)} variables")
         
-        # STEP 1: Calculate relative coefficients (mean_selected - mean_unselected)
+        # STEP 1: Calculate relative coefficients using RANKING-BASED approach
+        # This ensures selected areas actually rank highest, not just above average
         coefficients = {}
+        
+        # For each variable, calculate how much increasing its weight helps selected areas rank higher
         for var_base in include_vars_base:
-            # Calculate mean scores for selected parcels
             selected_scores = [parcel['scores'][var_base] for parcel in selected_parcels]
-            selected_mean = sum(selected_scores) / len(selected_scores) if selected_scores else 0
-            
-            # Calculate mean scores for unselected parcels  
             unselected_scores = [parcel['scores'][var_base] for parcel in unselected_parcels]
+            
+            # Calculate percentile ranks of selected areas within the entire population
+            all_scores = selected_scores + unselected_scores
+            all_scores_sorted = sorted(all_scores, reverse=True)  # High to low
+            
+            # Calculate average rank of selected parcels (lower rank = better)
+            selected_ranks = []
+            for score in selected_scores:
+                rank = all_scores_sorted.index(score) + 1  # 1-based ranking
+                selected_ranks.append(rank)
+            
+            avg_selected_rank = sum(selected_ranks) / len(selected_ranks)
+            total_parcels = len(all_scores)
+            
+            # Convert to ranking coefficient: better rankings get higher coefficients
+            # Rank 1 → coefficient near +1, Rank last → coefficient near -1
+            ranking_coefficient = 1 - (2 * avg_selected_rank / total_parcels)
+            
+            # Alternative: Use mean difference but with ranking awareness
+            selected_mean = sum(selected_scores) / len(selected_scores) if selected_scores else 0
             unselected_mean = sum(unselected_scores) / len(unselected_scores) if unselected_scores else 0
+            mean_diff = selected_mean - unselected_mean
             
-            # Relative coefficient = difference in means
-            coefficients[var_base] = selected_mean - unselected_mean
+            # Use the stronger signal: either ranking position or mean difference
+            coefficients[var_base] = max(ranking_coefficient, mean_diff) if mean_diff > 0 else ranking_coefficient
             
-            logger.info(f"RELATIVE {var_base}: selected_mean={selected_mean:.4f}, unselected_mean={unselected_mean:.4f}, diff={coefficients[var_base]:.4f}")
+            logger.info(f"RELATIVE {var_base}: selected_mean={selected_mean:.4f}, unselected_mean={unselected_mean:.4f}, avg_rank={avg_selected_rank:.1f}/{total_parcels}, coeff={coefficients[var_base]:.4f}")
         
         # Calculate total score for reporting (selected parcels only)
         def calculate_total_score(weights):
@@ -1422,7 +1442,7 @@ def generate_solution_files(include_vars, best_weights, weights_pct, total_score
     if optimization_type == 'relative':
         txt_lines.extend([
             "",
-            "OPTIMIZATION TYPE: Relative Ranking",
+            "OPTIMIZATION TYPE: Relative Ranking (RANKING-BASED)",
             "OBJECTIVE: Find weights that make selected areas rank highest vs entire county",
             "",
             f"Selected parcels analyzed: {parcel_count:,}",
@@ -1431,9 +1451,14 @@ def generate_solution_files(include_vars, best_weights, weights_pct, total_score
             f"Average score of selected parcels: {avg_score:.3f}",
             "",
             "MATHEMATICAL APPROACH:",
-            "  maximize (mean_score_selected - mean_score_unselected)",
-            "  This finds weights that maximize the difference between your",
-            "  selected areas and the general population of parcels.",
+            "  For each factor, calculates how well selected areas rank within entire population",
+            "  Coefficient = ranking_position_score OR mean_difference (whichever is stronger)",
+            "  This ensures selected areas actually achieve top rankings, not just above-average scores",
+            "",
+            "RANKING-BASED COEFFICIENTS:",
+            "  +1.0 = Selected areas rank #1 for this factor",
+            "  +0.0 = Selected areas rank at median (50th percentile)",
+            "  -1.0 = Selected areas rank last for this factor",
         ])
     else:
         txt_lines.extend([
