@@ -369,27 +369,66 @@ def apply_local_normalization(raw_results, use_quantile):
     logger.info(f"Local normalization completed in {time.time() - start_time:.2f}s")
     return raw_results
 
-def apply_global_quantile_normalization(raw_results):
-    """Apply global quantile normalization starting from raw values and ranking across the full dataset
+def apply_global_quantile_normalization(filtered_results):
+    """Apply global quantile normalization by querying the FULL county dataset for proper ranking
     
-    This calculates true quantile scores by:
-    1. Starting from raw values (not existing _s scores)
-    2. Applying same transformations as local normalization
-    3. Calculating quantile ranks across the ENTIRE dataset (like original _z columns)
+    This calculates true global quantile scores by:
+    1. Querying the entire county dataset (unfiltered) to get raw values
+    2. Calculating quantile ranks across ALL county parcels (like original _z columns)
+    3. Applying those quantile ranks to the filtered dataset
     4. Storing results in _s columns
     """
     start_time = time.time()
     
-    logger.info(f"Starting global quantile normalization for {len(raw_results)} parcels")
+    logger.info(f"Starting global quantile normalization - querying full county dataset for proper ranking")
     
-    # First pass: collect transformed raw values for each variable across the full dataset
+    # STEP 1: Query the full county dataset to calculate global quantile parameters
+    conn = get_db()
+    cur = conn.cursor()
+    
+    try:
+        # Get raw variables we need for quantile calculation
+        raw_var_columns = [RAW_VAR_MAP[var_base] for var_base in WEIGHT_VARS_BASE]
+        
+        # Apply neigh1_d capping at SQL level
+        capped_raw_columns = []
+        for raw_var in raw_var_columns:
+            if raw_var == 'neigh1_d':
+                capped_raw_columns.append(f"LEAST({raw_var}, 5280) as {raw_var}")
+            else:
+                capped_raw_columns.append(raw_var)
+        
+        # Query ALL parcels in county (no filters) to get global distribution
+        global_query = f"""
+        SELECT {', '.join(capped_raw_columns)}
+        FROM parcels
+        """
+        
+        logger.info("Querying full county dataset for global quantile calculation...")
+        query_start = time.time()
+        cur.execute(global_query)
+        global_raw_results = cur.fetchall()
+        query_time = time.time() - query_start
+        
+        logger.info(f"Retrieved {len(global_raw_results):,} parcels from full county in {query_time:.2f}s")
+        
+    except Exception as e:
+        logger.error(f"Error querying full county dataset: {e}")
+        cur.close()
+        conn.close()
+        raise
+    finally:
+        cur.close()
+        conn.close()
+    
+    # STEP 2: Calculate quantile parameters from full county dataset
     norm_data = {}
     for var_base in WEIGHT_VARS_BASE:
         raw_var = RAW_VAR_MAP[var_base]
         
         try:
             values = []
-            for row in raw_results:
+            for row in global_raw_results:
                 raw_value = row[raw_var]
                 if raw_value is not None:
                     if var_base == 'neigh1d':
@@ -397,10 +436,10 @@ def apply_global_quantile_normalization(raw_results):
                         if float(raw_value) == 0:
                             continue
                         # Apply log transformation: log(1 + capped_distance)
-                        capped_value = min(float(raw_value), 5280)
-                        raw_value = math.log(1 + capped_value)
+                        # (already capped by SQL query)
+                        raw_value = math.log(1 + float(raw_value))
                     elif var_base in ['hagri', 'hfb', 'hlfmi_agfb']:
-                        # Apply log transformation to agriculture, fuel breaks, and combined agriculture & fuelbreaks
+                        # Apply log transformation 
                         raw_value = math.log(1 + float(raw_value))
                     else:
                         raw_value = float(raw_value)
@@ -408,20 +447,20 @@ def apply_global_quantile_normalization(raw_results):
                     values.append(raw_value)
             
             if len(values) > 0:
-                # Create quantile ranking from transformed raw values
+                # Create global quantile ranking from full county data
                 sorted_values = np.sort(values)
                 norm_data[var_base] = {
                     'sorted_values': sorted_values,
                     'total_count': len(sorted_values),
                     'norm_type': 'global_quantile'
                 }
-                logger.info(f"{var_base}: Global quantile normalization with {len(sorted_values)} values (min: {sorted_values[0]:.3f}, max: {sorted_values[-1]:.3f})")
+                logger.info(f"{var_base}: Global quantile params from {len(sorted_values):,} county parcels (min: {sorted_values[0]:.3f}, max: {sorted_values[-1]:.3f})")
                 
         except Exception as e:
-            logger.error(f"Error processing variable {var_base}: {e}")
+            logger.error(f"Error processing global variable {var_base}: {e}")
     
-    # Second pass: calculate quantile scores for each parcel
-    for i, row in enumerate(raw_results):
+    # STEP 3: Apply global quantile ranks to filtered dataset
+    for i, row in enumerate(filtered_results):
         row_dict = dict(row)
         
         for var_base in WEIGHT_VARS_BASE:
@@ -433,38 +472,40 @@ def apply_global_quantile_normalization(raw_results):
                     # Assign score of 0 for parcels without structures (neigh1d = 0)
                     if float(raw_value) == 0:
                         row_dict[var_base + '_s'] = 0.0
-                        raw_results[i] = row_dict
+                        filtered_results[i] = row_dict
                         continue
                     # Apply log transformation: log(1 + capped_distance)
                     capped_value = min(float(raw_value), 5280)
                     transformed_value = math.log(1 + capped_value)
                 elif var_base in ['hagri', 'hfb', 'hlfmi_agfb']:
-                    # Apply log transformation to agriculture, fuel breaks, and combined agriculture & fuelbreaks
+                    # Apply log transformation
                     transformed_value = math.log(1 + float(raw_value))
                 else:
                     transformed_value = float(raw_value)
                 
                 norm_info = norm_data[var_base]
                 
-                # Calculate quantile rank across full dataset
+                # Calculate quantile rank against FULL COUNTY dataset
                 sorted_values = norm_info['sorted_values']
                 total_count = norm_info['total_count']
                 
-                # Find percentile rank using binary search (same as local normalization)
+                # Find percentile rank using binary search
                 rank = np.searchsorted(sorted_values, transformed_value, side='right')
                 quantile_score = rank / total_count
                 quantile_score = max(0.0, min(1.0, quantile_score))
                 
-                # Apply inversion for certain variables (same as local normalization)
+                # Apply inversion for certain variables
                 if var_base in INVERT_VARS:
                     quantile_score = 1 - quantile_score
                 
-                # Store the quantile score in _s column
+                # Store the global quantile score in _s column
                 row_dict[var_base + '_s'] = quantile_score
-                raw_results[i] = row_dict
+                filtered_results[i] = row_dict
     
-    logger.info(f"Global quantile normalization completed in {time.time() - start_time:.2f}s")
-    return raw_results
+    total_time = time.time() - start_time
+    logger.info(f"Global quantile normalization completed in {total_time:.2f}s")
+    logger.info(f"Applied global county ranking to {len(filtered_results):,} filtered parcels")
+    return filtered_results
 
 def calculate_initial_scores(raw_results, weights, use_local_normalization, use_quantile, max_parcels):
     """Calculate initial composite scores for display"""
