@@ -1124,53 +1124,35 @@ def get_parcel_scores_for_optimization(data, include_vars):
     optimization_type = data.get('optimization_type', 'absolute')
     logger.info(f"Optimization type: {optimization_type}")
     
-    # Check user's score preference and override include_vars if needed
+    # Get user settings and determine active combination
     use_quantile = data.get('use_quantile', False)
     use_local_normalization = data.get('use_local_normalization', False)
     
-    # Determine what suffix the user wants based on their settings
-    if use_local_normalization:
-        target_suffix = '_score'  # Local normalization uses '_score' suffix
-        logger.info(f"User selected LOCAL NORMALIZATION - expecting '_score' suffix")
-    elif use_quantile:
-        target_suffix = '_q'
-        logger.info(f"User selected QUANTILE NORMALIZATION - expecting '_q' suffix")
+    # Determine active combination
+    if use_local_normalization and use_quantile:
+        combination = "LOCAL QUANTILE (_z scores recalculated on filtered data)"
+    elif use_local_normalization and not use_quantile:
+        combination = "LOCAL MIN-MAX (_s scores recalculated on filtered data)"
+    elif not use_local_normalization and use_quantile:
+        combination = "GLOBAL QUANTILE (_z scores from database)"
     else:
-        target_suffix = '_s'
-        logger.info(f"User selected MIN-MAX NORMALIZATION - expecting '_s' suffix")
+        combination = "GLOBAL MIN-MAX (_s scores from database)"
     
-    # Override include_vars to match user's preference if they don't match
-    corrected_include_vars = []
+    logger.info(f"NORMALIZATION COMBINATION: {combination}")
+    logger.info(f"USER SETTINGS: use_local_normalization={use_local_normalization}, use_quantile={use_quantile}")
+    
+    # Extract base variable names from what the client actually sent (no overriding)
     include_vars_base = []
-    
     for var in include_vars:
         # Extract base variable name
-        if var.endswith('_s'):
+        if var.endswith(('_s', '_z')):
             base_var = var[:-2]
-        elif var.endswith('_q'):
-            base_var = var[:-2]
-        elif var.endswith('_z'):
-            base_var = var[:-2]
-        elif var.endswith('_score'):
-            base_var = var[:-6]
         else:
             base_var = var
-        
         include_vars_base.append(base_var)
-        
-        # Build the variable name with user's preferred suffix
-        if target_suffix:
-            corrected_var = base_var + target_suffix
-        else:
-            corrected_var = base_var
-        corrected_include_vars.append(corrected_var)
     
-    # Update include_vars to match user preference
-    if corrected_include_vars != include_vars:
-        logger.info(f"CORRECTING include_vars to match user settings:")
-        logger.info(f"  Original: {include_vars}")
-        logger.info(f"  Corrected: {corrected_include_vars}")
-        include_vars = corrected_include_vars
+    logger.info(f"CLIENT SENT: {include_vars}")
+    logger.info(f"EXTRACTED BASE VARS: {include_vars_base}")
     
     # Get parcel score data
     if optimization_type == 'relative':
@@ -1190,18 +1172,30 @@ def get_parcel_scores_for_optimization(data, include_vars):
         
         logger.info(f"Absolute optimization: {len(parcel_scores_data)} selected parcels")
     
-    # Set the score suffix for logging
-    score_suffix = target_suffix
+    # Determine the actual score suffix from what the client sent
+    score_suffix = None
+    if include_vars:
+        first_var = include_vars[0]
+        if first_var.endswith('_s'):
+            score_suffix = '_s'
+        elif first_var.endswith('_q'):
+            score_suffix = '_q'
+        elif first_var.endswith('_z'):
+            score_suffix = '_z'
+        else:
+            score_suffix = ''
     
-    # Log which score type is being used
+    # Log which score type is being used (matches the combination determined above)
     if score_suffix == '_s':
-        score_type_name = 'Min-Max Normalized (_s)'
-    elif score_suffix == '_q':
-        score_type_name = 'Quantile Normalized (_q)'
+        if use_local_normalization:
+            score_type_name = 'Local Min-Max (_s scores recalculated on filtered data)'
+        else:
+            score_type_name = 'Global Min-Max (_s scores from database)'
     elif score_suffix == '_z':
-        score_type_name = 'True Quantile Normalized (_z)'
-    elif score_suffix == '_score':
-        score_type_name = 'Local Normalization (_score)'
+        if use_local_normalization:
+            score_type_name = 'Local Quantile (_z scores recalculated on filtered data)'
+        else:
+            score_type_name = 'Global Quantile (_z scores from database)'
     elif score_suffix == '':
         score_type_name = 'Raw Values (no suffix)'
     else:
@@ -1215,6 +1209,19 @@ def get_parcel_scores_for_optimization(data, include_vars):
         """Helper to process parcel scores consistently - uses exact score type user selected"""
         processed_parcels = []
         missing_score_warnings = set()  # Avoid duplicate warnings
+        
+        # Sample the first parcel to verify score types
+        if parcel_list:
+            sample_parcel = parcel_list[0]
+            sample_scores = sample_parcel.get('scores', {})
+            available_score_types = []
+            for var_base in include_vars_base:
+                for suffix in ['_s', '_z']:
+                    if (var_base + suffix) in sample_scores:
+                        available_score_types.append(var_base + suffix)
+            
+            logger.info(f"SCORE VERIFICATION: Available score types in client data: {available_score_types[:6]}...")
+            logger.info(f"SCORE VERIFICATION: Expected score types: {include_vars}")
         
         for parcel in parcel_list:
             parcel_scores = {}
@@ -1371,6 +1378,7 @@ def solve_weight_optimization(parcel_data, include_vars):
         # Solution: Test multiple weight combinations and pick the one that actually maximizes top N
         
         logger.info(f"USING ITERATIVE WEIGHT TESTING for guaranteed top-N optimization...")
+        logger.info(f"CLIENT SCORE SUFFIXES: {[var for var in include_vars]}")
         
         # Generate candidate weight combinations to test
         # Use a grid search approach with emphasis on promising factors
