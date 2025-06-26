@@ -1142,42 +1142,81 @@ def get_parcel_scores_for_optimization(data, include_vars):
         
         logger.info(f"Absolute optimization: {len(parcel_scores_data)} selected parcels")
     
-    # Process variable names to get base names (remove suffixes)
+    # Determine the score type suffix that the user selected
+    score_suffix = None
     include_vars_base = []
+    
     for var in include_vars:
-        if var.endswith(('_s', '_q', '_z')):
-            base_var = var[:-2]  # Remove last 2 characters
+        if var.endswith('_s'):
+            if score_suffix is None:
+                score_suffix = '_s'
+            elif score_suffix != '_s':
+                raise ValueError("Mixed score types detected in include_vars. All variables must use the same suffix.")
+            base_var = var[:-2]
+        elif var.endswith('_q'):
+            if score_suffix is None:
+                score_suffix = '_q'
+            elif score_suffix != '_q':
+                raise ValueError("Mixed score types detected in include_vars. All variables must use the same suffix.")
+            base_var = var[:-2]
+        elif var.endswith('_z'):
+            if score_suffix is None:
+                score_suffix = '_z'
+            elif score_suffix != '_z':
+                raise ValueError("Mixed score types detected in include_vars. All variables must use the same suffix.")
+            base_var = var[:-2]
         else:
             base_var = var  # No suffix to remove
+            if score_suffix is None:
+                score_suffix = ''  # No suffix expected
         include_vars_base.append(base_var)
     
+    # Log which score type is being used
+    if score_suffix == '_s':
+        score_type_name = 'Min-Max Normalized (_s)'
+    elif score_suffix == '_q':
+        score_type_name = 'Quantile Normalized (_q)'
+    elif score_suffix == '_z':
+        score_type_name = 'True Quantile Normalized (_z)'
+    elif score_suffix == '':
+        score_type_name = 'Raw Values (no suffix)'
+    else:
+        score_type_name = f'Unknown suffix: {score_suffix}'
+    
+    logger.info(f"OPTIMIZATION SCORE TYPE: {score_type_name}")
     logger.info(f"Base variables: {include_vars_base}")
+    logger.info(f"Expected score keys: {[var + score_suffix for var in include_vars_base]}")
     
     def process_parcel_scores(parcel_list):
-        """Helper to process parcel scores consistently"""
+        """Helper to process parcel scores consistently - uses exact score type user selected"""
         processed_parcels = []
+        missing_score_warnings = set()  # Avoid duplicate warnings
+        
         for parcel in parcel_list:
             parcel_scores = {}
             client_scores = parcel.get('scores', {})
             
-            # Map the client scores to our expected format
+            # Use the exact score type that the user selected
             for var_base in include_vars_base:
-                # Client might send scores with suffixes, try different keys
-                score_value = None
-                for suffix in ['_s', '_z', '']:
-                    key = var_base + suffix
-                    if key in client_scores:
-                        score_value = client_scores[key]
-                        break
+                expected_key = var_base + (score_suffix or '')
                 
-                if score_value is not None:
+                if expected_key in client_scores:
                     try:
-                        parcel_scores[var_base] = float(score_value)
+                        parcel_scores[var_base] = float(client_scores[expected_key])
                     except (ValueError, TypeError):
-                        logger.warning(f"Could not convert score value {score_value} for {var_base}")
+                        if expected_key not in missing_score_warnings:
+                            logger.warning(f"Could not convert score value {client_scores[expected_key]} for {expected_key}")
+                            missing_score_warnings.add(expected_key)
                         parcel_scores[var_base] = 0.0
                 else:
-                    logger.warning(f"No score found for {var_base} in client data")
+                    # Score not found - try to provide helpful error message
+                    if expected_key not in missing_score_warnings:
+                        available_keys = [k for k in client_scores.keys() if k.startswith(var_base)]
+                        if available_keys:
+                            logger.error(f"SCORE TYPE MISMATCH: Expected '{expected_key}' but found {available_keys}. User selected {score_type_name} but client sent different score types.")
+                        else:
+                            logger.error(f"MISSING SCORE: No score found for '{expected_key}'. Available keys: {list(client_scores.keys())[:10]}...")
+                        missing_score_warnings.add(expected_key)
                     parcel_scores[var_base] = 0.0
             
             processed_parcels.append({
