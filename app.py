@@ -370,52 +370,98 @@ def apply_local_normalization(raw_results, use_quantile):
     return raw_results
 
 def apply_global_quantile_normalization(raw_results):
-    """Apply global quantile normalization to the entire dataset and update _s columns with quantile scores
+    """Apply global quantile normalization starting from raw values and ranking across the full dataset
     
-    This reads the existing min-max _s scores and converts them to quantile scores by ranking across the full dataset.
+    This calculates true quantile scores by:
+    1. Starting from raw values (not existing _s scores)
+    2. Applying same transformations as local normalization
+    3. Calculating quantile ranks across the ENTIRE dataset (like original _z columns)
+    4. Storing results in _s columns
     """
     start_time = time.time()
     
     logger.info(f"Starting global quantile normalization for {len(raw_results)} parcels")
     
-    # For each factor, collect all _s scores and convert to quantile ranks
+    # First pass: collect transformed raw values for each variable across the full dataset
+    norm_data = {}
     for var_base in WEIGHT_VARS_BASE:
-        score_var = var_base + '_s'
+        raw_var = RAW_VAR_MAP[var_base]
         
-        # Extract all scores for this variable
-        scores = []
-        valid_indices = []
-        
-        for i, row in enumerate(raw_results):
-            row_dict = dict(row)
-            score_value = row_dict.get(score_var)
+        try:
+            values = []
+            for row in raw_results:
+                raw_value = row[raw_var]
+                if raw_value is not None:
+                    if var_base == 'neigh1d':
+                        # Skip parcels without structures (neigh1d = 0)
+                        if float(raw_value) == 0:
+                            continue
+                        # Apply log transformation: log(1 + capped_distance)
+                        capped_value = min(float(raw_value), 5280)
+                        raw_value = math.log(1 + capped_value)
+                    elif var_base in ['hagri', 'hfb', 'hlfmi_agfb']:
+                        # Apply log transformation to agriculture, fuel breaks, and combined agriculture & fuelbreaks
+                        raw_value = math.log(1 + float(raw_value))
+                    else:
+                        raw_value = float(raw_value)
+                    
+                    values.append(raw_value)
             
-            if score_value is not None and not math.isnan(float(score_value)):
-                scores.append(float(score_value))
-                valid_indices.append(i)
+            if len(values) > 0:
+                # Create quantile ranking from transformed raw values
+                sorted_values = np.sort(values)
+                norm_data[var_base] = {
+                    'sorted_values': sorted_values,
+                    'total_count': len(sorted_values),
+                    'norm_type': 'global_quantile'
+                }
+                logger.info(f"{var_base}: Global quantile normalization with {len(sorted_values)} values (min: {sorted_values[0]:.3f}, max: {sorted_values[-1]:.3f})")
+                
+        except Exception as e:
+            logger.error(f"Error processing variable {var_base}: {e}")
+    
+    # Second pass: calculate quantile scores for each parcel
+    for i, row in enumerate(raw_results):
+        row_dict = dict(row)
         
-        if len(scores) == 0:
-            continue
+        for var_base in WEIGHT_VARS_BASE:
+            raw_var = RAW_VAR_MAP[var_base]
+            raw_value = row_dict[raw_var]
             
-        # Sort scores to create quantile ranking
-        sorted_scores = np.sort(scores)
-        total_count = len(sorted_scores)
-        
-        # Convert each score to its quantile rank
-        for i in valid_indices:
-            row_dict = dict(raw_results[i])
-            original_score = float(row_dict[score_var])
-            
-            # Find percentile rank using binary search (same logic as local normalization)
-            rank = np.searchsorted(sorted_scores, original_score, side='right')
-            quantile_score = rank / total_count
-            quantile_score = max(0.0, min(1.0, quantile_score))
-            
-            # Update the _s column with quantile score
-            row_dict[score_var] = quantile_score
-            raw_results[i] = row_dict
-        
-        logger.info(f"{var_base}: Converted {len(scores)} min-max scores to quantile scores (range: 0.0-1.0)")
+            if raw_value is not None and var_base in norm_data:
+                if var_base == 'neigh1d':
+                    # Assign score of 0 for parcels without structures (neigh1d = 0)
+                    if float(raw_value) == 0:
+                        row_dict[var_base + '_s'] = 0.0
+                        raw_results[i] = row_dict
+                        continue
+                    # Apply log transformation: log(1 + capped_distance)
+                    capped_value = min(float(raw_value), 5280)
+                    transformed_value = math.log(1 + capped_value)
+                elif var_base in ['hagri', 'hfb', 'hlfmi_agfb']:
+                    # Apply log transformation to agriculture, fuel breaks, and combined agriculture & fuelbreaks
+                    transformed_value = math.log(1 + float(raw_value))
+                else:
+                    transformed_value = float(raw_value)
+                
+                norm_info = norm_data[var_base]
+                
+                # Calculate quantile rank across full dataset
+                sorted_values = norm_info['sorted_values']
+                total_count = norm_info['total_count']
+                
+                # Find percentile rank using binary search (same as local normalization)
+                rank = np.searchsorted(sorted_values, transformed_value, side='right')
+                quantile_score = rank / total_count
+                quantile_score = max(0.0, min(1.0, quantile_score))
+                
+                # Apply inversion for certain variables (same as local normalization)
+                if var_base in INVERT_VARS:
+                    quantile_score = 1 - quantile_score
+                
+                # Store the quantile score in _s column
+                row_dict[var_base + '_s'] = quantile_score
+                raw_results[i] = row_dict
     
     logger.info(f"Global quantile normalization completed in {time.time() - start_time:.2f}s")
     return raw_results
