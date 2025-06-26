@@ -536,12 +536,8 @@ class ClientNormalizationManager {
                         normalizedScore = 1 - normalizedScore;
                     }
 
-                    // Store the normalized score with correct suffix based on normalization type
-                    if (use_quantile) {
-                        newFeature.properties[varBase + '_z'] = normalizedScore; // Local quantile
-                    } else {
-                        newFeature.properties[varBase + '_s'] = normalizedScore; // Local min-max
-                    }
+                    // Always store in _s columns - scoring method determined by calculation logic
+                    newFeature.properties[varBase + '_s'] = normalizedScore;
                 }
             }
 
@@ -570,13 +566,13 @@ class ClientNormalizationManager {
             
             let combination;
             if (use_local_normalization && use_quantile) {
-                combination = "LOCAL QUANTILE (_z scores recalculated on filtered data)";
+                combination = "LOCAL QUANTILE (quantile scores recalculated on filtered data)";
             } else if (use_local_normalization && !use_quantile) {
-                combination = "LOCAL MIN-MAX (_s scores recalculated on filtered data)";
+                combination = "LOCAL MIN-MAX (min-max scores recalculated on filtered data)";
             } else if (!use_local_normalization && use_quantile) {
-                combination = "GLOBAL QUANTILE (_z scores from database)";
+                combination = "GLOBAL QUANTILE (quantile calculation applied to _s columns)";
             } else {
-                combination = "GLOBAL MIN-MAX (_s scores from database)";
+                combination = "GLOBAL MIN-MAX (min-max scores from _s columns)";
             }
             
             console.log(`CLIENT NORMALIZATION: ${combination}`);
@@ -586,25 +582,9 @@ class ClientNormalizationManager {
         for (const varBase of weightVarsBase) {
             let scoreKey, outputKey;
             
-            if (use_local_normalization) {
-                // Local normalization - use recalculated scores
-                if (use_quantile) {
-                    scoreKey = varBase + '_z';  // Local quantile (recalculated)
-                    outputKey = varBase + '_z'; // Send as _z
-                } else {
-                    scoreKey = varBase + '_s';  // Local min-max (recalculated)
-                    outputKey = varBase + '_s'; // Send as _s
-                }
-            } else {
-                // Global normalization - use database scores
-                if (use_quantile) {
-                    scoreKey = varBase + '_z';  // Global quantile from DB
-                    outputKey = varBase + '_z'; // Send as _z
-                } else {
-                    scoreKey = varBase + '_s';  // Global min-max from DB
-                    outputKey = varBase + '_s'; // Send as _s
-                }
-            }
+            // Always use _s columns - scoring method determined by calculation logic
+            scoreKey = varBase + '_s';
+            outputKey = varBase + '_s';
 
             const scoreValue = feature.properties[scoreKey];
             factorScores[outputKey] = scoreValue !== null && scoreValue !== undefined ? parseFloat(scoreValue) : 0.0;

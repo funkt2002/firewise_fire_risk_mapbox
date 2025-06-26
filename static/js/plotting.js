@@ -40,17 +40,7 @@ class PlottingManager {
             'par_buf_sl_s': 'Structure Surrounding Slope (100 foot buffer)',
             'hlfmi_agfb_s': 'Agriculture & Fuelbreaks (1/2 mile)',
             
-            // Score variable mappings (_z suffix)
-            'qtrmi_z': 'Number of Structures Within Window (1/4 mile)',
-            'hwui_z': 'WUI coverage percentage (1/2 mile)',
-            'hagri_z': 'Agricultural Coverage (1/2 Mile)',
-            'hvhsz_z': 'Very High Fire Hazard Zone coverage (1/2 mile)',
-            'hfb_z': 'Fuel Break coverage (1/2 mile)',
-            'slope_z': 'Mean Parcel Slope',
-            'neigh1d_z': 'Distance to Nearest Neighbor',
-            'hbrn_z': 'Burn Scar Coverage (1/2 mile)',
-            'par_buf_sl_z': 'Structure Surrounding Slope (100 foot buffer)',
-            'hlfmi_agfb_z': 'Agriculture & Fuelbreaks (1/2 mile)'
+            // Note: _z columns no longer used - quantile scoring now uses _s columns with different calculation logic
         };
     }
 
@@ -62,7 +52,7 @@ class PlottingManager {
         }
         
         // If it's a score variable, try without suffix
-        if (variable.endsWith('_s') || variable.endsWith('_z')) {
+        if (variable.endsWith('_s')) {
             const baseVar = variable.slice(0, -2);
             const rawVar = this.rawVarMap[baseVar];
             if (rawVar && this.varNameMap[rawVar]) {
@@ -109,17 +99,7 @@ class PlottingManager {
             'par_buf_sl_s': 'Structure<br>Slope (100ft)',
             'hlfmi_agfb_s': 'Agri & Fuel<br>(1/2 mi)',
             
-            // Quantile score variables
-            'qtrmi_z': 'Structures<br>(1/4 mi)',
-            'hwui_z': 'WUI Coverage<br>(1/2 mi)',
-            'hagri_z': 'Agriculture<br>(1/2 mi)',
-            'hvhsz_z': 'Fire Hazard<br>(1/2 mi)',
-            'hfb_z': 'Fuel Breaks<br>(1/2 mi)',
-            'slope_z': 'Parcel<br>Slope',
-            'neigh1d_z': 'Neighbor<br>Distance',
-            'hbrn_z': 'Burn Scars<br>(1/2 mi)',
-            'par_buf_sl_z': 'Structure<br>Slope (100ft)',
-            'hlfmi_agfb_z': 'Agri & Fuel<br>(1/2 mi)'
+            // Note: _z columns no longer used - quantile scoring now uses _s columns
         };
         
         // Direct lookup
@@ -128,7 +108,7 @@ class PlottingManager {
         }
         
         // If it's a score variable, try without suffix
-        if (variable.endsWith('_s') || variable.endsWith('_z')) {
+        if (variable.endsWith('_s')) {
             const baseVar = variable.slice(0, -2);
             const rawVar = this.rawVarMap[baseVar];
             if (rawVar && shortMap[rawVar]) {
@@ -184,15 +164,15 @@ class PlottingManager {
         // Get current normalization settings
         const filters = window.getCurrentFilters ? window.getCurrentFilters() : {};
         const useQuantile = filters.use_quantile || false;
-        const suffix = useQuantile ? '_z' : '_s';
+        const suffix = '_s';  // Always use _s columns - quantile vs min-max determined by calculation logic
         
         // Determine if we should use score or raw data
-        const isScoreVariable = targetVariable.endsWith('_s') || targetVariable.endsWith('_z');
+        const isScoreVariable = targetVariable.endsWith('_s');
         let targetVarName, targetData;
         
         if (isScoreVariable) {
             // Already a score variable - use as is but respect current settings
-            const baseVar = targetVariable.replace(/_[sz]$/, '');
+            const baseVar = targetVariable.replace(/_s$/, '');
             targetVarName = this.getVariableTitle(targetVariable);
             const scoreVar = baseVar + suffix;
             targetData = features
@@ -550,19 +530,12 @@ class PlottingManager {
             let values = [];
             
             // Handle both score variables and raw variables
-            if (variable.endsWith('_s') || variable.endsWith('_z')) {
+            if (variable.endsWith('_s')) {
                 // Score variable - check if we need to calculate scores
-                const baseVar = variable.slice(0, -2); // Remove _s or _z
+                const baseVar = variable.slice(0, -2); // Remove _s
                 
-                // Use the correct score key based on current settings
-                let scoreKey;
-                if (filters.use_local_normalization) {
-                    scoreKey = baseVar + '_s'; // Local normalization always uses _s
-                } else if (filters.use_quantile) {
-                    scoreKey = baseVar + '_z'; // Quantile scores use _z
-                } else {
-                    scoreKey = baseVar + '_s'; // Basic scores use _s
-                }
+                // Always use _s columns - quantile vs min-max determined by calculation logic
+                const scoreKey = baseVar + '_s';
                 
                 // Check if scores are already calculated
                 const hasScores = clientData.features.some(f => f.properties[scoreKey] !== undefined);
@@ -643,14 +616,9 @@ class PlottingManager {
             // Use server-side data (fallback or when no client data available)
             console.log('Using server-side data for distribution of:', variable);
             
-            // If this is a score variable, use the correct suffix based on settings
-            if (variable.endsWith('_s') || variable.endsWith('_z')) {
-                const baseVar = variable.slice(0, -2); // Remove _s or _z
-                if (filters.use_quantile) {
-                    variable = baseVar + '_z';
-                } else {
-                    variable = baseVar + '_s';
-                }
+            // For score variables, always use _s columns
+            if (variable.endsWith('_s')) {
+                // Keep the variable as-is - always use _s columns
             } else {
                 // For raw variables, use the mapped name
                 variable = this.rawVarMap[variable] || variable;
@@ -678,7 +646,7 @@ class PlottingManager {
             
         // Simple chloropleth: white to red based on bin position
         // Exception: for raw hagri, hfb, neigh1d - flip so left side = red
-        const baseVarForColor = variable.replace(/_[sqz]$/, ''); // Remove score suffixes
+        const baseVarForColor = variable.replace(/_[sq]$/, ''); // Remove score suffixes (_z no longer used)
         const isRawInverseRisk = !variable.includes('_') && ['hagri', 'hfb', 'neigh1d'].includes(baseVarForColor);
         
         // Create gradient colors for histogram bins (not individual values)
@@ -718,7 +686,7 @@ class PlottingManager {
         
         // Check if this variable uses log transformation (only for score variables, not raw)
         const baseVarForTitle = Object.keys(this.rawVarMap).find(key => this.rawVarMap[key] === variable) || variable;
-        const isScoreVariable = variable.includes('_s') || variable.includes('_z');
+        const isScoreVariable = variable.includes('_s');
         const usesLogTransform = isScoreVariable && (['neigh1d', 'hagri', 'hfb'].includes(baseVarForTitle) || 
                                 ['neigh1_d', 'hlfmi_agri', 'hlfmi_fb'].includes(variable));
         

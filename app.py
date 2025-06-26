@@ -234,11 +234,9 @@ def build_filter_conditions(filters):
     return conditions, params
 
 def get_score_vars(use_quantile=False):
-    """Get the appropriate score variable names based on normalization setting"""
-    if use_quantile:
-        suffix = '_z'
-    else:
-        suffix = '_s'
+    """Get the score variable names - always use _s columns (scoring method determined by calculation logic)"""
+    # Always use _s columns - the scoring method (quantile vs min-max) is determined by calculation logic, not column suffix
+    suffix = '_s'
     
     score_vars = [var + suffix for var in WEIGHT_VARS_BASE]
     # Apply corrections to ensure all variable names are correct
@@ -371,6 +369,57 @@ def apply_local_normalization(raw_results, use_quantile):
     logger.info(f"Local normalization completed in {time.time() - start_time:.2f}s")
     return raw_results
 
+def apply_global_quantile_normalization(raw_results):
+    """Apply global quantile normalization to the entire dataset and update _s columns with quantile scores
+    
+    This reads the existing min-max _s scores and converts them to quantile scores by ranking across the full dataset.
+    """
+    start_time = time.time()
+    
+    logger.info(f"Starting global quantile normalization for {len(raw_results)} parcels")
+    
+    # For each factor, collect all _s scores and convert to quantile ranks
+    for var_base in WEIGHT_VARS_BASE:
+        score_var = var_base + '_s'
+        
+        # Extract all scores for this variable
+        scores = []
+        valid_indices = []
+        
+        for i, row in enumerate(raw_results):
+            row_dict = dict(row)
+            score_value = row_dict.get(score_var)
+            
+            if score_value is not None and not math.isnan(float(score_value)):
+                scores.append(float(score_value))
+                valid_indices.append(i)
+        
+        if len(scores) == 0:
+            continue
+            
+        # Sort scores to create quantile ranking
+        sorted_scores = np.sort(scores)
+        total_count = len(sorted_scores)
+        
+        # Convert each score to its quantile rank
+        for i in valid_indices:
+            row_dict = dict(raw_results[i])
+            original_score = float(row_dict[score_var])
+            
+            # Find percentile rank using binary search (same logic as local normalization)
+            rank = np.searchsorted(sorted_scores, original_score, side='right')
+            quantile_score = rank / total_count
+            quantile_score = max(0.0, min(1.0, quantile_score))
+            
+            # Update the _s column with quantile score
+            row_dict[score_var] = quantile_score
+            raw_results[i] = row_dict
+        
+        logger.info(f"{var_base}: Converted {len(scores)} min-max scores to quantile scores (range: 0.0-1.0)")
+    
+    logger.info(f"Global quantile normalization completed in {time.time() - start_time:.2f}s")
+    return raw_results
+
 def calculate_initial_scores(raw_results, weights, use_local_normalization, use_quantile, max_parcels):
     """Calculate initial composite scores for display"""
     start_time = time.time()
@@ -380,13 +429,15 @@ def calculate_initial_scores(raw_results, weights, use_local_normalization, use_
         logger.info("Using local normalization with log transformations for neigh1d, hagri, and hfb")
         raw_results = apply_local_normalization(raw_results, use_quantile)
         score_suffix = '_score'
+    elif use_quantile:
+        # Global quantile calculation - apply quantile normalization to entire dataset
+        logger.info("Applying global quantile normalization to _s columns")
+        raw_results = apply_global_quantile_normalization(raw_results)
+        score_suffix = '_s'  # Results stored back in _s columns
     else:
-        # Use global scores
-        if use_quantile:
-            score_suffix = '_z'
-
-        else:
-            score_suffix = '_s'
+        # Use existing global min-max scores from _s columns
+        logger.info("Using existing global min-max scores from _s columns")
+        score_suffix = '_s'
     
     # Calculate composite scores
     for i, row in enumerate(raw_results):
@@ -547,9 +598,9 @@ def get_distribution(variable):
     cur = conn.cursor()
     
     # Check if we need local normalization
-    if use_local_normalization and variable.endswith(('_s', '_z')):
+    if use_local_normalization and variable.endswith('_s'):
         # Local normalization logic
-        var_base = variable.replace('_s', '').replace('_z', '')
+        var_base = variable.replace('_s', '')
         
         if var_base in RAW_VAR_MAP:
             raw_var = RAW_VAR_MAP[var_base]
@@ -930,7 +981,8 @@ def prepare_data():
         col_prep_start = time.time()
         all_score_vars = []
         for var_base in WEIGHT_VARS_BASE:
-            all_score_vars.extend([var_base + '_s', var_base + '_q', var_base + '_z'])
+            # Only include _s columns (quantile vs min-max determined by calculation logic)
+            all_score_vars.extend([var_base + '_s', var_base + '_q'])
         
         other_columns = ['yearbuilt', 'qtrmi_cnt', 'hlfmi_agri', 'hlfmi_wui', 'hlfmi_vhsz', 
                         'hlfmi_fb', 'hlfmi_brn', 'num_neighb', 'parcel_id', 'strcnt', 
@@ -1130,13 +1182,13 @@ def get_parcel_scores_for_optimization(data, include_vars):
     
     # Determine active combination
     if use_local_normalization and use_quantile:
-        combination = "LOCAL QUANTILE (_z scores recalculated on filtered data)"
+        combination = "LOCAL QUANTILE (quantile scores recalculated on filtered data)"
     elif use_local_normalization and not use_quantile:
-        combination = "LOCAL MIN-MAX (_s scores recalculated on filtered data)"
+        combination = "LOCAL MIN-MAX (min-max scores recalculated on filtered data)"
     elif not use_local_normalization and use_quantile:
-        combination = "GLOBAL QUANTILE (_z scores from database)"
+        combination = "GLOBAL QUANTILE (quantile calculation applied to _s columns)"
     else:
-        combination = "GLOBAL MIN-MAX (_s scores from database)"
+        combination = "GLOBAL MIN-MAX (min-max scores from _s columns)"
     
     logger.info(f"NORMALIZATION COMBINATION: {combination}")
     logger.info(f"USER SETTINGS: use_local_normalization={use_local_normalization}, use_quantile={use_quantile}")
@@ -1145,7 +1197,7 @@ def get_parcel_scores_for_optimization(data, include_vars):
     include_vars_base = []
     for var in include_vars:
         # Extract base variable name
-        if var.endswith(('_s', '_z')):
+        if var.endswith('_s'):
             base_var = var[:-2]
         else:
             base_var = var
@@ -1180,8 +1232,7 @@ def get_parcel_scores_for_optimization(data, include_vars):
             score_suffix = '_s'
         elif first_var.endswith('_q'):
             score_suffix = '_q'
-        elif first_var.endswith('_z'):
-            score_suffix = '_z'
+        # _z suffix no longer used - always use _s
         else:
             score_suffix = ''
     
@@ -1191,11 +1242,7 @@ def get_parcel_scores_for_optimization(data, include_vars):
             score_type_name = 'Local Min-Max (_s scores recalculated on filtered data)'
         else:
             score_type_name = 'Global Min-Max (_s scores from database)'
-    elif score_suffix == '_z':
-        if use_local_normalization:
-            score_type_name = 'Local Quantile (_z scores recalculated on filtered data)'
-        else:
-            score_type_name = 'Global Quantile (_z scores from database)'
+    # _z suffix no longer used - quantile scoring uses _s columns with different calculation logic
     elif score_suffix == '':
         score_type_name = 'Raw Values (no suffix)'
     else:
@@ -1216,7 +1263,7 @@ def get_parcel_scores_for_optimization(data, include_vars):
             sample_scores = sample_parcel.get('scores', {})
             available_score_types = []
             for var_base in include_vars_base:
-                for suffix in ['_s', '_z']:
+                for suffix in ['_s']:
                     if (var_base + suffix) in sample_scores:
                         available_score_types.append(var_base + suffix)
             
@@ -1306,7 +1353,7 @@ def solve_weight_optimization(parcel_data, include_vars):
     import gc
     
     # Process variable names efficiently
-    include_vars_base = [var[:-2] if var.endswith(('_s', '_q', '_z')) else var for var in include_vars]
+    include_vars_base = [var[:-2] if var.endswith(('_s', '_q')) else var for var in include_vars]
     
     # Check if this is relative optimization based on data structure
     is_relative = isinstance(parcel_data, dict) and parcel_data.get('type') == 'relative'
@@ -1636,8 +1683,7 @@ def generate_solution_files(include_vars, best_weights, weights_pct, total_score
             base_var = var[:-2]  # Remove last 2 characters (_s)
         elif var.endswith('_q'):
             base_var = var[:-2]  # Remove last 2 characters (_q)
-        elif var.endswith('_z'):
-            base_var = var[:-2]  # Remove last 2 characters (_z)
+        # _z suffix no longer used
         else:
             base_var = var  # No suffix to remove
         include_vars_base.append(base_var)
@@ -1769,8 +1815,7 @@ def generate_solution_files(include_vars, best_weights, weights_pct, total_score
             var_base = var_name[:-2]  # Remove last 2 characters (_s)
         elif var_name.endswith('_q'):
             var_base = var_name[:-2]  # Remove last 2 characters (_q)
-        elif var_name.endswith('_z'):
-            var_base = var_name[:-2]  # Remove last 2 characters (_z)
+        # _z suffix no longer used
         else:
             var_base = var_name  # No suffix to remove
             
