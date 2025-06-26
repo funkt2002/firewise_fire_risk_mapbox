@@ -1124,6 +1124,54 @@ def get_parcel_scores_for_optimization(data, include_vars):
     optimization_type = data.get('optimization_type', 'absolute')
     logger.info(f"Optimization type: {optimization_type}")
     
+    # Check user's score preference and override include_vars if needed
+    use_quantile = data.get('use_quantile', False)
+    use_local_normalization = data.get('use_local_normalization', False)
+    
+    # Determine what suffix the user wants based on their settings
+    if use_local_normalization:
+        target_suffix = '_score'  # Local normalization uses '_score' suffix
+        logger.info(f"User selected LOCAL NORMALIZATION - expecting '_score' suffix")
+    elif use_quantile:
+        target_suffix = '_q'
+        logger.info(f"User selected QUANTILE NORMALIZATION - expecting '_q' suffix")
+    else:
+        target_suffix = '_s'
+        logger.info(f"User selected MIN-MAX NORMALIZATION - expecting '_s' suffix")
+    
+    # Override include_vars to match user's preference if they don't match
+    corrected_include_vars = []
+    include_vars_base = []
+    
+    for var in include_vars:
+        # Extract base variable name
+        if var.endswith('_s'):
+            base_var = var[:-2]
+        elif var.endswith('_q'):
+            base_var = var[:-2]
+        elif var.endswith('_z'):
+            base_var = var[:-2]
+        elif var.endswith('_score'):
+            base_var = var[:-6]
+        else:
+            base_var = var
+        
+        include_vars_base.append(base_var)
+        
+        # Build the variable name with user's preferred suffix
+        if target_suffix:
+            corrected_var = base_var + target_suffix
+        else:
+            corrected_var = base_var
+        corrected_include_vars.append(corrected_var)
+    
+    # Update include_vars to match user preference
+    if corrected_include_vars != include_vars:
+        logger.info(f"CORRECTING include_vars to match user settings:")
+        logger.info(f"  Original: {include_vars}")
+        logger.info(f"  Corrected: {corrected_include_vars}")
+        include_vars = corrected_include_vars
+    
     # Get parcel score data
     if optimization_type == 'relative':
         # Relative mode: need both selected and unselected parcels
@@ -1142,34 +1190,8 @@ def get_parcel_scores_for_optimization(data, include_vars):
         
         logger.info(f"Absolute optimization: {len(parcel_scores_data)} selected parcels")
     
-    # Determine the score type suffix that the user selected
-    score_suffix = None
-    include_vars_base = []
-    
-    for var in include_vars:
-        if var.endswith('_s'):
-            if score_suffix is None:
-                score_suffix = '_s'
-            elif score_suffix != '_s':
-                raise ValueError("Mixed score types detected in include_vars. All variables must use the same suffix.")
-            base_var = var[:-2]
-        elif var.endswith('_q'):
-            if score_suffix is None:
-                score_suffix = '_q'
-            elif score_suffix != '_q':
-                raise ValueError("Mixed score types detected in include_vars. All variables must use the same suffix.")
-            base_var = var[:-2]
-        elif var.endswith('_z'):
-            if score_suffix is None:
-                score_suffix = '_z'
-            elif score_suffix != '_z':
-                raise ValueError("Mixed score types detected in include_vars. All variables must use the same suffix.")
-            base_var = var[:-2]
-        else:
-            base_var = var  # No suffix to remove
-            if score_suffix is None:
-                score_suffix = ''  # No suffix expected
-        include_vars_base.append(base_var)
+    # Set the score suffix for logging
+    score_suffix = target_suffix
     
     # Log which score type is being used
     if score_suffix == '_s':
@@ -1178,6 +1200,8 @@ def get_parcel_scores_for_optimization(data, include_vars):
         score_type_name = 'Quantile Normalized (_q)'
     elif score_suffix == '_z':
         score_type_name = 'True Quantile Normalized (_z)'
+    elif score_suffix == '_score':
+        score_type_name = 'Local Normalization (_score)'
     elif score_suffix == '':
         score_type_name = 'Raw Values (no suffix)'
     else:
@@ -1247,7 +1271,7 @@ def get_parcel_scores_for_optimization(data, include_vars):
             sample = unselected_parcels[0]
             logger.info(f"Sample unselected parcel - ID: {sample['id']}, Scores: {sample['scores']}")
             
-        return result
+        return result, include_vars
         
     else:
         # Absolute mode: return selected parcels only (backward compatibility)
@@ -1268,7 +1292,7 @@ def get_parcel_scores_for_optimization(data, include_vars):
         else:
             logger.info(f"Single-area optimization containing {len(selected_parcels)} parcels")
         
-        return selected_parcels
+        return selected_parcels, include_vars
 
 def solve_weight_optimization(parcel_data, include_vars):
     """Memory-efficient LP solver - handles both absolute and relative optimization"""
@@ -1281,8 +1305,10 @@ def solve_weight_optimization(parcel_data, include_vars):
     is_relative = isinstance(parcel_data, dict) and parcel_data.get('type') == 'relative'
     
     if is_relative:
-        selected_parcels = parcel_data['selected']
-        unselected_parcels = parcel_data['unselected']
+        # Handle relative mode data structure
+        relative_data = parcel_data
+        selected_parcels = relative_data['selected']
+        unselected_parcels = relative_data['unselected']
         logger.info(f"RELATIVE OPTIMIZATION: {len(selected_parcels):,} selected vs {len(unselected_parcels):,} unselected parcels, {len(include_vars_base)} variables")
         
         # DEBUG: Log structure of first parcel to understand data format
@@ -1581,8 +1607,10 @@ def solve_weight_optimization(parcel_data, include_vars):
             logger.warning(f"WARNING: Optimization achieved only {improvement_ratio:.2f}x improvement. Limited success may indicate selected areas have low relative risk.")
     
     # STEP 9: Clean up immediately
-    del prob
-    del w_vars
+    if 'prob' in locals():
+        del prob
+    if 'w_vars' in locals():
+        del w_vars
     del coefficients
     gc.collect()
     
@@ -1773,7 +1801,7 @@ def infer_weights():
         logger.info(f"Using corrected include_vars for optimization: {include_vars}")
         
         # Get parcel scores for optimization
-        parcel_data = get_parcel_scores_for_optimization(data, include_vars)
+        parcel_data, include_vars = get_parcel_scores_for_optimization(data, include_vars)
         if not parcel_data:
             return jsonify({"error": "No parcels found in selection"}), 400
         
@@ -1807,9 +1835,10 @@ def infer_weights():
             f.write(lp_content)
         with open(os.path.join(session_dir, 'solution.txt'), 'w') as f:
             f.write(txt_content)
-        # Handle different data structures for parcel count in metadata
+                    # Handle different data structures for parcel count in metadata
         if optimization_type == 'relative' and isinstance(parcel_data, dict):
-            num_parcels = len(parcel_data['selected'])
+            relative_data = parcel_data
+            num_parcels = len(relative_data['selected'])
         else:
             num_parcels = len(parcel_data) if isinstance(parcel_data, list) else 0
 
