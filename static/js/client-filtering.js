@@ -695,19 +695,19 @@ class ClientNormalizationManager {
             
             if (use_local_normalization) {
                 if (use_raw_scoring) {
-                    combination = "LOCAL RAW MIN-MAX (raw min-max scores recalculated on filtered data)";
+                    combination = "LOCAL RAW MIN-MAX (raw values, no log transforms, filtered data normalization)";
                 } else if (use_quantile) {
-                    combination = "LOCAL QUANTILE (quantile scores recalculated on filtered data)";
+                    combination = "LOCAL QUANTILE (log-transformed values, filtered data quantile ranking)";
                 } else {
-                    combination = "LOCAL MIN-MAX (min-max scores recalculated on filtered data)";
+                    combination = "LOCAL ROBUST MIN-MAX (log-transformed values, filtered data normalization)";
                 }
             } else {
                 if (use_raw_scoring) {
-                    combination = "GLOBAL RAW MIN-MAX (raw min-max scores from full dataset)";
+                    combination = "GLOBAL RAW MIN-MAX (raw values, no log transforms, full dataset normalization)";
                 } else if (use_quantile) {
-                    combination = "GLOBAL QUANTILE (quantile calculation applied to _s columns)";
+                    combination = "GLOBAL QUANTILE (log-transformed values, full dataset quantile ranking)";
                 } else {
-                    combination = "GLOBAL MIN-MAX (min-max scores from _s columns)";
+                    combination = "GLOBAL ROBUST MIN-MAX (log-transformed values, full dataset normalization)";
                 }
             }
             
@@ -719,11 +719,12 @@ class ClientNormalizationManager {
             let scoreValue;
             
             if (use_local_normalization) {
-                // Use locally normalized scores (already calculated in _s columns)
+                // Use locally normalized scores (calculated with proper transforms based on scoring type)
                 scoreValue = feature.properties[varBase + '_s'];
                 factorScores[varBase + '_s'] = scoreValue !== null && scoreValue !== undefined ? parseFloat(scoreValue) : 0.0;
             } else {
-                // Calculate global normalization on-the-fly
+                // ALWAYS calculate global normalization from raw values with proper transforms
+                // This ensures consistency between Raw Min-Max and Robust Min-Max
                 scoreValue = this.calculateGlobalScore(feature, varBase, use_quantile, use_raw_scoring);
                 factorScores[varBase + '_s'] = scoreValue;
             }

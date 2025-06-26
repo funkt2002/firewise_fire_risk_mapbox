@@ -1060,20 +1060,20 @@
                     <h4 style="font-size: 11px; color: #aaa; margin-bottom: 6px;">Score Type:</h4>
                     <div class="toggle-container">
                         <label class="toggle-label">
-                            <input type="radio" name="score-type" id="use-basic-scores" value="basic" checked>
-                            Min-Max Scoring
+                            <input type="radio" name="score-type" id="use-raw-scoring" value="raw" checked>
+                            Raw Min-Max Scoring
+                        </label>
+                    </div>
+                    <div class="toggle-container">
+                        <label class="toggle-label">
+                            <input type="radio" name="score-type" id="use-basic-scores" value="basic">
+                            Robust Min-Max Scoring
                         </label>
                     </div>
                     <div class="toggle-container">
                         <label class="toggle-label">
                             <input type="radio" name="score-type" id="use-quantile" value="quantile">
                             Quantile Scoring
-                        </label>
-                    </div>
-                    <div class="toggle-container">
-                        <label class="toggle-label">
-                            <input type="radio" name="score-type" id="use-raw-scoring" value="raw">
-                            Raw Min-Max Scoring
                         </label>
                     </div>
                 </div>
@@ -1608,7 +1608,7 @@
                 scoreType = 'Raw Min-Max';
             } else {
                 suffix = '_s';
-                scoreType = 'Min-Max';
+                scoreType = 'Robust Min-Max';
             }
             
             return `

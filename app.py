@@ -702,9 +702,9 @@ def get_distribution(variable):
     conn = get_db()
     cur = conn.cursor()
     
-    # Check if we need local normalization
-    if use_local_normalization and variable.endswith('_s'):
-        # Local normalization logic
+    # Check if we need custom normalization (both local and global for consistency)
+    if variable.endswith('_s'):
+        # Both local and global normalization: calculate from raw values for consistency
         var_base = variable.replace('_s', '')
         
         if var_base in RAW_VAR_MAP:
@@ -734,32 +734,81 @@ def get_distribution(variable):
                 raw_values = [float(dict(r)['value']) for r in results if dict(r)['value'] is not None]
                 
                 if len(raw_values) >= 10:
-                    # Apply local normalization
-                    raw_data = apply_local_normalization(
-                        [{raw_var: v} for v in raw_values],
-                        use_quantile,
-                        use_raw_scoring
-                    )
+                    if use_local_normalization:
+                        # Local normalization: use filtered data to calculate parameters
+                        raw_data = apply_local_normalization(
+                            [{raw_var: v} for v in raw_values],
+                            use_quantile,
+                            use_raw_scoring
+                        )
+                    else:
+                        # Global normalization: get full dataset to calculate parameters
+                        try:
+                            # Query full dataset (no filters)
+                            if raw_var == 'neigh1_d':
+                                cur.execute(f"""
+                                    SELECT LEAST({raw_var}, 5280) as value
+                                    FROM parcels
+                                    WHERE {raw_var} IS NOT NULL
+                                """)
+                            else:
+                                cur.execute(f"""
+                                    SELECT {raw_var} as value
+                                    FROM parcels
+                                    WHERE {raw_var} IS NOT NULL
+                                """)
+                            
+                            full_results = cur.fetchall()
+                            full_raw_values = [float(dict(r)['value']) for r in full_results if dict(r)['value'] is not None]
+                            
+                            # Calculate normalization parameters from full dataset
+                            raw_data = apply_local_normalization(
+                                [{raw_var: v} for v in full_raw_values],
+                                use_quantile,
+                                use_raw_scoring
+                            )
+                        except Exception as e:
+                            logger.error(f"Error getting global normalization data: {e}")
+                            # Fallback to local if global fails
+                            raw_data = apply_local_normalization(
+                                [{raw_var: v} for v in raw_values],
+                                use_quantile,
+                                use_raw_scoring
+                            )
                     
-                    # Transform values
+                    # Transform filtered values using calculated normalization parameters
                     if var_base in raw_data:
                         norm_data = raw_data[var_base]
                         values = []
                         
                         for val in raw_values:
+                            # Apply the same transforms as used in normalization
+                            transformed_val = val
+                            if not use_raw_scoring:
+                                if var_base == 'neigh1d':
+                                    if val == 0:
+                                        continue
+                                    transformed_val = math.log(1 + min(val, 5280))
+                                elif var_base in ['hagri', 'hfb', 'hlfmi_agfb']:
+                                    transformed_val = math.log(1 + val)
+                            else:
+                                if var_base == 'neigh1d' and val == 0:
+                                    continue
+                            
+                            # Calculate normalized score
                             if norm_data['norm_type'] == 'true_quantile':
                                 # True quantile normalization - find percentile rank
                                 sorted_values = norm_data['sorted_values']
                                 total_count = norm_data['total_count']
                                 
                                 # Find the rank of this value using binary search
-                                rank = np.searchsorted(sorted_values, val, side='right')
+                                rank = np.searchsorted(sorted_values, transformed_val, side='right')
                                 # Convert rank to percentile (0.0 to 1.0)
                                 normalized = rank / total_count
                                 # Ensure bounds
                                 normalized = max(0.0, min(1.0, normalized))
                             else:
-                                normalized = (val - norm_data['min']) / norm_data['range']
+                                normalized = (transformed_val - norm_data['min']) / norm_data['range']
                                 normalized = max(0, min(1, normalized))
                             
                             if var_base in INVERT_VARS:
@@ -772,16 +821,24 @@ def get_distribution(variable):
                         
                         return jsonify({
                             "values": values,
-                            "min": min(values),
-                            "max": max(values),
+                            "min": min(values) if values else 0,
+                            "max": max(values) if values else 0,
                             "count": len(values),
-                            "normalization": "local"
+                            "normalization": "global" if not use_local_normalization else "local"
                         })
                         
             except Exception as e:
-                logger.warning(f"Error in local normalization: {e}")
+                logger.warning(f"Error in score normalization for {variable}: {e}")
+                cur.close()
+                conn.close()
+                return jsonify({"error": f"Could not calculate distribution for {variable}: {str(e)}"}), 400
+        else:
+            # Variable not in RAW_VAR_MAP, can't calculate distribution
+            cur.close()
+            conn.close()
+            return jsonify({"error": f"Cannot calculate distribution for {variable} - not in supported score variables"}), 400
     
-    # Global normalization (default)
+    # For non-score variables (raw variables), return raw values
     additional_where = variable + " IS NOT NULL"
     if where_clause:
         full_where_clause = where_clause + " AND " + additional_where
@@ -804,6 +861,8 @@ def get_distribution(variable):
         
         results = cur.fetchall()
     except Exception as e:
+        cur.close()
+        conn.close()
         return jsonify({"error": f"Error querying column '{variable}': {str(e)}"}), 400
     
     values = [float(dict(r)['value']) for r in results if dict(r)['value'] is not None]
@@ -816,7 +875,7 @@ def get_distribution(variable):
         "min": min(values) if values else 0,
         "max": max(values) if values else 1,
         "count": len(values),
-        "normalization": "global"
+        "normalization": "raw"
     })
 
 # ====================
@@ -1289,17 +1348,17 @@ def get_parcel_scores_for_optimization(data, include_vars):
     
     # Determine active combination
     if use_local_normalization and use_raw_scoring:
-        combination = "LOCAL RAW MIN-MAX (raw min-max scores recalculated on filtered data)"
+        combination = "LOCAL RAW MIN-MAX (raw values, no log transforms, filtered data normalization)"
     elif use_local_normalization and use_quantile:
-        combination = "LOCAL QUANTILE (quantile scores recalculated on filtered data)"
+        combination = "LOCAL QUANTILE (log-transformed values, filtered data quantile ranking)"
     elif use_local_normalization and not use_quantile:
-        combination = "LOCAL MIN-MAX (min-max scores recalculated on filtered data)"
+        combination = "LOCAL ROBUST MIN-MAX (log-transformed values, filtered data normalization)"
     elif not use_local_normalization and use_raw_scoring:
-        combination = "GLOBAL RAW MIN-MAX (raw min-max scores from full dataset)"
+        combination = "GLOBAL RAW MIN-MAX (raw values, no log transforms, full dataset normalization)"
     elif not use_local_normalization and use_quantile:
-        combination = "GLOBAL QUANTILE (quantile calculation applied to _s columns)"
+        combination = "GLOBAL QUANTILE (log-transformed values, full dataset quantile ranking)"
     else:
-        combination = "GLOBAL MIN-MAX (min-max scores from _s columns)"
+        combination = "GLOBAL ROBUST MIN-MAX (log-transformed values, full dataset normalization)"
     
     logger.info(f"NORMALIZATION COMBINATION: {combination}")
     logger.info(f"USER SETTINGS: use_local_normalization={use_local_normalization}, use_quantile={use_quantile}, use_raw_scoring={use_raw_scoring}")
