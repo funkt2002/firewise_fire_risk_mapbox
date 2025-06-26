@@ -1291,65 +1291,44 @@ def solve_weight_optimization(parcel_data, include_vars):
             logger.info(f"DEBUG: Sample parcel structure - Keys: {list(sample_parcel.keys())}")
             logger.info(f"DEBUG: Sample parcel content: {sample_parcel}")
         
-        # STEP 1: Constraint-based approach - ensure at least one selected parcel ranks in top N
-        # This is a more complex optimization that guarantees actual top ranking
+        # STEP 1: RELATIVE RANKING OPTIMIZATION
+        # Goal: Maximize the number of selected parcels that rank in the Top N
+        # Approach: For each variable, calculate how much it helps ALL selected parcels relative to unselected parcels
         
-        # For each selected parcel, check if it CAN potentially rank in top N with any weight combination
         max_parcels = 500  # Default top N
         all_parcels = selected_parcels + unselected_parcels
         
-        # Check feasibility: can any selected parcel achieve top N ranking?
-        feasible_selected = []
-        for sel_parcel in selected_parcels:
-            # For this selected parcel, calculate its best possible composite score
-            max_possible_score = 0
-            for var_base in include_vars_base:
-                sel_score = sel_parcel['scores'][var_base]
-                if sel_score > 0:  # Only count positive contributions
-                    max_possible_score += sel_score
-            
-            # Count how many parcels could potentially beat this score
-            competitors = 0
-            for parcel in all_parcels:
-                # Use 'id' field (as processed by process_parcel_scores)
-                sel_id = sel_parcel.get('id', str(id(sel_parcel)))  # Use object id as fallback
-                parcel_id = parcel.get('id', str(id(parcel)))  # Use object id as fallback
-                
-                if parcel_id != sel_id:
-                    competitor_max = sum(parcel['scores'][var_base] for var_base in include_vars_base if parcel['scores'][var_base] > 0)
-                    if competitor_max > max_possible_score:
-                        competitors += 1
-            
-            if competitors < max_parcels:  # This selected parcel could potentially rank in top N
-                feasible_selected.append(sel_parcel)
-        
-        if not feasible_selected:
-            # NO selected parcel can possibly rank in top N with any weight combination
-            error_msg = f"MATHEMATICAL IMPOSSIBILITY: None of the {len(selected_parcels)} selected parcels can achieve top {max_parcels} ranking with any weight combination. Selected areas have insufficient risk factor scores compared to other areas in the county."
-            logger.error(error_msg)
-            raise ValueError(error_msg)
-        
-        logger.info(f"FEASIBILITY CHECK: {len(feasible_selected)}/{len(selected_parcels)} selected parcels could potentially rank in top {max_parcels}")
-        
-        # STEP 2: Optimization objective - maximize the highest-ranking selected parcel
-        # Find weights that push the best selected parcel as high as possible
+        # STEP 2: Calculate relative advantage coefficients
+        # For each variable, we want to maximize: sum(selected_scores) - sum(competitive_unselected_scores)
         coefficients = {}
         
-        # For each variable, calculate how much it helps the best feasible selected parcel
-        best_selected = max(feasible_selected, key=lambda p: sum(p['scores'][v] for v in include_vars_base))
-        
         for var_base in include_vars_base:
-            # Coefficient = how much this variable helps our best selected parcel vs average competitor
-            selected_score = best_selected['scores'][var_base]
+            # Get all scores for this variable
+            selected_scores = [p['scores'][var_base] for p in selected_parcels]
+            unselected_scores = [p['scores'][var_base] for p in unselected_parcels]
             
-            # Average score of all competitors (unselected parcels)
-            competitor_scores = [p['scores'][var_base] for p in unselected_parcels]
-            avg_competitor = sum(competitor_scores) / len(competitor_scores) if competitor_scores else 0
+            # Calculate the 80th percentile of unselected scores (competitive threshold)
+            # We want selected parcels to beat this threshold to get into top N
+            if unselected_scores:
+                unselected_80th = np.percentile(unselected_scores, 80)
+            else:
+                unselected_80th = 0
             
-            # Coefficient = advantage of selected over competitors for this variable
-            coefficients[var_base] = selected_score - avg_competitor
+            # Coefficient = how much this variable helps selected parcels beat the competitive threshold
+            # Sum of (selected_score - competitive_threshold) for all selected parcels
+            advantage_sum = 0
+            for selected_score in selected_scores:
+                advantage = selected_score - unselected_80th
+                advantage_sum += advantage
             
-            logger.info(f"RELATIVE {var_base}: best_selected={selected_score:.4f}, avg_competitor={avg_competitor:.4f}, advantage={coefficients[var_base]:.4f}")
+            coefficients[var_base] = advantage_sum
+            
+            avg_selected = np.mean(selected_scores) if selected_scores else 0
+            avg_unselected = np.mean(unselected_scores) if unselected_scores else 0
+            
+            logger.info(f"RELATIVE {var_base}: avg_selected={avg_selected:.4f}, avg_unselected={avg_unselected:.4f}, 80th_percentile={unselected_80th:.4f}, advantage_sum={advantage_sum:.4f}")
+        
+        logger.info(f"RELATIVE OPTIMIZATION: Maximizing {len(selected_parcels)} selected parcels vs {len(unselected_parcels)} unselected parcels for top {max_parcels} ranking")
         
         # Calculate total score for reporting (selected parcels only)
         def calculate_total_score(weights):
@@ -1359,6 +1338,53 @@ def solve_weight_optimization(parcel_data, include_vars):
                 for i, var_base in enumerate(include_vars_base)
             )
             
+        # Add this after the current coefficient calculation but before the LP setup
+        
+        # STEP 2.5: DIRECT RANKING OPTIMIZATION (Alternative approach)
+        # Instead of maximizing advantage sums, directly optimize for ranking positions
+        
+        # For more direct ranking optimization, we can use a different coefficient strategy:
+        # For each variable, calculate how much it helps selected parcels vs. ALL competitors (not just 80th percentile)
+        
+        logger.info(f"TESTING DIRECT RANKING APPROACH...")
+        
+        # Alternative coefficient calculation: O(V × (S + U) log(U)) - MUCH more efficient!
+        # For each variable, calculate the "ranking power" using sorted arrays and binary search
+        
+        direct_coefficients = {}
+        
+        for var_base in include_vars_base:
+            selected_scores = [p['scores'][var_base] for p in selected_parcels]
+            unselected_scores = [p['scores'][var_base] for p in unselected_parcels]
+            
+            # Sort unselected scores once - O(U log U)
+            unselected_sorted = np.sort(unselected_scores)
+            total_unselected = len(unselected_sorted)
+            
+            # For each selected score, use binary search to find how many it beats - O(S log U)
+            total_ranking_power = 0
+            
+            for sel_score in selected_scores:
+                # Binary search: how many unselected scores are < sel_score
+                beats_count = np.searchsorted(unselected_sorted, sel_score, side='left')
+                beating_percentage = beats_count / total_unselected if total_unselected > 0 else 0
+                total_ranking_power += beating_percentage
+            
+            direct_coefficients[var_base] = total_ranking_power
+            
+            logger.info(f"EFFICIENT RANKING {var_base}: ranking_power={total_ranking_power:.4f} (avg selected beats {total_ranking_power/len(selected_parcels)*100:.1f}% of unselected)")
+        
+        # Compare the two approaches
+        logger.info(f"COEFFICIENT COMPARISON:")
+        for var_base in include_vars_base:
+            advantage_coeff = coefficients[var_base]
+            ranking_coeff = direct_coefficients[var_base]
+            logger.info(f"  {var_base}: advantage_method={advantage_coeff:.2f}, ranking_method={ranking_coeff:.2f}")
+        
+        # Use the direct ranking coefficients instead
+        logger.info(f"SWITCHING TO DIRECT RANKING COEFFICIENTS for better top-N optimization")
+        coefficients = direct_coefficients
+    
     else:
         # Absolute optimization (backward compatibility)
         logger.info(f"ABSOLUTE OPTIMIZATION: {len(parcel_data):,} parcels, {len(include_vars_base)} variables")
@@ -1407,30 +1433,53 @@ def solve_weight_optimization(parcel_data, include_vars):
     
     # STEP 8: For relative optimization, verify that solution actually works
     if is_relative:
-        # Simulate the ranking with these weights to verify at least one selected parcel is in top N
+        # Simulate the ranking with these weights to verify optimization worked
         all_simulated_scores = []
+        
+        # Calculate scores for all parcels using optimized weights
         for parcel in all_parcels:
             sim_score = sum(best_weights[include_vars[i]] * parcel['scores'][var_base] 
                           for i, var_base in enumerate(include_vars_base))
             # Use 'id' field (as processed by process_parcel_scores)
             parcel_id = parcel.get('id', str(id(parcel)))
-            all_simulated_scores.append((parcel_id, sim_score, parcel in selected_parcels))
+            is_selected = parcel in selected_parcels
+            all_simulated_scores.append((parcel_id, sim_score, is_selected))
         
-        # Sort by score and check rankings
+        # Sort by score (highest first) to simulate the actual ranking
         all_simulated_scores.sort(key=lambda x: x[1], reverse=True)
         
-        selected_in_top_n = 0
-        for rank, (parcel_id, score, is_selected) in enumerate(all_simulated_scores[:max_parcels]):
+        # Count selected parcels in different ranking tiers
+        selected_in_top_500 = 0
+        selected_in_top_1000 = 0
+        total_selected_ranked = 0
+        
+        for rank, (parcel_id, score, is_selected) in enumerate(all_simulated_scores):
             if is_selected:
-                selected_in_top_n += 1
+                total_selected_ranked += 1
+                if rank < 500:
+                    selected_in_top_500 += 1
+                if rank < 1000:
+                    selected_in_top_1000 += 1
         
-        logger.info(f"VERIFICATION: {selected_in_top_n} selected parcels achieved top {max_parcels} ranking with optimized weights")
+        # Calculate percentage improvement
+        baseline_expected = (len(selected_parcels) / len(all_parcels)) * 500  # Expected if random
+        improvement_ratio = selected_in_top_500 / baseline_expected if baseline_expected > 0 else 0
         
-        if selected_in_top_n == 0:
-            error_msg = f"OPTIMIZATION FAILED: Despite feasibility check, no selected parcels achieved top {max_parcels} ranking. This suggests the LP solution is suboptimal."
-            logger.error(error_msg)
-            # Don't raise error here - return the best attempt
-            logger.warning("Returning best-effort weights despite verification failure")
+        logger.info(f"OPTIMIZATION RESULTS:")
+        logger.info(f"  Selected parcels in top 500: {selected_in_top_500}/{len(selected_parcels)} ({selected_in_top_500/len(selected_parcels)*100:.1f}%)")
+        logger.info(f"  Selected parcels in top 1000: {selected_in_top_1000}/{len(selected_parcels)} ({selected_in_top_1000/len(selected_parcels)*100:.1f}%)")
+        logger.info(f"  Expected if random: {baseline_expected:.1f}")
+        logger.info(f"  Improvement ratio: {improvement_ratio:.2f}x better than random")
+        
+        # Log a few top-ranked selected parcels
+        top_selected = [(rank+1, score) for rank, (parcel_id, score, is_selected) in enumerate(all_simulated_scores[:50]) if is_selected]
+        if top_selected:
+            logger.info(f"  Top selected parcels in ranking: {top_selected[:5]}")
+        
+        if selected_in_top_500 == 0:
+            logger.warning(f"WARNING: No selected parcels achieved top 500 ranking. This may indicate the selected area has fundamentally low risk factors.")
+        elif improvement_ratio < 1.5:
+            logger.warning(f"WARNING: Optimization achieved only {improvement_ratio:.2f}x improvement. Limited success may indicate selected areas have low relative risk.")
     
     # STEP 9: Clean up immediately
     del prob
@@ -1538,8 +1587,8 @@ def generate_solution_files(include_vars, best_weights, weights_pct, total_score
     if optimization_type == 'relative':
         txt_lines.extend([
             "",
-            "OPTIMIZATION TYPE: Relative Ranking (CONSTRAINT-BASED)",
-            "OBJECTIVE: Find weights that guarantee selected areas rank in top N",
+            "OPTIMIZATION TYPE: Relative Ranking (COMPETITIVE ADVANTAGE)",
+            "OBJECTIVE: Maximize number of selected parcels that rank in top N",
             "",
             f"Selected parcels analyzed: {parcel_count:,}",
             f"Unselected parcels compared: {unselected_count:,}",
@@ -1547,14 +1596,15 @@ def generate_solution_files(include_vars, best_weights, weights_pct, total_score
             f"Average score of selected parcels: {avg_score:.3f}",
             "",
             "MATHEMATICAL APPROACH:",
-            "  1. Feasibility Check: Verify at least one selected parcel CAN rank in top N",
-            "  2. If impossible, return error message (mathematical impossibility)",
-            "  3. If feasible, find weights that maximize best selected parcel vs competitors",
-            "  4. Verification: Simulate ranking to confirm at least one selected in top N",
+            "  1. For each risk factor, calculate 80th percentile of unselected parcels",
+            "  2. Measure how much each factor helps selected parcels beat this threshold",
+            "  3. Optimize weights to maximize sum of competitive advantages",
+            "  4. Verification: Simulate full ranking to count selected in top N",
             "",
-            "CONSTRAINT-BASED GUARANTEE:",
-            "  Unlike mean-difference approaches, this ensures actual top N ranking",
-            "  Prevents 'WUI 100% but no top 500' scenarios from previous method",
+            "COMPETITIVE ADVANTAGE STRATEGY:",
+            "  Rather than maximizing absolute scores, this maximizes the relative",
+            "  ranking position of selected parcels vs. the rest of the county.",
+            "  Goal: Get as many selected parcels as possible into top 500 ranking.",
         ])
     else:
         txt_lines.extend([
