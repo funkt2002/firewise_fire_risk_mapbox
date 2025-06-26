@@ -334,7 +334,7 @@ def apply_local_normalization(raw_results, use_quantile, use_raw_scoring=False):
                     if var_base == 'neigh1d':
                         # Assign score of 0 for parcels without structures (neigh1d = 0)
                         if float(raw_value) == 0:
-                            score_key = var_base + '_score'
+                            score_key = var_base + '_s'
                             row_dict[score_key] = 0.0
                             raw_results[i] = row_dict
                             continue
@@ -349,7 +349,7 @@ def apply_local_normalization(raw_results, use_quantile, use_raw_scoring=False):
                 else:
                     # Raw Min-Max scoring - still assign score of 0 for parcels without structures
                     if var_base == 'neigh1d' and float(raw_value) == 0:
-                        score_key = var_base + '_score'
+                        score_key = var_base + '_s'
                         row_dict[score_key] = 0.0
                         raw_results[i] = row_dict
                         continue
@@ -376,8 +376,8 @@ def apply_local_normalization(raw_results, use_quantile, use_raw_scoring=False):
                 if var_base in INVERT_VARS:
                     normalized_score = 1 - normalized_score
                 
-                # Store the score in the row
-                score_key = var_base + '_score'
+                # Store the score in the row - ALWAYS use _s suffix for consistency
+                score_key = var_base + '_s'
                 row_dict[score_key] = normalized_score
                 
                 # Update the original row
@@ -532,7 +532,7 @@ def calculate_initial_scores(raw_results, weights, use_local_normalization, use_
     if use_local_normalization:
         logger.info("Using local normalization with log transformations for neigh1d, hagri, and hfb")
         raw_results = apply_local_normalization(raw_results, use_quantile, use_raw_scoring)
-        score_suffix = '_score'
+        score_suffix = '_s'  # ALWAYS use _s suffix for consistency
     elif use_quantile:
         # Global quantile calculation - apply quantile normalization to entire dataset
         logger.info("Applying global quantile normalization to _s columns")
@@ -552,16 +552,13 @@ def calculate_initial_scores(raw_results, weights, use_local_normalization, use_
             weight_key = var_base + '_s'
             weight = weights.get(weight_key, 0)
             
-            if use_local_normalization:
-                score_var = var_base + '_score'
-                factor_score = row_dict.get(score_var, 0)
+            # Always use _s suffix for consistency
+            score_var = var_base + score_suffix
+            factor_score = row_dict.get(score_var, 0)
+            if factor_score is None:
+                factor_score = 0
             else:
-                score_var = var_base + score_suffix
-                factor_score = row_dict.get(score_var, 0)
-                if factor_score is None:
-                    factor_score = 0
-                else:
-                    factor_score = float(factor_score)
+                factor_score = float(factor_score)
             
             composite_score += weight * factor_score
         
