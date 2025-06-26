@@ -55,6 +55,7 @@ class FireRiskScoring {
         
         // Store in both filtering and scoring systems
         window.clientFilterManager.storeCompleteDataset(featureCollection);
+        window.clientNormalizationManager.storeCompleteDataset(featureCollection);
         
         this.completeDataset = featureCollection;
         this.currentDataset = featureCollection;
@@ -82,7 +83,7 @@ class FireRiskScoring {
     }
  
     // Process data with filters and calculate scores (comprehensive client-side)
-    processData(weights, filters, maxParcels = 500, use_local_normalization = false, use_quantile = false) {
+    processData(weights, filters, maxParcels = 500, use_local_normalization = false, use_quantile = false, use_raw_scoring = false) {
         if (!this.completeDataset) {
             console.error('No complete dataset stored. Call storeCompleteData() first.');
             return null;
@@ -98,7 +99,7 @@ class FireRiskScoring {
         
         // Check if we need to reprocess filters
         const filtersChanged = this.filtersChanged(filters) || 
-                              this.normalizationChanged(use_local_normalization, use_quantile);
+                              this.normalizationChanged(use_local_normalization, use_quantile, use_raw_scoring);
         
         let currentFeatures;
         
@@ -114,7 +115,7 @@ class FireRiskScoring {
             if (use_local_normalization && currentFeatures.length > 0) {
                 const normStart = performance.now();
                 const normalizedResult = window.clientNormalizationManager.calculateLocalNormalization(
-                    currentFeatures, use_quantile
+                    currentFeatures, use_quantile, use_raw_scoring
                 );
                 currentFeatures = normalizedResult.features;
                 this.logTiming('Local Normalization', performance.now() - normStart);
@@ -130,7 +131,8 @@ class FireRiskScoring {
             this.lastFilters = { ...filters };
             this.lastNormalizationSettings = {
                 use_local_normalization,
-                use_quantile
+                use_quantile,
+                use_raw_scoring
             };
         } else {
             // Use cached filtered dataset
@@ -140,7 +142,7 @@ class FireRiskScoring {
 
         // Calculate scores on current (filtered) dataset
         const scoringResult = this.calculateScores(
-            weights, maxParcels, use_local_normalization, use_quantile, currentFeatures
+            weights, maxParcels, use_local_normalization, use_quantile, use_raw_scoring, currentFeatures
         );
 
         const totalTime = performance.now() - start;
@@ -157,7 +159,7 @@ class FireRiskScoring {
     }
 
     // Calculate composite scores using weights (client-side)
-    calculateScores(weights, maxParcels = 500, use_local_normalization = false, use_quantile = false, features = null) {
+    calculateScores(weights, maxParcels = 500, use_local_normalization = false, use_quantile = false, use_raw_scoring = false, features = null) {
         const parcelsToScore = features || this.currentDataset?.features || this.completeDataset?.features;
         
         if (!parcelsToScore) {
@@ -184,7 +186,7 @@ class FireRiskScoring {
             
             // Get factor scores based on normalization settings
             const factorScores = window.clientNormalizationManager.getFactorScores(
-                parcel, use_local_normalization, use_quantile
+                parcel, use_local_normalization, use_quantile, use_raw_scoring
             );
             
             // Calculate weighted sum of factor scores
@@ -254,13 +256,14 @@ class FireRiskScoring {
     }
 
     // Check if normalization settings have changed
-    normalizationChanged(use_local_normalization, use_quantile) {
+    normalizationChanged(use_local_normalization, use_quantile, use_raw_scoring) {
         if (!this.lastNormalizationSettings) return true;
         
         const current = this.lastNormalizationSettings;
         return (
             current.use_local_normalization !== use_local_normalization ||
-            current.use_quantile !== use_quantile
+            current.use_quantile !== use_quantile ||
+            current.use_raw_scoring !== use_raw_scoring
         );
     }
 

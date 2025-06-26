@@ -386,10 +386,18 @@ class ClientFilterManager {
 class ClientNormalizationManager {
     constructor() {
         this.normalizationCache = {};
+        this.globalNormalizationCache = {};
+        this.completeDataset = null;
+    }
+    
+    // Store complete dataset for global normalization
+    storeCompleteDataset(completeDataset) {
+        this.completeDataset = completeDataset;
+        console.log('ClientNormalizationManager: Stored complete dataset for global normalization');
     }
 
     // Calculate local normalization on filtered dataset
-    calculateLocalNormalization(filteredFeatures, use_quantile) {
+    calculateLocalNormalization(filteredFeatures, use_quantile, use_raw_scoring = false) {
         const start = performance.now();
         console.log(`Calculating local normalization for ${filteredFeatures.length} filtered parcels`);
 
@@ -421,17 +429,22 @@ class ClientNormalizationManager {
                 if (rawValue !== null && rawValue !== undefined) {
                     rawValue = parseFloat(rawValue);
                     
-                    // Apply log transformations
-                    if (varBase === 'neigh1d') {
-                        // Skip parcels without structures (neigh1d = 0)
-                        if (rawValue === 0) {
-                            continue;
+                    // Apply log transformations (skip for Raw Min-Max scoring)
+                    if (!use_raw_scoring) {
+                        if (varBase === 'neigh1d') {
+                            // Skip parcels without structures (neigh1d = 0)
+                            if (rawValue === 0) {
+                                continue;
+                            }
+                            const cappedValue = Math.min(rawValue, 5280);
+                            rawValue = Math.log(1 + cappedValue);
+                        } else if (varBase === 'hagri' || varBase === 'hfb' || varBase === 'hlfmi_agfb') {
+                            // Apply log transformation to agriculture, fuel breaks, and combined agriculture & fuelbreaks
+                            rawValue = Math.log(1 + rawValue);
                         }
-                        const cappedValue = Math.min(rawValue, 5280);
-                        rawValue = Math.log(1 + cappedValue);
-                    } else if (varBase === 'hagri' || varBase === 'hfb' || varBase === 'hlfmi_agfb') {
-                        // Apply log transformation to agriculture, fuel breaks, and combined agriculture & fuelbreaks
-                        rawValue = Math.log(1 + rawValue);
+                    } else if (varBase === 'neigh1d' && rawValue === 0) {
+                        // For Raw Min-Max, still skip parcels without structures
+                        continue;
                     }
                     
                     values.push(rawValue);
@@ -488,18 +501,24 @@ class ClientNormalizationManager {
                 if (rawValue !== null && rawValue !== undefined && varBase in normData) {
                     rawValue = parseFloat(rawValue);
                     
-                    // Apply log transformations  
-                    if (varBase === 'neigh1d') {
-                        // Assign score of 0 for parcels without structures (neigh1d = 0)
-                        if (rawValue === 0) {
-                            newFeature.properties[varBase + '_s'] = 0.0;
-                            continue;
+                    // Apply log transformations (skip for Raw Min-Max scoring)
+                    if (!use_raw_scoring) {
+                        if (varBase === 'neigh1d') {
+                            // Assign score of 0 for parcels without structures (neigh1d = 0)
+                            if (rawValue === 0) {
+                                newFeature.properties[varBase + '_s'] = 0.0;
+                                continue;
+                            }
+                            const cappedValue = Math.min(rawValue, 5280);
+                            rawValue = Math.log(1 + cappedValue);
+                        } else if (varBase === 'hagri' || varBase === 'hfb' || varBase === 'hlfmi_agfb') {
+                            // Apply log transformation to agriculture, fuel breaks, and combined agriculture & fuelbreaks
+                            rawValue = Math.log(1 + rawValue);
                         }
-                        const cappedValue = Math.min(rawValue, 5280);
-                        rawValue = Math.log(1 + cappedValue);
-                    } else if (varBase === 'hagri' || varBase === 'hfb' || varBase === 'hlfmi_agfb') {
-                        // Apply log transformation to agriculture, fuel breaks, and combined agriculture & fuelbreaks
-                        rawValue = Math.log(1 + rawValue);
+                    } else if (varBase === 'neigh1d' && rawValue === 0) {
+                        // For Raw Min-Max, still assign score of 0 for parcels without structures
+                        newFeature.properties[varBase + '_s'] = 0.0;
+                        continue;
                     }
 
                     const normInfo = normData[varBase];
@@ -554,43 +573,247 @@ class ClientNormalizationManager {
         };
     }
 
+    // Calculate global normalization parameters using complete dataset
+    calculateGlobalNormalization(use_quantile, use_raw_scoring = false) {
+        if (!this.completeDataset) {
+            console.error('No complete dataset available for global normalization');
+            return null;
+        }
+
+        const cacheKey = `global_${use_quantile ? 'quantile' : 'minmax'}_${use_raw_scoring ? 'raw' : 'log'}`;
+        
+        // Return cached if available
+        if (this.globalNormalizationCache[cacheKey]) {
+            console.log('Using cached global normalization parameters');
+            return this.globalNormalizationCache[cacheKey];
+        }
+
+        const start = performance.now();
+        console.log(`Calculating global normalization parameters (${use_quantile ? 'quantile' : 'min-max'}, ${use_raw_scoring ? 'raw' : 'log-transformed'}) for ${this.completeDataset.features.length} parcels`);
+
+        const rawVarMap = {
+            'qtrmi': 'qtrmi_cnt',
+            'hwui': 'hlfmi_wui', 
+            'hagri': 'hlfmi_agri',
+            'hvhsz': 'hlfmi_vhsz',
+            'hfb': 'hlfmi_fb',
+            'slope': 'slope_s',
+            'neigh1d': 'neigh1_d',
+            'hbrn': 'hlfmi_brn',
+            'par_buf_sl': 'par_buf_sl',
+            'hlfmi_agfb': 'hlfmi_agfb'
+        };
+
+        const weightVarsBase = ['qtrmi', 'hwui', 'hagri', 'hvhsz', 'hfb', 'slope', 'neigh1d', 'hbrn', 'par_buf_sl', 'hlfmi_agfb'];
+        const normData = {};
+        
+        for (const varBase of weightVarsBase) {
+            const rawVar = rawVarMap[varBase];
+            const values = [];
+
+            for (const feature of this.completeDataset.features) {
+                let rawValue = feature.properties[rawVar];
+                if (rawValue !== null && rawValue !== undefined) {
+                    rawValue = parseFloat(rawValue);
+                    
+                    // Apply log transformations (skip for Raw Min-Max scoring)
+                    if (!use_raw_scoring) {
+                        if (varBase === 'neigh1d') {
+                            if (rawValue === 0) {
+                                continue; // Skip parcels without structures
+                            }
+                            const cappedValue = Math.min(rawValue, 5280);
+                            rawValue = Math.log(1 + cappedValue);
+                        } else if (varBase === 'hagri' || varBase === 'hfb' || varBase === 'hlfmi_agfb') {
+                            rawValue = Math.log(1 + rawValue);
+                        }
+                    } else if (varBase === 'neigh1d' && rawValue === 0) {
+                        continue; // For Raw Min-Max, still skip parcels without structures
+                    }
+                    
+                    values.push(rawValue);
+                }
+            }
+
+            if (values.length > 0) {
+                if (use_quantile) {
+                    // True quantile normalization
+                    const sortedValues = [...values].sort((a, b) => a - b);
+                    
+                    normData[varBase] = {
+                        sorted_values: sortedValues,
+                        total_count: sortedValues.length,
+                        norm_type: 'true_quantile'
+                    };
+                } else {
+                    // Basic min-max
+                    const min = Math.min(...values);
+                    let max;
+                    if (varBase === 'qtrmi') {
+                        // Use 97th percentile as max for structures
+                        values.sort((a, b) => a - b);
+                        const p97Index = Math.floor(values.length * 0.97);
+                        max = values[p97Index];
+                    } else {
+                        max = Math.max(...values);
+                    }
+                    const range = max > min ? max - min : 1.0;
+                    
+                    normData[varBase] = {
+                        min: min,
+                        max: max,
+                        range: range,
+                        norm_type: 'minmax'
+                    };
+                }
+            }
+        }
+
+        // Cache the result
+        this.globalNormalizationCache[cacheKey] = normData;
+        
+        const totalTime = performance.now() - start;
+        console.log(`Global normalization parameters calculated in ${totalTime.toFixed(1)}ms`);
+        
+        return normData;
+    }
+
     // Get factor scores for a feature based on normalization type
-    getFactorScores(feature, use_local_normalization, use_quantile) {
+    getFactorScores(feature, use_local_normalization, use_quantile, use_raw_scoring = false) {
         const factorScores = {};
         const weightVarsBase = ['qtrmi', 'hwui', 'hagri', 'hvhsz', 'hfb', 'slope', 'neigh1d', 'hbrn', 'par_buf_sl', 'hlfmi_agfb'];
 
         // Log the active combination (only once per call)
         if (!this.lastLoggedCombination || 
             this.lastLoggedCombination.local !== use_local_normalization || 
-            this.lastLoggedCombination.quantile !== use_quantile) {
+            this.lastLoggedCombination.quantile !== use_quantile ||
+            this.lastLoggedCombination.raw !== use_raw_scoring) {
             
             let combination;
-            if (use_local_normalization && use_quantile) {
-                combination = "LOCAL QUANTILE (quantile scores recalculated on filtered data)";
-            } else if (use_local_normalization && !use_quantile) {
-                combination = "LOCAL MIN-MAX (min-max scores recalculated on filtered data)";
-            } else if (!use_local_normalization && use_quantile) {
-                combination = "GLOBAL QUANTILE (quantile calculation applied to _s columns)";
+            const scoringType = use_raw_scoring ? "RAW MIN-MAX" : use_quantile ? "QUANTILE" : "MIN-MAX";
+            const normalizationType = use_local_normalization ? "LOCAL" : "GLOBAL";
+            
+            if (use_local_normalization) {
+                if (use_raw_scoring) {
+                    combination = "LOCAL RAW MIN-MAX (raw min-max scores recalculated on filtered data)";
+                } else if (use_quantile) {
+                    combination = "LOCAL QUANTILE (quantile scores recalculated on filtered data)";
+                } else {
+                    combination = "LOCAL MIN-MAX (min-max scores recalculated on filtered data)";
+                }
             } else {
-                combination = "GLOBAL MIN-MAX (min-max scores from _s columns)";
+                if (use_raw_scoring) {
+                    combination = "GLOBAL RAW MIN-MAX (raw min-max scores from full dataset)";
+                } else if (use_quantile) {
+                    combination = "GLOBAL QUANTILE (quantile calculation applied to _s columns)";
+                } else {
+                    combination = "GLOBAL MIN-MAX (min-max scores from _s columns)";
+                }
             }
             
             console.log(`CLIENT NORMALIZATION: ${combination}`);
-            this.lastLoggedCombination = { local: use_local_normalization, quantile: use_quantile };
+            this.lastLoggedCombination = { local: use_local_normalization, quantile: use_quantile, raw: use_raw_scoring };
         }
 
         for (const varBase of weightVarsBase) {
-            let scoreKey, outputKey;
+            let scoreValue;
             
-            // Always use _s columns - scoring method determined by calculation logic
-            scoreKey = varBase + '_s';
-            outputKey = varBase + '_s';
-
-            const scoreValue = feature.properties[scoreKey];
-            factorScores[outputKey] = scoreValue !== null && scoreValue !== undefined ? parseFloat(scoreValue) : 0.0;
+            if (use_local_normalization) {
+                // Use locally normalized scores (already calculated in _s columns)
+                scoreValue = feature.properties[varBase + '_s'];
+                factorScores[varBase + '_s'] = scoreValue !== null && scoreValue !== undefined ? parseFloat(scoreValue) : 0.0;
+            } else {
+                // Calculate global normalization on-the-fly
+                scoreValue = this.calculateGlobalScore(feature, varBase, use_quantile, use_raw_scoring);
+                factorScores[varBase + '_s'] = scoreValue;
+            }
         }
 
         return factorScores;
+    }
+
+    // Calculate global score for a single feature and variable
+    calculateGlobalScore(feature, varBase, use_quantile, use_raw_scoring) {
+        const globalNormData = this.calculateGlobalNormalization(use_quantile, use_raw_scoring);
+        
+        if (!globalNormData || !(varBase in globalNormData)) {
+            return 0.0;
+        }
+
+        const rawVarMap = {
+            'qtrmi': 'qtrmi_cnt',
+            'hwui': 'hlfmi_wui', 
+            'hagri': 'hlfmi_agri',
+            'hvhsz': 'hlfmi_vhsz',
+            'hfb': 'hlfmi_fb',
+            'slope': 'slope_s',
+            'neigh1d': 'neigh1_d',
+            'hbrn': 'hlfmi_brn',
+            'par_buf_sl': 'par_buf_sl',
+            'hlfmi_agfb': 'hlfmi_agfb'
+        };
+
+        const invertVars = new Set(['hagri', 'neigh1d', 'hfb', 'hlfmi_agfb']);
+        const rawVar = rawVarMap[varBase];
+        let rawValue = feature.properties[rawVar];
+
+        if (rawValue === null || rawValue === undefined) {
+            return 0.0;
+        }
+
+        rawValue = parseFloat(rawValue);
+
+        // Apply log transformations (skip for Raw Min-Max scoring)
+        if (!use_raw_scoring) {
+            if (varBase === 'neigh1d') {
+                if (rawValue === 0) {
+                    return 0.0; // Assign score of 0 for parcels without structures
+                }
+                const cappedValue = Math.min(rawValue, 5280);
+                rawValue = Math.log(1 + cappedValue);
+            } else if (varBase === 'hagri' || varBase === 'hfb' || varBase === 'hlfmi_agfb') {
+                rawValue = Math.log(1 + rawValue);
+            }
+        } else if (varBase === 'neigh1d' && rawValue === 0) {
+            return 0.0; // For Raw Min-Max, still assign score of 0 for parcels without structures
+        }
+
+        const normInfo = globalNormData[varBase];
+        let normalizedScore;
+
+        if (normInfo.norm_type === 'true_quantile') {
+            // True quantile normalization - find percentile rank
+            const sortedValues = normInfo.sorted_values;
+            const totalCount = normInfo.total_count;
+            
+            // Binary search to find rank
+            let left = 0;
+            let right = sortedValues.length;
+            while (left < right) {
+                const mid = Math.floor((left + right) / 2);
+                if (sortedValues[mid] <= rawValue) {
+                    left = mid + 1;
+                } else {
+                    right = mid;
+                }
+            }
+            const rank = left;
+            
+            // Convert rank to percentile (0.0 to 1.0)
+            normalizedScore = rank / totalCount;
+            normalizedScore = Math.max(0.0, Math.min(1.0, normalizedScore));
+        } else {
+            // Min-max normalization
+            normalizedScore = (rawValue - normInfo.min) / normInfo.range;
+            normalizedScore = Math.max(0, Math.min(1, normalizedScore));
+        }
+
+        // Apply inversion for certain variables
+        if (invertVars.has(varBase)) {
+            normalizedScore = 1.0 - normalizedScore;
+        }
+
+        return normalizedScore;
     }
 }
 

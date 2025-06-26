@@ -691,13 +691,24 @@ class PlottingManager {
                                 ['neigh1_d', 'hlfmi_agri', 'hlfmi_fb'].includes(variable));
         
         const logSuffix = usesLogTransform ? ' (Log Transformed)' : '';
-        const normSuffix = data.normalization === 'local_client' ? ' (Local Normalization)' : '';
         
         // Get the best human-readable title for this variable
         const variableTitle = this.getVariableTitle(variable);
         
+        // Create scoring method label for bottom right
+        let scoringMethodText = '';
+        if (isScoreVariable) {
+            const filters = window.getCurrentFilters ? window.getCurrentFilters() : {};
+            const useQuantile = filters.use_quantile || false;
+            const useLocalNormalization = filters.use_local_normalization || false;
+            
+            const methodLabel = useQuantile ? 'Quantile' : 'Min-Max';
+            const normLabel = useLocalNormalization ? 'Local' : 'Global';
+            scoringMethodText = `(${methodLabel}) (${normLabel})`;
+        }
+        
         const layout = {
-            title: `${variableTitle} Distribution${logSuffix}${normSuffix}`,
+            title: `${variableTitle} Distribution${logSuffix}`,
             paper_bgcolor: '#1a1a1a',
             plot_bgcolor: '#1a1a1a',
             font: {
@@ -731,7 +742,20 @@ class PlottingManager {
                 borderpad: 4,
                 xanchor: 'right',
                 yanchor: 'top'
-            }]
+            }].concat(scoringMethodText ? [{
+                x: 0.98,
+                y: 0.02,
+                xref: 'paper',
+                yref: 'paper',
+                text: scoringMethodText,
+                showarrow: false,
+                font: {
+                    color: '#ccc',
+                    size: 10
+                },
+                xanchor: 'right',
+                yanchor: 'bottom'
+            }] : [])
         };
         
         Plotly.newPlot('dist-plot', [trace], layout);
@@ -855,6 +879,15 @@ class PlottingManager {
                 binColorsLength: binColors.length
             });
 
+            // Get current settings for scoring method label
+            const filters = window.getCurrentFilters ? window.getCurrentFilters() : {};
+            const useQuantile = filters.use_quantile || false;
+            const useLocalNormalization = filters.use_local_normalization || false;
+            
+            const methodLabel = useQuantile ? 'Quantile' : 'Min-Max';
+            const normLabel = useLocalNormalization ? 'Local' : 'Global';
+            const scoringMethodText = `(${methodLabel}) (${normLabel})`;
+
             // Simple layout (like regular distributions)
             const layout = {
                 title: 'Calculated Risk Score Distribution',
@@ -891,6 +924,19 @@ class PlottingManager {
                     borderpad: 4,
                     xanchor: 'right',
                     yanchor: 'top'
+                }, {
+                    x: 0.98,
+                    y: 0.02,
+                    xref: 'paper',
+                    yref: 'paper',
+                    text: scoringMethodText,
+                    showarrow: false,
+                    font: {
+                        color: '#ccc',
+                        size: 10
+                    },
+                    xanchor: 'right',
+                    yanchor: 'bottom'
                 }]
             };
 

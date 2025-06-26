@@ -1070,6 +1070,12 @@
                             Quantile Scoring
                         </label>
                     </div>
+                    <div class="toggle-container">
+                        <label class="toggle-label">
+                            <input type="radio" name="score-type" id="use-raw-scoring" value="raw">
+                            Raw Min-Max Scoring
+                        </label>
+                    </div>
                 </div>
                 <div>
                     <h4 style="font-size: 11px; color: #aaa; margin-bottom: 6px;">Normalization:</h4>
@@ -1540,6 +1546,7 @@
         // Helper function to update distribution buttons based on score type
         function updateDistributionButtons() {
             const useQuantile = document.getElementById('use-quantile').checked;
+            const useRawScoring = document.getElementById('use-raw-scoring').checked;
             const suffix = useQuantile ? '_z' : '_s';
             
             // Update all score distribution buttons
@@ -1572,6 +1579,7 @@
                 exclude_no_brns: document.getElementById('filter-brns-enabled').checked,
                 exclude_agri_protection: document.getElementById('filter-agri-protection-enabled').checked,
                 use_quantile: document.getElementById('use-quantile').checked,
+                use_raw_scoring: document.getElementById('use-raw-scoring').checked,
                 use_local_normalization: document.getElementById('use-local-normalization').checked,
                 subset_area: subsetArea
             };
@@ -1589,14 +1597,18 @@
 
         function createPopupContent(props) {
             const useQuantile = document.getElementById('use-quantile').checked;
+            const useRawScoring = document.getElementById('use-raw-scoring').checked;
             let suffix, scoreType;
             
             if (useQuantile) {
                 suffix = '_z';
                 scoreType = 'Quantile';
+            } else if (useRawScoring) {
+                suffix = '_s';
+                scoreType = 'Raw Min-Max';
             } else {
                 suffix = '_s';
-                scoreType = 'Basic Min-Max';
+                scoreType = 'Min-Max';
             }
             
             return `
@@ -1863,7 +1875,8 @@
                         filters, 
                         maxParcels,
                         filters.use_local_normalization,
-                        filters.use_quantile
+                        filters.use_quantile,
+                        filters.use_raw_scoring
                     );
                     
                     if (clientResult) {
@@ -1916,7 +1929,8 @@
                     filters, 
                     maxParcels,
                     filters.use_local_normalization,
-                    filters.use_quantile
+                    filters.use_quantile,
+                    filters.use_raw_scoring
                 );
                 const firstCalcTime = performance.now() - firstCalcStart;
                 
@@ -2292,6 +2306,11 @@
             updateDistributionButtons(); // Update button onclick attributes
             updateScores(); // Client-side processing handles all changes
         });
+        
+        document.getElementById('use-raw-scoring').addEventListener('change', () => {
+            updateDistributionButtons(); // Update button onclick attributes
+            updateScores(); // Client-side processing handles all changes
+        });
 
         ['filter-yearbuilt', 'filter-neigh1d', 'filter-strcnt'].forEach(id => {
             const element = document.getElementById(id);
@@ -2494,10 +2513,11 @@
             }
 
             const use_quantile = document.getElementById('use-quantile').checked;
+            const use_raw_scoring = document.getElementById('use-raw-scoring').checked;
             const use_local_normalization = document.getElementById('use-local-normalization').checked;
             const optimizationType = document.querySelector('input[name="optimization-type"]:checked').value;
             
-            console.log(`Collecting parcel scores: quantile=${use_quantile}, local=${use_local_normalization}, type=${optimizationType}`);
+            console.log(`Collecting parcel scores: quantile=${use_quantile}, raw=${use_raw_scoring}, local=${use_local_normalization}, type=${optimizationType}`);
 
             const selectedParcels = [];
             const unselectedParcels = [];
@@ -2554,7 +2574,7 @@
                 };
 
                 return window.clientNormalizationManager.getFactorScores(
-                    fakeFeature, use_local_normalization, use_quantile
+                    fakeFeature, use_local_normalization, use_quantile, use_raw_scoring
                 );
             }
 
@@ -2654,6 +2674,7 @@
                     unselected_parcel_scores: parcelScoreData.unselectedParcels, // NEW: Send unselected scores (for relative mode)
                     optimization_type: optimizationType, // NEW: Send optimization type
                     use_quantile: document.getElementById('use-quantile').checked,
+                    use_raw_scoring: document.getElementById('use-raw-scoring').checked,
                     ...getCurrentFilters()
                 });
 

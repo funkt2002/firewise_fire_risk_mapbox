@@ -243,13 +243,14 @@ def get_score_vars(use_quantile=False):
     score_vars = correct_variable_names(score_vars)
     return score_vars
 
-def apply_local_normalization(raw_results, use_quantile):
+def apply_local_normalization(raw_results, use_quantile, use_raw_scoring=False):
     """Apply local normalization to raw values and return individual factor scores
     
     Args:
         raw_results: List of raw parcel data
         use_quantile: If True, uses true quantile normalization (equal-sized bins)
                      If False, uses min-max normalization
+        use_raw_scoring: If True, skips log transformations (Raw Min-Max scoring)
     """
     start_time = time.time()
     
@@ -265,22 +266,28 @@ def apply_local_normalization(raw_results, use_quantile):
             for row in raw_results:
                 raw_value = row[raw_var]
                 if raw_value is not None:
-                    if var_base == 'neigh1d':
-                        # Skip parcels without structures (neigh1d = 0)
-                        if float(raw_value) == 0:
+                    if not use_raw_scoring:
+                        # Apply log transformations (skip for Raw Min-Max scoring)
+                        if var_base == 'neigh1d':
+                            # Skip parcels without structures (neigh1d = 0)
+                            if float(raw_value) == 0:
+                                continue
+                            # Apply log transformation: log(1 + capped_distance)
+                            capped_value = min(float(raw_value), 5280)
+                            raw_value = math.log(1 + capped_value)
+                            # Log first few transformations for debugging
+                            if len(values) < 3:
+                                logger.info(f"neigh1d transformation: {capped_value} -> {raw_value:.3f}")
+                        elif var_base in ['hagri', 'hfb', 'hlfmi_agfb']:
+                            # Apply log transformation to agriculture, fuel breaks, and combined agriculture & fuelbreaks
+                            raw_value = math.log(1 + float(raw_value))
+                            # Log first few transformations for debugging
+                            if len(values) < 3:
+                                logger.info(f"{var_base} log transformation: {float(row[raw_var])} -> {raw_value:.3f}")
+                    else:
+                        # Raw Min-Max scoring - still skip parcels without structures for neigh1d
+                        if var_base == 'neigh1d' and float(raw_value) == 0:
                             continue
-                        # Apply log transformation: log(1 + capped_distance)
-                        capped_value = min(float(raw_value), 5280)
-                        raw_value = math.log(1 + capped_value)
-                        # Log first few transformations for debugging
-                        if len(values) < 3:
-                            logger.info(f"neigh1d transformation: {capped_value} -> {raw_value:.3f}")
-                    elif var_base in ['hagri', 'hfb', 'hlfmi_agfb']:
-                        # Apply log transformation to agriculture, fuel breaks, and combined agriculture & fuelbreaks
-                        raw_value = math.log(1 + float(raw_value))
-                        # Log first few transformations for debugging
-                        if len(values) < 3:
-                            logger.info(f"{var_base} log transformation: {float(row[raw_var])} -> {raw_value:.3f}")
                     values.append(float(raw_value))
             
             if len(values) > 0:
@@ -322,20 +329,30 @@ def apply_local_normalization(raw_results, use_quantile):
             raw_value = row_dict[raw_var]
             
             if raw_value is not None and var_base in norm_data:
-                if var_base == 'neigh1d':
-                    # Assign score of 0 for parcels without structures (neigh1d = 0)
-                    if float(raw_value) == 0:
+                if not use_raw_scoring:
+                    # Apply log transformations (skip for Raw Min-Max scoring)
+                    if var_base == 'neigh1d':
+                        # Assign score of 0 for parcels without structures (neigh1d = 0)
+                        if float(raw_value) == 0:
+                            score_key = var_base + '_score'
+                            row_dict[score_key] = 0.0
+                            raw_results[i] = row_dict
+                            continue
+                        # Apply log transformation: log(1 + capped_distance)
+                        capped_value = min(float(raw_value), 5280)
+                        raw_value = math.log(1 + capped_value)
+                    elif var_base in ['hagri', 'hfb', 'hlfmi_agfb']:
+                        # Apply log transformation to agriculture, fuel breaks, and combined agriculture & fuelbreaks
+                        raw_value = math.log(1 + float(raw_value))
+                    else:
+                        raw_value = float(raw_value)
+                else:
+                    # Raw Min-Max scoring - still assign score of 0 for parcels without structures
+                    if var_base == 'neigh1d' and float(raw_value) == 0:
                         score_key = var_base + '_score'
                         row_dict[score_key] = 0.0
                         raw_results[i] = row_dict
                         continue
-                    # Apply log transformation: log(1 + capped_distance)
-                    capped_value = min(float(raw_value), 5280)
-                    raw_value = math.log(1 + capped_value)
-                elif var_base in ['hagri', 'hfb', 'hlfmi_agfb']:
-                    # Apply log transformation to agriculture, fuel breaks, and combined agriculture & fuelbreaks
-                    raw_value = math.log(1 + float(raw_value))
-                else:
                     raw_value = float(raw_value)
                 
                 norm_info = norm_data[var_base]
@@ -507,14 +524,14 @@ def apply_global_quantile_normalization(filtered_results):
     logger.info(f"Applied global county ranking to {len(filtered_results):,} filtered parcels")
     return filtered_results
 
-def calculate_initial_scores(raw_results, weights, use_local_normalization, use_quantile, max_parcels):
+def calculate_initial_scores(raw_results, weights, use_local_normalization, use_quantile, max_parcels, use_raw_scoring=False):
     """Calculate initial composite scores for display"""
     start_time = time.time()
     
     # Apply local normalization if requested (adds individual factor scores)
     if use_local_normalization:
         logger.info("Using local normalization with log transformations for neigh1d, hagri, and hfb")
-        raw_results = apply_local_normalization(raw_results, use_quantile)
+        raw_results = apply_local_normalization(raw_results, use_quantile, use_raw_scoring)
         score_suffix = '_score'
     elif use_quantile:
         # Global quantile calculation - apply quantile normalization to entire dataset
@@ -665,6 +682,7 @@ def get_distribution(variable):
     """Get distribution data for a variable"""
     data = request.get_json() or {}
     use_quantile = data.get('use_quantile', False)
+    use_raw_scoring = data.get('use_raw_scoring', False)
     use_local_normalization = data.get('use_local_normalization', False)
     
     # Get allowed variables - simplified check
@@ -719,7 +737,8 @@ def get_distribution(variable):
                     # Apply local normalization
                     raw_data = apply_local_normalization(
                         [{raw_var: v} for v in raw_values],
-                        use_quantile
+                        use_quantile,
+                        use_raw_scoring
                     )
                     
                     # Transform values
@@ -1265,20 +1284,25 @@ def get_parcel_scores_for_optimization(data, include_vars):
     
     # Get user settings and determine active combination
     use_quantile = data.get('use_quantile', False)
+    use_raw_scoring = data.get('use_raw_scoring', False)
     use_local_normalization = data.get('use_local_normalization', False)
     
     # Determine active combination
-    if use_local_normalization and use_quantile:
+    if use_local_normalization and use_raw_scoring:
+        combination = "LOCAL RAW MIN-MAX (raw min-max scores recalculated on filtered data)"
+    elif use_local_normalization and use_quantile:
         combination = "LOCAL QUANTILE (quantile scores recalculated on filtered data)"
     elif use_local_normalization and not use_quantile:
         combination = "LOCAL MIN-MAX (min-max scores recalculated on filtered data)"
+    elif not use_local_normalization and use_raw_scoring:
+        combination = "GLOBAL RAW MIN-MAX (raw min-max scores from full dataset)"
     elif not use_local_normalization and use_quantile:
         combination = "GLOBAL QUANTILE (quantile calculation applied to _s columns)"
     else:
         combination = "GLOBAL MIN-MAX (min-max scores from _s columns)"
     
     logger.info(f"NORMALIZATION COMBINATION: {combination}")
-    logger.info(f"USER SETTINGS: use_local_normalization={use_local_normalization}, use_quantile={use_quantile}")
+    logger.info(f"USER SETTINGS: use_local_normalization={use_local_normalization}, use_quantile={use_quantile}, use_raw_scoring={use_raw_scoring}")
     
     # Extract base variable names from what the client actually sent (no overriding)
     include_vars_base = []
@@ -1325,11 +1349,14 @@ def get_parcel_scores_for_optimization(data, include_vars):
     
     # Log which score type is being used (matches the combination determined above)
     if score_suffix == '_s':
-        if use_local_normalization:
-            score_type_name = 'Local Min-Max (_s scores recalculated on filtered data)'
+        if use_local_normalization and use_quantile:
+            score_type_name = 'Local Quantile (_s scores recalculated with quantile method on filtered data)'
+        elif use_local_normalization and not use_quantile:
+            score_type_name = 'Local Min-Max (_s scores recalculated with min-max method on filtered data)'
+        elif not use_local_normalization and use_quantile:
+            score_type_name = 'Global Quantile (_s scores calculated with quantile method on full county)'
         else:
             score_type_name = 'Global Min-Max (_s scores from database)'
-    # _z suffix no longer used - quantile scoring uses _s columns with different calculation logic
     elif score_suffix == '':
         score_type_name = 'Raw Values (no suffix)'
     else:
@@ -1367,6 +1394,7 @@ def get_parcel_scores_for_optimization(data, include_vars):
                 
                 if expected_key in client_scores:
                     try:
+                        # Store with base name for optimization logic consistency
                         parcel_scores[var_base] = float(client_scores[expected_key])
                     except (ValueError, TypeError):
                         if expected_key not in missing_score_warnings:
