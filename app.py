@@ -1340,50 +1340,137 @@ def solve_weight_optimization(parcel_data, include_vars):
             
         # Add this after the current coefficient calculation but before the LP setup
         
-        # STEP 2.5: DIRECT RANKING OPTIMIZATION (Alternative approach)
-        # Instead of maximizing advantage sums, directly optimize for ranking positions
+        # STEP 2.5: DIRECT RANKING OPTIMIZATION - ITERATIVE APPROACH
+        # Problem: LP optimization gives extreme solutions that don't actually work
+        # Solution: Test multiple weight combinations and pick the one that actually maximizes top N
         
-        # For more direct ranking optimization, we can use a different coefficient strategy:
-        # For each variable, calculate how much it helps selected parcels vs. ALL competitors (not just 80th percentile)
+        logger.info(f"USING ITERATIVE WEIGHT TESTING for guaranteed top-N optimization...")
         
-        logger.info(f"TESTING DIRECT RANKING APPROACH...")
+        # Generate candidate weight combinations to test
+        # Use a grid search approach with emphasis on promising factors
+        from itertools import product
         
-        # Alternative coefficient calculation: O(V × (S + U) log(U)) - MUCH more efficient!
-        # For each variable, calculate the "ranking power" using sorted arrays and binary search
-        
-        direct_coefficients = {}
-        
+        # Based on ranking power, identify the top factors
+        ranking_powers = []
         for var_base in include_vars_base:
             selected_scores = [p['scores'][var_base] for p in selected_parcels]
             unselected_scores = [p['scores'][var_base] for p in unselected_parcels]
             
-            # Sort unselected scores once - O(U log U)
             unselected_sorted = np.sort(unselected_scores)
             total_unselected = len(unselected_sorted)
-            
-            # For each selected score, use binary search to find how many it beats - O(S log U)
             total_ranking_power = 0
             
             for sel_score in selected_scores:
-                # Binary search: how many unselected scores are < sel_score
                 beats_count = np.searchsorted(unselected_sorted, sel_score, side='left')
                 beating_percentage = beats_count / total_unselected if total_unselected > 0 else 0
                 total_ranking_power += beating_percentage
             
-            direct_coefficients[var_base] = total_ranking_power
+            avg_beating_rate = total_ranking_power / len(selected_parcels) if selected_parcels else 0
+            ranking_powers.append((var_base, total_ranking_power, avg_beating_rate))
+        
+        # Sort by ranking power and take top factors
+        ranking_powers.sort(key=lambda x: x[1], reverse=True)
+        logger.info(f"RANKING POWERS: {[(var, f'{power:.1f}', f'{rate:.1%}') for var, power, rate in ranking_powers]}")
+        
+        # Focus on top 3-4 factors for weight combinations
+        top_factors = [var for var, _, rate in ranking_powers[:4] if rate > 0.4]  # Only factors where selected beats >40% of unselected
+        logger.info(f"TESTING WEIGHT COMBINATIONS FOR: {top_factors}")
+        
+        if len(top_factors) < 2:
+            logger.warning(f"Only {len(top_factors)} competitive factors found. Selected area may have limited ranking potential.")
+            top_factors = [var for var, _, _ in ranking_powers[:2]]  # Take top 2 anyway
+        
+        # Generate weight combinations
+        # Test combinations like: [0.8, 0.2], [0.6, 0.4], [0.5, 0.3, 0.2], etc.
+        best_weights = None
+        best_top_500_count = 0
+        best_results = None
+        
+        def test_weight_combination(weights_dict):
+            """Test a specific weight combination and return top 500 count"""
+            # Calculate composite scores for all parcels
+            all_scores = []
             
-            logger.info(f"EFFICIENT RANKING {var_base}: ranking_power={total_ranking_power:.4f} (avg selected beats {total_ranking_power/len(selected_parcels)*100:.1f}% of unselected)")
+            for parcel in all_parcels:
+                composite_score = 0
+                for var_base in include_vars_base:
+                    weight = weights_dict.get(var_base, 0)
+                    factor_score = parcel['scores'][var_base]
+                    composite_score += weight * factor_score
+                
+                is_selected = parcel in selected_parcels
+                all_scores.append((composite_score, is_selected))
+            
+            # Sort by composite score (highest first)
+            all_scores.sort(key=lambda x: x[0], reverse=True)
+            
+            # Count selected in top 500
+            top_500_count = sum(1 for i, (score, is_selected) in enumerate(all_scores[:500]) if is_selected)
+            return top_500_count, all_scores
         
-        # Compare the two approaches
-        logger.info(f"COEFFICIENT COMPARISON:")
-        for var_base in include_vars_base:
-            advantage_coeff = coefficients[var_base]
-            ranking_coeff = direct_coefficients[var_base]
-            logger.info(f"  {var_base}: advantage_method={advantage_coeff:.2f}, ranking_method={ranking_coeff:.2f}")
+        # Test different weight distributions
+        weight_candidates = []
         
-        # Use the direct ranking coefficients instead
-        logger.info(f"SWITCHING TO DIRECT RANKING COEFFICIENTS for better top-N optimization")
-        coefficients = direct_coefficients
+        if len(top_factors) == 2:
+            # Two factor combinations
+            for w1 in [0.5, 0.6, 0.7, 0.8, 0.9, 1.0]:
+                w2 = 1.0 - w1
+                weights = {top_factors[0]: w1, top_factors[1]: w2}
+                weight_candidates.append(weights)
+        
+        elif len(top_factors) == 3:
+            # Three factor combinations
+            for w1 in [0.4, 0.5, 0.6, 0.7, 0.8]:
+                for w2 in [0.2, 0.3, 0.4]:
+                    w3 = 1.0 - w1 - w2
+                    if w3 >= 0.1:  # Ensure reasonable distribution
+                        weights = {top_factors[0]: w1, top_factors[1]: w2, top_factors[2]: w3}
+                        weight_candidates.append(weights)
+        
+        elif len(top_factors) >= 4:
+            # Four factor combinations  
+            for w1 in [0.4, 0.5, 0.6]:
+                for w2 in [0.2, 0.3]:
+                    for w3 in [0.1, 0.2]:
+                        w4 = 1.0 - w1 - w2 - w3
+                        if w4 >= 0.1:
+                            weights = {top_factors[0]: w1, top_factors[1]: w2, top_factors[2]: w3, top_factors[3]: w4}
+                            weight_candidates.append(weights)
+        
+        # Add some extreme cases for comparison
+        for factor in top_factors[:2]:
+            weight_candidates.append({factor: 1.0})  # 100% single factor
+        
+        logger.info(f"TESTING {len(weight_candidates)} weight combinations...")
+        
+        # Test all combinations
+        for i, weights_dict in enumerate(weight_candidates):
+            top_500_count, all_scores = test_weight_combination(weights_dict)
+            
+            if top_500_count > best_top_500_count:
+                best_top_500_count = top_500_count
+                best_weights = weights_dict.copy()
+                best_results = all_scores
+            
+            # Log top performers
+            if top_500_count > 0:
+                weights_str = ", ".join([f"{var}: {w:.1%}" for var, w in weights_dict.items() if w > 0])
+                logger.info(f"  {weights_str} → {top_500_count} selected in top 500")
+        
+        if best_weights is None or best_top_500_count == 0:
+            logger.error(f"NO WEIGHT COMBINATION achieved any selected parcels in top 500!")
+            logger.error(f"This indicates the selected area has fundamentally low risk scores relative to the county.")
+            # Fall back to the original LP solution for reporting
+            coefficients = {var: ranking_powers[i][1] for i, var in enumerate(include_vars_base)}
+        else:
+            logger.info(f"BEST COMBINATION: {best_top_500_count} selected parcels in top 500")
+            best_weights_str = ", ".join([f"{var}: {w:.1%}" for var, w in best_weights.items() if w > 0])
+            logger.info(f"OPTIMAL WEIGHTS: {best_weights_str}")
+            
+            # Convert to the format expected by LP solver
+            coefficients = {}
+            for var_base in include_vars_base:
+                coefficients[var_base] = best_weights.get(var_base, 0) * 1000  # Scale up for LP solver
     
     else:
         # Absolute optimization (backward compatibility)
@@ -1404,29 +1491,41 @@ def solve_weight_optimization(parcel_data, include_vars):
                 for i, var_base in enumerate(include_vars_base)
             )
     
-    # STEP 3: Create lightweight LP problem (only 10 terms for both modes!)
-    prob = LpProblem("Maximize_Score", LpMaximize)
-    w_vars = LpVariable.dicts('w', include_vars_base, lowBound=0)
-    
-    # Create objective with aggregated coefficients
-    objective = lpSum(w_vars[var] * coefficients[var] for var in include_vars_base)
-    prob += objective
-    
-    optimization_type = "RELATIVE" if is_relative else "ABSOLUTE"
-    logger.info(f"{optimization_type}: Created LP with {len(include_vars_base)} terms")
-    
-    # STEP 4: Add constraint
-    prob += lpSum(w_vars[var] for var in include_vars_base) == 1
-    
-    # STEP 5: Solve
-    solver_result = prob.solve(COIN_CMD(msg=False))
-    
-    # STEP 6: Extract solution (preserve original suffixes)
-    best_weights = {}
-    for i, var_base in enumerate(include_vars_base):
-        # Use the original suffix from include_vars
-        original_var = include_vars[i]
-        best_weights[original_var] = value(w_vars[var_base])
+    # STEP 3: Handle weights based on optimization mode
+    if is_relative and 'best_weights' in locals() and best_weights is not None:
+        # We already found optimal weights through iterative testing - use those!
+        logger.info(f"USING ITERATIVELY TESTED WEIGHTS (skipping LP solver)")
+        final_weights = {}
+        for i, var_base in enumerate(include_vars_base):
+            original_var = include_vars[i]
+            final_weights[original_var] = best_weights.get(var_base, 0)
+        best_weights = final_weights
+        solver_result = 1  # Simulate successful solve
+        
+    else:
+        # Use LP solver for absolute mode or fallback
+        prob = LpProblem("Maximize_Score", LpMaximize)
+        w_vars = LpVariable.dicts('w', include_vars_base, lowBound=0)
+        
+        # Create objective with aggregated coefficients
+        objective = lpSum(w_vars[var] * coefficients[var] for var in include_vars_base)
+        prob += objective
+        
+        optimization_type = "RELATIVE" if is_relative else "ABSOLUTE"
+        logger.info(f"{optimization_type}: Using LP solver with {len(include_vars_base)} terms")
+        
+        # Add constraint
+        prob += lpSum(w_vars[var] for var in include_vars_base) == 1
+        
+        # Solve
+        solver_result = prob.solve(COIN_CMD(msg=False))
+        
+        # Extract solution (preserve original suffixes)
+        best_weights = {}
+        for i, var_base in enumerate(include_vars_base):
+            # Use the original suffix from include_vars
+            original_var = include_vars[i]
+            best_weights[original_var] = value(w_vars[var_base])
     
     # STEP 7: Calculate total score for reporting
     total_score = calculate_total_score(best_weights)
