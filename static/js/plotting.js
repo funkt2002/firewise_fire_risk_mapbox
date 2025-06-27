@@ -746,14 +746,14 @@ class PlottingManager {
                 yanchor: 'top'
             }].concat(scoringMethodText ? [{
                 x: 0.98,
-                y: 0.82,
+                y: 0.96,
                 xref: 'paper',
                 yref: 'paper',
                 text: scoringMethodText,
                 showarrow: false,
                 font: {
                     color: '#ccc',
-                    size: 12
+                    size: 10
                 },
                 xanchor: 'right',
                 yanchor: 'top'
@@ -994,14 +994,14 @@ class PlottingManager {
                     yanchor: 'top'
                 }, {
                     x: 0.98,
-                    y: 0.82,
+                    y: 0.96,
                     xref: 'paper',
                     yref: 'paper',
                     text: scoringMethodText,
                     showarrow: false,
                     font: {
                         color: '#ccc',
-                        size: 12
+                        size: 10
                     },
                     xanchor: 'right',
                     yanchor: 'top'

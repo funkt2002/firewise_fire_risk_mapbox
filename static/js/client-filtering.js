@@ -483,14 +483,17 @@ class ClientNormalizationManager {
                     // Basic min-max
                     const min = Math.min(...values);
                     let max;
-                    if (varBase === 'qtrmi') {
-                        // Use 97th percentile as max for structures to reduce outlier impact
+                    if (varBase === 'qtrmi' && !use_raw_scoring) {
+                        // Use 97th percentile as max for structures ONLY for Robust scoring (with log transforms)
                         values.sort((a, b) => a - b);
                         const p97Index = Math.floor(values.length * 0.97);
                         max = values[p97Index];
-                        console.log(`qtrmi: Using 97th percentile (${max.toFixed(1)}) as max instead of actual max (${Math.max(...values).toFixed(1)})`);
+                        console.log(`qtrmi: Using 97th percentile (${max.toFixed(1)}) as max instead of actual max (${Math.max(...values).toFixed(1)}) for ROBUST scoring`);
                     } else {
                         max = Math.max(...values);
+                        if (varBase === 'qtrmi' && use_raw_scoring) {
+                            console.log(`qtrmi: Using TRUE maximum (${max.toFixed(1)}) for RAW scoring`);
+                        }
                     }
                     const range = max > min ? max - min : 1.0;
                     
@@ -603,7 +606,11 @@ class ClientNormalizationManager {
                     // CRITICAL DEBUG: Show final scores for first few features
                     if (featureCounter <= 3 && (varBase === 'neigh1d' || varBase === 'hagri' || varBase === 'hfb')) {
                         const scoringType = use_raw_scoring ? 'RAW' : 'ROBUST';
-                        console.log(`🔧 FEATURE ${featureCounter} ${scoringType} FINAL: ${varBase}_s = ${normalizedScore.toFixed(4)} (using min:${normInfo.min.toFixed(3)}, max:${normInfo.max.toFixed(3)})`);
+                        if (normInfo.norm_type === 'true_quantile') {
+                            console.log(`🔧 FEATURE ${featureCounter} ${scoringType} FINAL: ${varBase}_s = ${normalizedScore.toFixed(4)} (quantile rank from ${normInfo.total_count} values)`);
+                        } else {
+                            console.log(`🔧 FEATURE ${featureCounter} ${scoringType} FINAL: ${varBase}_s = ${normalizedScore.toFixed(4)} (using min:${normInfo.min.toFixed(3)}, max:${normInfo.max.toFixed(3)})`);
+                        }
                     }
                 }
             }
@@ -697,13 +704,17 @@ class ClientNormalizationManager {
                     // Basic min-max
                     const min = Math.min(...values);
                     let max;
-                    if (varBase === 'qtrmi') {
-                        // Use 97th percentile as max for structures
+                    if (varBase === 'qtrmi' && !use_raw_scoring) {
+                        // Use 97th percentile as max for structures ONLY for Robust scoring (with log transforms)
                         values.sort((a, b) => a - b);
                         const p97Index = Math.floor(values.length * 0.97);
                         max = values[p97Index];
+                        console.log(`qtrmi: Using 97th percentile (${max.toFixed(1)}) as max instead of actual max (${Math.max(...values).toFixed(1)}) for ROBUST scoring (GLOBAL)`);
                     } else {
                         max = Math.max(...values);
+                        if (varBase === 'qtrmi' && use_raw_scoring) {
+                            console.log(`qtrmi: Using TRUE maximum (${max.toFixed(1)}) for RAW scoring (GLOBAL)`);
+                        }
                     }
                     const range = max > min ? max - min : 1.0;
                     
