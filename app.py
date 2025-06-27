@@ -1416,7 +1416,8 @@ def generate_solution_files(include_vars, best_weights, weights_pct, total_score
         include_vars_base.append(base_var)
     
     # Generate LP file
-    lp_lines = ["Maximize"]
+    scoring_method_comment = f"\\ Scoring Method: {scoring_method}"
+    lp_lines = [scoring_method_comment, "Maximize"]
     obj_terms = []
     
     # Use all parcel data for absolute optimization
@@ -1481,12 +1482,22 @@ def generate_solution_files(include_vars, best_weights, weights_pct, total_score
     if selection_areas:
         optimization_title = f"MULTI-AREA {optimization_title}"
     
+    # Determine scoring method from request data
+    scoring_method = "Unknown"
+    if request_data.get('use_raw_scoring'):
+        scoring_method = "Raw Min-Max"
+    elif request_data.get('use_quantile'):
+        scoring_method = "Quantile"
+    else:
+        scoring_method = "Robust Min-Max"
+    
     txt_lines.extend([
         "=" * 60,
         optimization_title,
         "=" * 60,
         "",
         area_info,
+        f"Scoring Method: {scoring_method}",
     ])
     
     if optimization_type == 'relative':
