@@ -320,6 +320,68 @@ class FireRiskScoring {
         console.log(`Speedup: ${speedup.toFixed(1)}x faster`);
         console.log('------------------------------');
     }
+
+    // Apply optimized weights to existing scores to calculate final risk scores
+    applyOptimizedWeights(optimizedWeights, includeVars) {
+        if (!this.currentDataset) {
+            console.error('No current dataset available for weight application');
+            return;
+        }
+
+        const start = performance.now();
+        console.log('Applying optimized weights to existing scores...');
+        console.log('Optimized weights:', optimizedWeights);
+        console.log('Include vars:', includeVars);
+
+        // Convert weight percentages to decimals
+        const weights = {};
+        Object.entries(optimizedWeights).forEach(([key, percentage]) => {
+            weights[key] = percentage / 100;
+        });
+
+        // Get base variable names (remove _s suffix if present)
+        const baseVars = includeVars.map(varName => 
+            varName.endsWith('_s') ? varName.slice(0, -2) : varName
+        );
+
+        let appliedCount = 0;
+        
+        // Apply weights to all features in current dataset
+        this.currentDataset.features.forEach(feature => {
+            const scores = feature.properties.scores;
+            if (!scores) return;
+
+            let finalScore = 0;
+            let validScoreCount = 0;
+
+            // Calculate weighted sum using existing scores
+            baseVars.forEach(baseVar => {
+                const scoreKey = baseVar + '_s'; // Use _s scores
+                if (scores[scoreKey] !== undefined && weights[baseVar] !== undefined) {
+                    const score = parseFloat(scores[scoreKey]);
+                    const weight = weights[baseVar];
+                    if (!isNaN(score) && !isNaN(weight)) {
+                        finalScore += score * weight;
+                        validScoreCount++;
+                    }
+                }
+            });
+
+            // Only update if we have valid scores
+            if (validScoreCount > 0) {
+                feature.properties.risk_score = Math.max(0, Math.min(1, finalScore));
+                appliedCount++;
+            }
+        });
+
+        const duration = performance.now() - start;
+        console.log(`Applied optimized weights to ${appliedCount} features in ${duration.toFixed(1)}ms`);
+        
+        // Store the weights for reference
+        this.lastWeights = optimizedWeights;
+        
+        return appliedCount;
+    }
 }
 
 // Performance tracking utilities

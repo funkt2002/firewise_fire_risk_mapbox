@@ -1078,7 +1078,9 @@ def solve_relative_optimization(parcel_data, include_vars, top_n, request_data):
             for var_base in include_vars_base:
                 if var_base in parcel.get('scores', {}):
                     composite_score += weights[var_base] * parcel['scores'][var_base]
-            all_scores.append((parcel['parcel_id'], composite_score))
+            # Handle both 'parcel_id' and 'id' field names
+            parcel_id = parcel.get('parcel_id') or parcel.get('id')
+            all_scores.append((parcel_id, composite_score))
         
         # Sort by score (highest first)
         all_scores.sort(key=lambda x: x[1], reverse=True)
@@ -1411,6 +1413,11 @@ def infer_weights():
         if optimization_type == 'relative':
             # Relative optimization: rank selected area in top N
             top_n = data.get('top_n', 100)
+            logger.info(f"RELATIVE OPTIMIZATION: top_n={top_n}, parcel_data count={len(parcel_data)}")
+            logger.info(f"RELATIVE OPTIMIZATION: Has parcel_scores key: {'parcel_scores' in data}")
+            if 'parcel_scores' in data:
+                logger.info(f"RELATIVE OPTIMIZATION: parcel_scores count={len(data['parcel_scores'])}")
+            
             best_weights, weights_pct, total_score, success = solve_relative_optimization(
                 parcel_data, include_vars, top_n, data
             )
