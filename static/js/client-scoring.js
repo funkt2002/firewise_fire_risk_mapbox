@@ -5,6 +5,7 @@ class FireRiskScoring {
         this.completeDataset = null;
         this.currentDataset = null;
         this.attributeMap = new Map();        // NEW: parcel_id -> attributes lookup for vector tiles
+        this.factorScoresMap = new Map();     // NEW: parcel_id -> factor scores lookup for popups
         this.timings = {};
         this.lastWeights = null;
         this.lastFilters = null;
@@ -188,6 +189,11 @@ class FireRiskScoring {
             const factorScores = window.clientNormalizationManager.getFactorScores(
                 parcel, use_local_normalization, use_quantile, use_raw_scoring
             );
+            
+            // Store factor scores for popup lookup
+            if (parcel.properties.parcel_id) {
+                this.factorScoresMap.set(parcel.properties.parcel_id, factorScores);
+            }
             
             // Calculate weighted sum of factor scores
             for (const [weightKey, weight] of Object.entries(normalizedWeights)) {

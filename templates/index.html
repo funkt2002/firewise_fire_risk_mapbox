@@ -1616,16 +1616,8 @@
                 scoreType = 'Robust Min-Max';
             }
             
-            // Calculate scores dynamically using the current settings
-            const fakeFeature = {
-                type: "Feature",
-                geometry: null,
-                properties: props
-            };
-            
-            const factorScores = window.clientNormalizationManager.getFactorScores(
-                fakeFeature, useLocalNormalization, useQuantile, useRawScoring
-            );
+            // Get factor scores from stored calculation results
+            const factorScores = window.fireRiskScoring?.factorScoresMap?.get(props.parcel_id) || {};
             
             return `
                 <div style="max-height: 300px; overflow-y: auto; padding-right: 10px;">
