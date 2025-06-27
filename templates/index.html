@@ -2310,21 +2310,49 @@
         // Filter and normalization controls - all use client-side processing
         const filters = ['filter-yearbuilt-enabled', 'filter-neigh1d-enabled', 'filter-yearbuilt-exclude-unknown', 
                         'filter-strcnt-enabled', 'filter-wui-zero-enabled', 'filter-vhsz-zero-enabled', 
-                        'filter-brns-enabled', 'filter-agri-protection-enabled', 'use-basic-scores', 'use-local-normalization'];
+                        'filter-brns-enabled', 'filter-agri-protection-enabled', 'use-basic-scores'];
         filters.forEach(id => {
             document.getElementById(id).addEventListener('change', () => {
                 updateScores(); // Client-side processing handles all changes
             });
         });
 
+        // Special handling for local normalization to also refresh popups
+        document.getElementById('use-local-normalization').addEventListener('change', () => {
+            refreshOpenPopups(); // Refresh any open popups
+            updateScores(); // Client-side processing handles all changes
+        });
+
+        // Function to refresh any open popups with current scoring settings
+        function refreshOpenPopups() {
+            const popupElements = document.querySelectorAll('.mapboxgl-popup');
+            popupElements.forEach(popupElement => {
+                // Try to extract parcel ID from the popup content
+                const contentElement = popupElement.querySelector('.mapboxgl-popup-content');
+                if (contentElement) {
+                    const parcelIdMatch = contentElement.innerHTML.match(/<h3>([^<]+)<\/h3>/);
+                    if (parcelIdMatch) {
+                        const parcelId = parcelIdMatch[1];
+                        // Find the parcel attributes from our stored data
+                        const attributes = window.fireRiskScoring?.attributeMap?.get(parcelId);
+                        if (attributes) {
+                            contentElement.innerHTML = createPopupContent(attributes);
+                        }
+                    }
+                }
+            });
+        }
+
         // Special handling for score type changes to update distribution buttons
         document.getElementById('use-quantile').addEventListener('change', () => {
             updateDistributionButtons(); // Update button onclick attributes
+            refreshOpenPopups(); // Refresh any open popups
             updateScores(); // Client-side processing handles all changes
         });
         
         document.getElementById('use-raw-scoring').addEventListener('change', () => {
             updateDistributionButtons(); // Update button onclick attributes
+            refreshOpenPopups(); // Refresh any open popups
             updateScores(); // Client-side processing handles all changes
         });
 
