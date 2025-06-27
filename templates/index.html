@@ -1605,18 +1605,27 @@
         function createPopupContent(props) {
             const useQuantile = document.getElementById('use-quantile').checked;
             const useRawScoring = document.getElementById('use-raw-scoring').checked;
-            let suffix, scoreType;
+            const useLocalNormalization = document.getElementById('use-local-normalization').checked;
+            let scoreType;
             
             if (useQuantile) {
-                suffix = '_z';
                 scoreType = 'Quantile';
             } else if (useRawScoring) {
-                suffix = '_s';
                 scoreType = 'Raw Min-Max';
             } else {
-                suffix = '_s';
                 scoreType = 'Robust Min-Max';
             }
+            
+            // Calculate scores dynamically using the current settings
+            const fakeFeature = {
+                type: "Feature",
+                geometry: null,
+                properties: props
+            };
+            
+            const factorScores = window.clientNormalizationManager.getFactorScores(
+                fakeFeature, useLocalNormalization, useQuantile, useRawScoring
+            );
             
             return `
                 <div style="max-height: 300px; overflow-y: auto; padding-right: 10px;">
@@ -1650,16 +1659,16 @@
 
                     <div style="margin: 10px 0;">
                         <h4 style="margin: 0 0 5px 0; font-size: 12px; color: #aaa;">Risk Factor Scores (${scoreType})</h4>
-                        <p><strong>Structures (1/4 mi):</strong> ${props['qtrmi' + suffix]?.toFixed(3) || 'N/A'}</p>
-                        <p><strong>WUI Coverage (1/2 mi):</strong> ${props['hwui' + suffix]?.toFixed(3) || 'N/A'}</p>
-                        <p><strong>Agriculture Coverage (1/2 mi):</strong> ${props['hagri' + suffix]?.toFixed(3) || 'N/A'}</p>
-                        <p><strong>Fire Hazard Coverage (1/2 mi):</strong> ${props['hvhsz' + suffix]?.toFixed(3) || 'N/A'}</p>
-                        <p><strong>Firebreak Coverage (1/2 mi):</strong> ${props['hfb' + suffix]?.toFixed(3) || 'N/A'}</p>
-                        <p><strong>Slope Score:</strong> ${props['slope' + suffix]?.toFixed(3) || 'N/A'}</p>
-                        <p><strong>Neighbor Distance Score:</strong> ${props['neigh1d' + suffix]?.toFixed(3) || 'N/A'}</p>
-                        <p><strong>Burn Scar Coverage (1/2 mi):</strong> ${props['hbrn' + suffix]?.toFixed(3) || 'N/A'}</p>
-                        <p><strong>Slope within 100 ft Score:</strong> ${props['par_buf_sl' + suffix]?.toFixed(3) || 'N/A'}</p>
-                        <p><strong>Agriculture & Fuelbreaks Score:</strong> ${props['hlfmi_agfb' + suffix]?.toFixed(3) || 'N/A'}</p>
+                        <p><strong>Structures (1/4 mi):</strong> ${factorScores.qtrmi_s?.toFixed(3) || 'N/A'}</p>
+                        <p><strong>WUI Coverage (1/2 mi):</strong> ${factorScores.hwui_s?.toFixed(3) || 'N/A'}</p>
+                        <p><strong>Agriculture Coverage (1/2 mi):</strong> ${factorScores.hagri_s?.toFixed(3) || 'N/A'}</p>
+                        <p><strong>Fire Hazard Coverage (1/2 mi):</strong> ${factorScores.hvhsz_s?.toFixed(3) || 'N/A'}</p>
+                        <p><strong>Firebreak Coverage (1/2 mi):</strong> ${factorScores.hfb_s?.toFixed(3) || 'N/A'}</p>
+                        <p><strong>Slope Score:</strong> ${factorScores.slope_s?.toFixed(3) || 'N/A'}</p>
+                        <p><strong>Neighbor Distance Score:</strong> ${factorScores.neigh1d_s?.toFixed(3) || 'N/A'}</p>
+                        <p><strong>Burn Scar Coverage (1/2 mi):</strong> ${factorScores.hbrn_s?.toFixed(3) || 'N/A'}</p>
+                        <p><strong>Slope within 100 ft Score:</strong> ${factorScores.par_buf_sl_s?.toFixed(3) || 'N/A'}</p>
+                        <p><strong>Agriculture & Fuelbreaks Score:</strong> ${factorScores.hlfmi_agfb_s?.toFixed(3) || 'N/A'}</p>
                     </div>
                 </div>
             `;
@@ -2701,6 +2710,9 @@
                         console.log(`Slider not found for key: ${sliderKey}`);
                     }
                 });
+                
+                // Update percentage displays to match the new slider values
+                normalizeWeights();
                 
                 // Trigger a score recalculation with the new weights
                 console.log(`Applied optimized weights from ${optimizationType} optimization`);

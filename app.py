@@ -1587,7 +1587,7 @@ def infer_weights():
         if optimization_type == 'relative':
             timing_log += f" Target: top {data.get('top_n', 100)} parcels."
         
-        return jsonify({
+        response_data = {
             "weights": weights_pct,           # ~200 bytes
             "total_score": total_score,       # ~20 bytes
             "num_parcels": num_parcels,       # ~20 bytes
@@ -1596,7 +1596,10 @@ def infer_weights():
             "optimization_type": optimization_type,  # ~20 bytes
             "timing_log": timing_log,
             "files_available": True           # Files stored on disk, not in memory
-        })
+        }
+        
+        logger.info(f"Sending response: {len(str(response_data))} characters")
+        return jsonify(response_data)
         
     except Exception as e:
         logger.error(f"Exception in /api/infer-weights: {e}")

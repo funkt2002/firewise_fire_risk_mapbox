@@ -483,11 +483,20 @@ class TimedAPIClient {
         try {
             console.log('Calling /api/infer-weights...');
             
-            const response = await fetch('/api/infer-weights', {
+            // Create a timeout promise
+            const timeoutPromise = new Promise((_, reject) => 
+                setTimeout(() => reject(new Error('Request timeout after 30 seconds')), 30000)
+            );
+            
+            // Create the fetch promise
+            const fetchPromise = fetch('/api/infer-weights', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(requestData)
             });
+            
+            // Race between fetch and timeout
+            const response = await Promise.race([fetchPromise, timeoutPromise]);
 
             if (!response.ok) {
                 throw new Error(`HTTP ${response.status}: ${response.statusText}`);
