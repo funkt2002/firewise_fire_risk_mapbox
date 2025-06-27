@@ -1256,22 +1256,26 @@ def solve_relative_optimization_heuristic(parcel_data, include_vars, top_n, requ
     logger.info(f"RELATIVE OPTIMIZATION (HEURISTIC): {len(parcel_data):,} selected parcels, target top {top_n}")
     logger.info(f"Variables: {include_vars_base}")
     
-    # Get full dataset to calculate global rankings
-    full_parcel_scores = request_data.get('parcel_scores', [])
-    if not full_parcel_scores:
-        logger.error("No full dataset provided for relative optimization")
+    # Get current filtered dataset for ranking (not global dataset)
+    filtered_parcel_scores = request_data.get('selected_parcel_scores', [])
+    if not filtered_parcel_scores:
+        # Fallback to full dataset if no filtered scores provided
+        filtered_parcel_scores = request_data.get('parcel_scores', [])
+    
+    if not filtered_parcel_scores:
+        logger.error("No dataset provided for relative optimization")
         return None, None, None, False
     
-    logger.info(f"Full dataset: {len(full_parcel_scores)} parcels")
+    logger.info(f"Working with current filtered dataset: {len(filtered_parcel_scores)} parcels")
     
     # Extract selected parcel IDs for tracking
     selected_parcel_ids = set(parcel['parcel_id'] for parcel in parcel_data)
     
     def calculate_selected_in_top_n(weights):
         """Calculate how many selected parcels end up in top N with given weights"""
-        # Calculate composite scores for all parcels
+        # Calculate composite scores for current filtered dataset
         scored_parcels = []
-        for parcel in full_parcel_scores:
+        for parcel in filtered_parcel_scores:
             composite_score = 0
             for var_base in include_vars_base:
                 if var_base in parcel['scores']:
@@ -1283,7 +1287,7 @@ def solve_relative_optimization_heuristic(parcel_data, include_vars, top_n, requ
                 'is_selected': parcel['parcel_id'] in selected_parcel_ids
             })
         
-        # Sort by score and find top N
+        # Sort by score and find top N from current filtered dataset
         scored_parcels.sort(key=lambda x: x['score'], reverse=True)
         top_n_parcels = scored_parcels[:top_n]
         
@@ -1296,7 +1300,7 @@ def solve_relative_optimization_heuristic(parcel_data, include_vars, top_n, requ
     best_weights = {var: 1.0 / len(include_vars_base) for var in include_vars_base}
     best_count, _ = calculate_selected_in_top_n(best_weights)
     
-    logger.info(f"Starting with equal weights: {best_count}/{len(selected_parcel_ids)} selected parcels in top {top_n}")
+    logger.info(f"Starting with equal weights: {best_count}/{len(selected_parcel_ids)} selected parcels in top {top_n} of current dataset")
     
     # If no selected parcels can make it to top N with any reasonable weights, fail early
     if best_count == 0:
@@ -1310,8 +1314,8 @@ def solve_relative_optimization_heuristic(parcel_data, include_vars, top_n, requ
                 best_weights = test_weights.copy()
         
         if best_count == 0:
-            logger.error(f"RELATIVE OPTIMIZATION FAILED: No weighting scheme can get any selected parcels into top {top_n}")
-            raise ValueError(f"Selected area contains parcels that cannot reach top {top_n} with any weighting")
+            logger.error(f"RELATIVE OPTIMIZATION FAILED: No weighting scheme can get any selected parcels into top {top_n} of current dataset")
+            raise ValueError(f"Selected area contains parcels that cannot reach top {top_n} of the current filtered dataset with any weighting")
     
     # Heuristic search strategies
     max_iterations = 200
@@ -1353,7 +1357,7 @@ def solve_relative_optimization_heuristic(parcel_data, include_vars, top_n, requ
         
         if random.random() < accept_prob:
             if new_count > best_count:
-                logger.info(f"Iteration {iteration}: Improved from {best_count} to {new_count} selected parcels in top {top_n}")
+                logger.info(f"Iteration {iteration}: Improved from {best_count} to {new_count} selected parcels in top {top_n} of current dataset")
                 no_improvement_count = 0
             else:
                 no_improvement_count += 1
@@ -1391,7 +1395,7 @@ def solve_relative_optimization_heuristic(parcel_data, include_vars, top_n, requ
     success_rate = (final_count / len(selected_parcel_ids)) * 100
     
     logger.info(f"HEURISTIC OPTIMIZATION COMPLETED in {elapsed_time:.2f}s")
-    logger.info(f"RESULT: {final_count}/{len(selected_parcel_ids)} selected parcels in top {top_n} ({success_rate:.1f}% success rate)")
+    logger.info(f"RESULT: {final_count}/{len(selected_parcel_ids)} selected parcels in top {top_n} of current dataset ({success_rate:.1f}% success rate)")
     logger.info(f"WEIGHTS: {[(var, f'{weight:.1%}') for var, weight in significant_weights]}")
     
     gc.collect()
@@ -1489,7 +1493,7 @@ def generate_solution_files(include_vars, best_weights, weights_pct, total_score
         txt_lines.extend([
             "",
             "OPTIMIZATION TYPE: Relative Heuristic Search", 
-            f"OBJECTIVE: Maximize selected parcels ranking in top {top_n} globally",
+            f"OBJECTIVE: Maximize selected parcels ranking in top {top_n} of current dataset",
             "",
             f"Selected parcels analyzed: {parcel_count:,}",
             f"Target ranking: Top {top_n} parcels",
@@ -1497,10 +1501,10 @@ def generate_solution_files(include_vars, best_weights, weights_pct, total_score
             "",
             "HEURISTIC APPROACH:",
             "  1. Test multiple weight combinations using random search",
-            "  2. Evaluate how many selected parcels rank in global top N",
+            "  2. Evaluate how many selected parcels rank in current dataset top N",
             "  3. Iteratively improve to maximize selected parcels in top N",
             "  4. Balance exploration vs exploitation with acceptance probability",
-            "  This directly optimizes the user's goal of getting their area into top rankings.",
+            "  This optimizes for getting your selected area into the top rankings of your current view.",
         ])
     else:
         txt_lines.extend([
