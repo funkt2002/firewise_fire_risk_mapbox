@@ -994,7 +994,7 @@
             
             <!-- Property Characteristics -->
             <div style="margin-bottom: 20px;">
-                <h3 style="font-size: 13px; margin-bottom: 10px; font-weight: bold;">Property Characteristics</h3>
+                <h3 style="font-size: 13px; margin-bottom: 10px; font-weight: bold;">Parcel Characteristics</h3>
                 
                 <div class="input-group" style="display: flex; align-items: center; margin-bottom: 10px; font-size: 12px; background: rgba(255,255,255,0.03); padding: 8px; border-radius: 4px;">
                     <input type="checkbox" id="filter-yearbuilt-enabled" style="margin-right: 8px; vertical-align: middle;">
@@ -1050,17 +1050,10 @@
                         <span style="font-weight: 500;">Burn scar exposure</span>
                     </label>
                 </div>
-            </div>
-
-            <!-- Protection & Mitigation -->
-            <div style="margin-bottom: 15px;">
-                <h3 style="font-size: 13px; margin-bottom: 10px; font-weight: bold;">Protection</h3>
-                <div style="font-size: 11px; color: #aaa; margin-bottom: 8px;">Exclude parcels with:</div>
-                
                 <div class="toggle-container" style="background: rgba(255,255,255,0.03); padding: 6px; border-radius: 4px; margin-bottom: 6px;">
                     <label class="toggle-label">
                         <input type="checkbox" id="filter-agri-protection-enabled">
-                        <span style="font-weight: 500;">Agricultural protection</span>
+                        <span style="font-weight: 500;">Agricultural coverage</span>
                     </label>
                 </div>
             </div>
@@ -3235,16 +3228,16 @@
                         'fill-opacity': 0.5
                     }
                 },
-                {
-                    id: 'hazard',
-                    url: 'mapbox://theo1158.67pq9lmy',
-                    sourceLayer: 'hazard',
-                    type: 'fill',
-                    paint: {
-                        'fill-color': '#ff9900',
-                        'fill-opacity': 0.25
-                    }
-                },
+                // {
+                //     id: 'hazard',
+                //     url: 'mapbox://theo1158.67pq9lmy',
+                //     sourceLayer: 'hazard',
+                //     type: 'fill',
+                //     paint: {
+                //         'fill-color': '#ff9900',
+                //         'fill-opacity': 0.25
+                //     }
+                // },
                 {
                     id: 'structures',
                     url: 'mapbox://theo1158.59wv6n5j',

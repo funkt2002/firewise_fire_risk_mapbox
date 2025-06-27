@@ -115,30 +115,30 @@ class ClientFilterManager {
             }
         }
 
-        // WUI zero coverage filter
+        // WUI coverage filter - exclude parcels with low WUI scores
         if (filters.exclude_wui_zero) {
-            if (!props.hlfmi_wui || props.hlfmi_wui <= 0) {
+            if (!props.hwui_s || props.hwui_s < 0.5) {
                 return false;
             }
         }
 
-        // VHSZ zero coverage filter
+        // Fire hazard zone coverage filter - exclude parcels with low hazard scores
         if (filters.exclude_vhsz_zero) {
-            if (!props.hlfmi_vhsz || props.hlfmi_vhsz <= 0) {
+            if (!props.hvhsz_s || props.hvhsz_s < 0.5) {
                 return false;
             }
         }
 
-        // Burn scars filter
+        // Burn scar exposure filter - exclude parcels with low burn scar scores
         if (filters.exclude_no_brns) {
-            if (!props.num_brns || props.num_brns <= 0) {
+            if (!props.hbrn_s || props.hbrn_s < 0.5) {
                 return false;
             }
         }
 
-        // Agricultural protection filter - exclude parcels WITH protection (non-zero values)
+        // Agricultural protection filter - exclude parcels with low agricultural scores
         if (filters.exclude_agri_protection) {
-            if (props.hlfmi_agri && props.hlfmi_agri > 0) {
+            if (!props.hagri_s || props.hagri_s < 0.5) {
                 return false;
             }
         }
