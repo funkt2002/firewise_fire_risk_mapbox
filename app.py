@@ -1403,6 +1403,15 @@ def solve_relative_optimization_heuristic(parcel_data, include_vars, top_n, requ
 def generate_solution_files(include_vars, best_weights, weights_pct, total_score, 
                            parcel_data, request_data):
     """Generate LP and TXT solution files"""
+    # Determine scoring method from request data
+    scoring_method = "Unknown"
+    if request_data.get('use_raw_scoring'):
+        scoring_method = "Raw Min-Max"
+    elif request_data.get('use_quantile'):
+        scoring_method = "Quantile"
+    else:
+        scoring_method = "Robust Min-Max"
+    
     # Process variable names - properly remove only the suffix, not all occurrences
     include_vars_base = []
     for var in include_vars:
@@ -1481,15 +1490,6 @@ def generate_solution_files(include_vars, best_weights, weights_pct, total_score
     
     if selection_areas:
         optimization_title = f"MULTI-AREA {optimization_title}"
-    
-    # Determine scoring method from request data
-    scoring_method = "Unknown"
-    if request_data.get('use_raw_scoring'):
-        scoring_method = "Raw Min-Max"
-    elif request_data.get('use_quantile'):
-        scoring_method = "Quantile"
-    else:
-        scoring_method = "Robust Min-Max"
     
     txt_lines.extend([
         "=" * 60,
