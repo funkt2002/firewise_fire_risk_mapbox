@@ -760,7 +760,7 @@
                 <div class="variable-container" data-variable="hwui_s">
                     <div class="variable-header">
                         <input type="checkbox" class="variable-enable-checkbox" id="enable-hwui_s" checked>
-                        <span class="variable-name">WUI coverage percentage (1/2 mile)</span>
+                        <span class="variable-name">Wildland Urban Interface (WUI) coverage percentage (1/2 mile)</span>
                     </div>
                     <div class="variable-controls expanded">
                         <div class="slider-container">
@@ -987,66 +987,84 @@
         
         <div class="control-section">
             <div style="display: flex; align-items: center; cursor: pointer; margin-bottom: 8px;" id="filters-header">
-                <h2 style="margin: 0;">Filters</h2>
+                <h2 style="margin: 0;">Data Filters</h2>
                 <span style="margin-left: 8px; font-size: 12px; color: #888;" id="filters-toggle">▶</span>
             </div>
             <div id="filters-content" style="display: none; margin-left: 12px; padding-left: 8px; border-left: 2px solid rgba(255,255,255,0.1);">
             
-            
-            <div style="margin-bottom: 15px;">
-                <h3 style="font-size: 12px; color: #aaa; margin-bottom: 8px;">Exclude parcels without:</h3>
-                <div class="toggle-container">
-                    <label class="toggle-label">
-                        <input type="checkbox" id="filter-wui-zero-enabled">
-                        WUI Coverage
-                    </label>
-                </div>
-                <div class="toggle-container">
-                    <label class="toggle-label">
-                        <input type="checkbox" id="filter-vhsz-zero-enabled">
-                        Fire Hazards Coverage
-                    </label>
-                </div>
-                <div class="toggle-container">
-                    <label class="toggle-label">
-                        <input type="checkbox" id="filter-brns-enabled">
-                        Burn Scars
-                    </label>
-                </div>
-                <div class="toggle-container">
-                    <label class="toggle-label">
-                        <input type="checkbox" id="filter-agri-protection-enabled">
-                        Agricultural Protection
-                    </label>
-                </div>
-
-
-            </div>
-
-            <div>
-                <h3 style="font-size: 12px; color: #aaa; margin-bottom: 8px;">Filter Parcels out based on:</h3>
-                <div class="input-group" style="display: flex; align-items: center; margin-bottom: 8px; font-size: 12px;">
+            <!-- Property Characteristics -->
+            <div style="margin-bottom: 20px;">
+                <h3 style="font-size: 13px; margin-bottom: 10px; font-weight: bold;">Property Characteristics</h3>
+                
+                <div class="input-group" style="display: flex; align-items: center; margin-bottom: 10px; font-size: 12px; background: rgba(255,255,255,0.03); padding: 8px; border-radius: 4px;">
                     <input type="checkbox" id="filter-yearbuilt-enabled" style="margin-right: 8px; vertical-align: middle;">
-                    <span style="white-space: nowrap; vertical-align: middle;">Built after year:</span>
+                    <span style="white-space: nowrap; vertical-align: middle; font-weight: 500;">Built after year:</span>
                     <input type="number" class="number-input" id="filter-yearbuilt" min="1800" max="2024" value="1996" style="margin-left: 8px; width: 80px; vertical-align: middle;">
                 </div>
-                <div class="toggle-container" style="margin-left: 20px; margin-bottom: 8px;">
-                    <label class="toggle-label">
+                <div class="toggle-container" style="margin-left: 24px; margin-bottom: 12px;">
+                    <label class="toggle-label" style="font-size: 11px; color: #ccc;">
                         <input type="checkbox" id="filter-yearbuilt-exclude-unknown">
-                        Exclude Unknown Year Built
+                        Exclude parcels with unknown construction year
                     </label>
                 </div>
-                <div class="input-group" style="display: flex; align-items: center; margin-bottom: 8px; font-size: 12px;">
+                
+                <div class="input-group" style="display: flex; align-items: center; margin-bottom: 8px; font-size: 12px; background: rgba(255,255,255,0.03); padding: 8px; border-radius: 4px;">
                     <input type="checkbox" id="filter-strcnt-enabled" style="margin-right: 8px; vertical-align: middle;">
-                    <span style="white-space: nowrap; vertical-align: middle;">Minimum Number of Structures</span>
+                    <span style="white-space: nowrap; vertical-align: middle; font-weight: 500;">Minimum structures:</span>
                     <input type="number" class="number-input" id="filter-strcnt" value="1" min="0" style="margin-left: 8px; width: 80px; vertical-align: middle;">
                 </div>
-                <div class="input-group" style="display: flex; align-items: center; margin-bottom: 8px; font-size: 12px;">
+            </div>
+
+            <!-- Neighborhood Context -->
+            <div style="margin-bottom: 20px;">
+                <h3 style="font-size: 13px; margin-bottom: 10px; font-weight: bold;">Neighborhood Context</h3>
+                
+                <div class="input-group" style="display: flex; align-items: center; margin-bottom: 8px; font-size: 12px; background: rgba(255,255,255,0.03); padding: 8px; border-radius: 4px;">
                     <input type="checkbox" id="filter-neigh1d-enabled" style="margin-right: 8px; vertical-align: middle;">
-                    <span style="white-space: nowrap; vertical-align: middle;">Nearest neighboring structure distance</span>
+                    <span style="white-space: nowrap; vertical-align: middle; font-weight: 500;">Max distance to nearest structure:</span>
                     <input type="number" class="number-input" id="filter-neigh1d" min="0" max="1000" value="50" style="margin-left: 8px; width: 80px; vertical-align: middle;">
+                    <span style="font-size: 10px; color: #888; margin-left: 8px;">feet</span>
                 </div>
             </div>
+
+            <!-- Risk Factor Coverage -->
+            <div style="margin-bottom: 15px;">
+                <h3 style="font-size: 13px; margin-bottom: 10px; font-weight: bold;">Risk Factor Coverage</h3>
+                <div style="font-size: 11px; color: #aaa; margin-bottom: 8px;">Only include parcels with:</div>
+                
+                <div class="toggle-container" style="background: rgba(255,255,255,0.03); padding: 6px; border-radius: 4px; margin-bottom: 6px;">
+                    <label class="toggle-label">
+                        <input type="checkbox" id="filter-wui-zero-enabled">
+                        <span style="font-weight: 500;">WUI coverage</span>
+                    </label>
+                </div>
+                <div class="toggle-container" style="background: rgba(255,255,255,0.03); padding: 6px; border-radius: 4px; margin-bottom: 6px;">
+                    <label class="toggle-label">
+                        <input type="checkbox" id="filter-vhsz-zero-enabled">
+                        <span style="font-weight: 500;">Fire hazard zone coverage</span>
+                    </label>
+                </div>
+                <div class="toggle-container" style="background: rgba(255,255,255,0.03); padding: 6px; border-radius: 4px; margin-bottom: 6px;">
+                    <label class="toggle-label">
+                        <input type="checkbox" id="filter-brns-enabled">
+                        <span style="font-weight: 500;">Burn scar exposure</span>
+                    </label>
+                </div>
+            </div>
+
+            <!-- Protection & Mitigation -->
+            <div style="margin-bottom: 15px;">
+                <h3 style="font-size: 13px; margin-bottom: 10px; font-weight: bold;">Protection</h3>
+                <div style="font-size: 11px; color: #aaa; margin-bottom: 8px;">Exclude parcels with:</div>
+                
+                <div class="toggle-container" style="background: rgba(255,255,255,0.03); padding: 6px; border-radius: 4px; margin-bottom: 6px;">
+                    <label class="toggle-label">
+                        <input type="checkbox" id="filter-agri-protection-enabled">
+                        <span style="font-weight: 500;">Agricultural protection</span>
+                    </label>
+                </div>
+            </div>
+            
             </div>
         </div>
         
@@ -1211,7 +1229,7 @@
                     <button class="button small" id="clear-all-selections" disabled>Clear All</button>
                 </div>
             </div>
-            <button class="button" id="infer-weights" disabled>Infer Weights from Multi-Selection</button>
+            <button class="button" id="infer-weights" disabled>Infer Weights from Selection</button>
                                         <button class="button" id="download-lp-btn" disabled>Download .LP File</button>
                             <button class="button" id="download-txt-btn" disabled>Download .TXT Report</button>
                             <button class="button" id="view-solution-btn" disabled>View Solution Report</button>
@@ -3217,17 +3235,16 @@
                         'fill-opacity': 0.5
                     }
                 },
-                // Note: Hazard layer temporarily disabled - upload hazard.mbtiles to Mapbox Studio first
-                /*{
+                {
                     id: 'hazard',
-                    url: 'mapbox://theo1158.hazard-placeholder',
+                    url: 'mapbox://theo1158.67pq9lmy',
                     sourceLayer: 'hazard',
                     type: 'fill',
                     paint: {
                         'fill-color': '#ff9900',
                         'fill-opacity': 0.25
                     }
-                },*/
+                },
                 {
                     id: 'structures',
                     url: 'mapbox://theo1158.59wv6n5j',

@@ -1282,7 +1282,8 @@ def solve_relative_optimization_qp(parcel_data, include_vars, top_n, request_dat
     coeff_spread = np.std(coeff_array) / mean_coeff if mean_coeff > 0 else 0
     lambda_param = 0.1 * max_coeff * (1 - coeff_spread)
     
-    objective = cp.Maximize(score - lambda_param * weight_variance)
+    # Fix DCP error: minimize negative score plus variance penalty (DCP-compliant)
+    objective = cp.Minimize(lambda_param * weight_variance - score)
     
     # Constraints
     constraints = [

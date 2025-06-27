@@ -432,18 +432,30 @@ class ClientNormalizationManager {
             for (const feature of filteredFeatures) {
                 let rawValue = feature.properties[rawVar];
                 if (rawValue !== null && rawValue !== undefined) {
-                    rawValue = parseFloat(rawValue);
+                    const originalValue = parseFloat(rawValue);
+                    rawValue = originalValue;
+                    
+                    // Special handling for neigh1d: use neigh2_d if neigh1_d < 2
+                    if (varBase === 'neigh1d' && rawValue < 2) {
+                        const neigh2Value = feature.properties['neigh2_d'];
+                        if (neigh2Value !== null && neigh2Value !== undefined) {
+                            rawValue = parseFloat(neigh2Value);
+                            if (values.length < 3) {
+                                console.log(`🔧 NORMALIZATION DEBUG: ${varBase} SUBSTITUTION: neigh1_d=${originalValue} < 2, using neigh2_d=${rawValue}`);
+                            }
+                        }
+                    }
                     
                     // Apply log transformations (skip for Raw Min-Max scoring)
-                    const originalValue = rawValue;
                     if (!use_raw_scoring) {
                         if (varBase === 'neigh1d') {
-                            // Skip parcels without structures (neigh1d = 0)
                             if (rawValue === 0) {
-                                continue;
+                                continue; // Skip parcels without structures
                             }
                             const cappedValue = Math.min(rawValue, 5280);
                             rawValue = Math.log(1 + cappedValue);
+                            
+                            // CRITICAL DEBUG: Show transform for first few features
                             if (values.length < 3) {
                                 console.log(`🔧 NORMALIZATION DEBUG: ${varBase} ROBUST transform: ${originalValue} → ${rawValue.toFixed(3)}`);
                             }
@@ -468,7 +480,7 @@ class ClientNormalizationManager {
                 }
             }
 
-                        if (values.length > 0) {
+            if (values.length > 0) {
                 if (use_quantile) {
                     // True quantile normalization - create equal-sized bins
                     const sortedValues = [...values].sort((a, b) => a - b);
@@ -528,6 +540,17 @@ class ClientNormalizationManager {
                 if (rawValue !== null && rawValue !== undefined && varBase in normData) {
                     const originalValue = parseFloat(rawValue);
                     rawValue = originalValue;
+                    
+                    // Special handling for neigh1d: use neigh2_d if neigh1_d < 2
+                    if (varBase === 'neigh1d' && rawValue < 2) {
+                        const neigh2Value = newFeature.properties['neigh2_d'];
+                        if (neigh2Value !== null && neigh2Value !== undefined) {
+                            rawValue = parseFloat(neigh2Value);
+                            if (featureCounter <= 3) {
+                                console.log(`🔧 FEATURE ${featureCounter} SUBSTITUTION: neigh1_d=${originalValue} < 2, using neigh2_d=${rawValue}`);
+                            }
+                        }
+                    }
                     
                     // Apply log transformations (skip for Raw Min-Max scoring)
                     if (!use_raw_scoring) {
@@ -669,7 +692,16 @@ class ClientNormalizationManager {
             for (const feature of this.completeDataset.features) {
                 let rawValue = feature.properties[rawVar];
                 if (rawValue !== null && rawValue !== undefined) {
-                    rawValue = parseFloat(rawValue);
+                    const originalValue = parseFloat(rawValue);
+                    rawValue = originalValue;
+                    
+                    // Special handling for neigh1d: use neigh2_d if neigh1_d < 2
+                    if (varBase === 'neigh1d' && rawValue < 2) {
+                        const neigh2Value = feature.properties['neigh2_d'];
+                        if (neigh2Value !== null && neigh2Value !== undefined) {
+                            rawValue = parseFloat(neigh2Value);
+                        }
+                    }
                     
                     // Apply log transformations (skip for Raw Min-Max scoring)
                     if (!use_raw_scoring) {
@@ -828,7 +860,16 @@ class ClientNormalizationManager {
             return 0.0;
         }
 
-        rawValue = parseFloat(rawValue);
+        const originalValue = parseFloat(rawValue);
+        rawValue = originalValue;
+
+        // Special handling for neigh1d: use neigh2_d if neigh1_d < 2
+        if (varBase === 'neigh1d' && rawValue < 2) {
+            const neigh2Value = feature.properties['neigh2_d'];
+            if (neigh2Value !== null && neigh2Value !== undefined) {
+                rawValue = parseFloat(neigh2Value);
+            }
+        }
 
         // Apply log transformations (skip for Raw Min-Max scoring)
         if (!use_raw_scoring) {
