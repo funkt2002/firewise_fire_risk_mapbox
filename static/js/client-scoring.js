@@ -91,6 +91,10 @@ class FireRiskScoring {
 
         const start = performance.now();
         const isFirstCalculation = !this.firstCalculationDone;
+        
+        // CRITICAL DEBUG: Check if raw scoring flag is being passed correctly
+        console.log(`🚨 SCORE CALCULATION DEBUG: use_raw_scoring = ${use_raw_scoring}, use_quantile = ${use_quantile}, use_local_normalization = ${use_local_normalization}`);
+        
         if (isFirstCalculation) {
             console.log('🔄 FIRST CLIENT-SIDE CALCULATION: Starting complete client-side data processing...');
         } else {

@@ -292,8 +292,9 @@ class PlottingManager {
             hovertemplate: '%{x}<br>Correlation: %{y:.3f}<extra></extra>'
         };
         
-        const normalizationText = filters.use_local_normalization ? ' (Local Norm)' : '';
-        const scoreTypeText = useQuantile ? ' (Quantile)' : ' (Min-Max)';
+        const useRawScoring = filters.use_raw_scoring || false;
+        const normalizationText = filters.use_local_normalization ? ' (Local)' : ' (Global)';
+        const scoreTypeText = useQuantile ? ' (Quantile)' : useRawScoring ? ' (Raw Min-Max)' : ' (Robust Min-Max)';
         const titleSuffix = isScoreVariable ? scoreTypeText + normalizationText : '';
         
         const layout = {
@@ -702,7 +703,8 @@ class PlottingManager {
             const useQuantile = filters.use_quantile || false;
             const useLocalNormalization = filters.use_local_normalization || false;
             
-            const methodLabel = useQuantile ? 'Quantile' : 'Min-Max';
+            const useRawScoring = filters.use_raw_scoring || false;
+            const methodLabel = useQuantile ? 'Quantile' : useRawScoring ? 'Raw Min-Max' : 'Robust Min-Max';
             const normLabel = useLocalNormalization ? 'Local' : 'Global';
             scoringMethodText = `(${methodLabel}) (${normLabel})`;
         }
@@ -744,17 +746,17 @@ class PlottingManager {
                 yanchor: 'top'
             }].concat(scoringMethodText ? [{
                 x: 0.98,
-                y: 0.02,
+                y: 0.82,
                 xref: 'paper',
                 yref: 'paper',
                 text: scoringMethodText,
                 showarrow: false,
                 font: {
                     color: '#ccc',
-                    size: 10
+                    size: 12
                 },
                 xanchor: 'right',
-                yanchor: 'bottom'
+                yanchor: 'top'
             }] : [])
         };
         
@@ -845,6 +847,69 @@ class PlottingManager {
             console.log(`📊 SCORE DISTRIBUTION: All scores - Mean: ${allScoresMean.toFixed(3)}, Std: ${allScoresStd.toFixed(3)}`);
             console.log(`📊 SCORE DISTRIBUTION: Top scores - Mean: ${selectedScoresMean.toFixed(3)}, Range: ${selectedScoresMin.toFixed(3)}-${selectedScoresMax.toFixed(3)}`);
 
+            // Check for infer weights selection areas
+            let inferWeightsScores = [];
+            let inferWeightsStats = null;
+            
+            if (window.selectionAreas && window.selectionAreas.length > 0) {
+                console.log(`📊 SCORE DISTRIBUTION: Found ${window.selectionAreas.length} selection areas for infer weights`);
+                
+                // Collect scores from parcels in selection areas
+                const selectionParcelIds = new Set();
+                
+                // Use the same logic as collectParcelScoresInSelection to get parcel IDs
+                for (const area of window.selectionAreas) {
+                    try {
+                        if (window.turf && window.map) {
+                            // Get bounding box for the area
+                            const bbox = window.turf.bbox(area.geometry);
+                            const pixelBounds = [
+                                window.map.project([bbox[0], bbox[1]]),
+                                window.map.project([bbox[2], bbox[3]])
+                            ];
+                            
+                            // Query rendered features within bounds
+                            const features = window.map.queryRenderedFeatures(pixelBounds, {
+                                layers: ['parcels-fill']
+                            });
+                            
+                            // Filter parcels that are actually within the polygon
+                            for (const feature of features) {
+                                if (feature.properties && feature.properties.parcel_id) {
+                                    const point = window.turf.point([
+                                        feature.properties.longitude || 0,
+                                        feature.properties.latitude || 0
+                                    ]);
+                                    
+                                    if (window.turf.booleanPointInPolygon(point, area.geometry)) {
+                                        selectionParcelIds.add(feature.properties.parcel_id);
+                                    }
+                                }
+                            }
+                        }
+                    } catch (e) {
+                        console.warn(`Error processing selection area: ${e}`);
+                    }
+                }
+                
+                // Extract scores for selected parcels
+                inferWeightsScores = Array.from(selectionParcelIds).map(parcelId => {
+                    const attrs = window.fireRiskScoring.getAttributesByParcelId(parcelId);
+                    return attrs ? attrs.score : null;
+                }).filter(s => s !== null && s !== undefined && !isNaN(s) && isFinite(s));
+                
+                if (inferWeightsScores.length > 0) {
+                    inferWeightsStats = {
+                        min: Math.min(...inferWeightsScores),
+                        max: Math.max(...inferWeightsScores),
+                        mean: inferWeightsScores.reduce((a, b) => a + b, 0) / inferWeightsScores.length,
+                        count: inferWeightsScores.length
+                    };
+                    
+                    console.log(`📊 SCORE DISTRIBUTION: Infer weights selection stats:`, inferWeightsStats);
+                }
+            }
+
             // Create gradient colors for histogram bins (same as regular distributions)
             const numBins = 30; // Match regular distributions
             const binColors = [];
@@ -884,7 +949,8 @@ class PlottingManager {
             const useQuantile = filters.use_quantile || false;
             const useLocalNormalization = filters.use_local_normalization || false;
             
-            const methodLabel = useQuantile ? 'Quantile' : 'Min-Max';
+            const useRawScoring = filters.use_raw_scoring || false;
+            const methodLabel = useQuantile ? 'Quantile' : useRawScoring ? 'Raw Min-Max' : 'Robust Min-Max';
             const normLabel = useLocalNormalization ? 'Local' : 'Global';
             const scoringMethodText = `(${methodLabel}) (${normLabel})`;
 
@@ -907,12 +973,14 @@ class PlottingManager {
                 showlegend: false,
                 bargap: 0,
                 displayModeBar: false,
+                shapes: [],
                 annotations: [{
                     x: 0.98,
                     y: 0.98,
                     xref: 'paper',
                     yref: 'paper',
-                    text: `Min: ${allScoresMin.toFixed(3)}<br>Max: ${allScoresMax.toFixed(3)}<br>Mean: ${allScoresMean.toFixed(3)}<br>Std: ${allScoresStd.toFixed(3)}<br>Count: ${validScores.length}<br><br>Top ${validSelectedScores.length}:<br>Min: ${selectedScoresMin.toFixed(3)}<br>Max: ${selectedScoresMax.toFixed(3)}<br>Mean: ${selectedScoresMean.toFixed(3)}`,
+                    text: `Min: ${allScoresMin.toFixed(3)}<br>Max: ${allScoresMax.toFixed(3)}<br>Mean: ${allScoresMean.toFixed(3)}<br>Std: ${allScoresStd.toFixed(3)}<br>Count: ${validScores.length}<br><br>Top ${validSelectedScores.length}:<br>Min: ${selectedScoresMin.toFixed(3)}<br>Max: ${selectedScoresMax.toFixed(3)}<br>Mean: ${selectedScoresMean.toFixed(3)}` + 
+                          (inferWeightsStats ? `<br><br><span style="color: #FFD700;">Infer Weights Selection:</span><br><span style="color: #FFD700;">Min: ${inferWeightsStats.min.toFixed(3)}<br>Max: ${inferWeightsStats.max.toFixed(3)}<br>Mean: ${inferWeightsStats.mean.toFixed(3)}<br>Count: ${inferWeightsStats.count}</span>` : ''),
                     showarrow: false,
                     font: {
                         color: '#fff',
@@ -926,19 +994,118 @@ class PlottingManager {
                     yanchor: 'top'
                 }, {
                     x: 0.98,
-                    y: 0.02,
+                    y: 0.82,
                     xref: 'paper',
                     yref: 'paper',
                     text: scoringMethodText,
                     showarrow: false,
                     font: {
                         color: '#ccc',
-                        size: 10
+                        size: 12
                     },
                     xanchor: 'right',
-                    yanchor: 'bottom'
+                    yanchor: 'top'
                 }]
             };
+
+            // Add yellow vertical lines for infer weights selection if available
+            if (inferWeightsStats) {
+                // Add vertical lines for min, max, and mean
+                layout.shapes.push(
+                    // Min line
+                    {
+                        type: 'line',
+                        x0: inferWeightsStats.min,
+                        x1: inferWeightsStats.min,
+                        y0: 0,
+                        y1: 1,
+                        yref: 'paper',
+                        line: {
+                            color: '#FFD700',
+                            width: 2,
+                            dash: 'dash'
+                        }
+                    },
+                    // Max line
+                    {
+                        type: 'line',
+                        x0: inferWeightsStats.max,
+                        x1: inferWeightsStats.max,
+                        y0: 0,
+                        y1: 1,
+                        yref: 'paper',
+                        line: {
+                            color: '#FFD700',
+                            width: 2,
+                            dash: 'dash'
+                        }
+                    },
+                    // Mean line
+                    {
+                        type: 'line',
+                        x0: inferWeightsStats.mean,
+                        x1: inferWeightsStats.mean,
+                        y0: 0,
+                        y1: 1,
+                        yref: 'paper',
+                        line: {
+                            color: '#FFD700',
+                            width: 3,
+                            dash: 'solid'
+                        }
+                    }
+                );
+
+                // Add labels for the lines
+                layout.annotations.push(
+                    // Min label
+                    {
+                        x: inferWeightsStats.min,
+                        y: 0.95,
+                        xref: 'x',
+                        yref: 'paper',
+                        text: `Min: ${inferWeightsStats.min.toFixed(3)}`,
+                        showarrow: false,
+                        font: {
+                            color: '#FFD700',
+                            size: 10
+                        },
+                        xanchor: 'center',
+                        yanchor: 'bottom'
+                    },
+                    // Max label  
+                    {
+                        x: inferWeightsStats.max,
+                        y: 0.85,
+                        xref: 'x',
+                        yref: 'paper',
+                        text: `Max: ${inferWeightsStats.max.toFixed(3)}`,
+                        showarrow: false,
+                        font: {
+                            color: '#FFD700',
+                            size: 10
+                        },
+                        xanchor: 'center',
+                        yanchor: 'bottom'
+                    },
+                    // Mean label
+                    {
+                        x: inferWeightsStats.mean,
+                        y: 0.9,
+                        xref: 'x',
+                        yref: 'paper',
+                        text: `Mean: ${inferWeightsStats.mean.toFixed(3)}`,
+                        showarrow: false,
+                        font: {
+                            color: '#FFD700',
+                            size: 10,
+                            style: 'bold'
+                        },
+                        xanchor: 'center',
+                        yanchor: 'bottom'
+                    }
+                );
+            }
 
             console.log('📊 SCORE DISTRIBUTION: Creating Plotly chart...');
             console.log('📊 SCORE DISTRIBUTION: Final trace validation:', {
