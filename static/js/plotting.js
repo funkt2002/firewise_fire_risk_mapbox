@@ -745,17 +745,21 @@ class PlottingManager {
                 xanchor: 'right',
                 yanchor: 'top'
             }].concat(scoringMethodText ? [{
-                x: 0.98,
-                y: 0.96,
+                x: 0.02,
+                y: 0.92,
                 xref: 'paper',
                 yref: 'paper',
                 text: scoringMethodText,
                 showarrow: false,
                 font: {
                     color: '#ccc',
-                    size: 10
+                    size: 11
                 },
-                xanchor: 'right',
+                bgcolor: 'rgba(0,0,0,0.7)',
+                bordercolor: 'rgba(255,255,255,0.2)',
+                borderwidth: 1,
+                borderpad: 3,
+                xanchor: 'left',
                 yanchor: 'top'
             }] : [])
         };
@@ -993,17 +997,21 @@ class PlottingManager {
                     xanchor: 'right',
                     yanchor: 'top'
                 }, {
-                    x: 0.98,
-                    y: 0.96,
+                    x: 0.02,
+                    y: 0.92,
                     xref: 'paper',
                     yref: 'paper',
                     text: scoringMethodText,
                     showarrow: false,
                     font: {
                         color: '#ccc',
-                        size: 10
+                        size: 11
                     },
-                    xanchor: 'right',
+                    bgcolor: 'rgba(0,0,0,0.7)',
+                    bordercolor: 'rgba(255,255,255,0.2)',
+                    borderwidth: 1,
+                    borderpad: 3,
+                    xanchor: 'left',
                     yanchor: 'top'
                 }]
             };

@@ -1048,6 +1048,131 @@ def get_parcel_scores_for_optimization(data, include_vars):
     
     return selected_parcels, include_vars
 
+def solve_relative_optimization(parcel_data, include_vars, top_n, request_data):
+    """Heuristic optimization to rank selected parcels in top N"""
+    import random
+    import numpy as np
+    
+    # Process variable names efficiently
+    include_vars_base = [var[:-2] if var.endswith(('_s', '_q')) else var for var in include_vars]
+    
+    logger.info(f"RELATIVE OPTIMIZATION: {len(parcel_data):,} selected parcels, target top {top_n}, {len(include_vars_base)} variables")
+    
+    # Get all parcel data for ranking (from client-side scores)
+    all_parcel_scores = request_data.get('parcel_scores', [])
+    if not all_parcel_scores:
+        logger.error("No full dataset provided for relative optimization")
+        return None, None, None, False
+    
+    logger.info(f"Ranking against {len(all_parcel_scores):,} total parcels")
+    
+    # Extract selected parcel IDs
+    selected_ids = set(p['id'] for p in parcel_data)
+    
+    def evaluate_weights(weights):
+        """Calculate how many selected parcels rank in top N with given weights"""
+        # Calculate composite scores for all parcels
+        all_scores = []
+        for parcel in all_parcel_scores:
+            composite_score = 0
+            for var_base in include_vars_base:
+                if var_base in parcel.get('scores', {}):
+                    composite_score += weights[var_base] * parcel['scores'][var_base]
+            all_scores.append((parcel['parcel_id'], composite_score))
+        
+        # Sort by score (highest first)
+        all_scores.sort(key=lambda x: x[1], reverse=True)
+        
+        # Count selected parcels in top N
+        top_n_ids = set(parcel_id for parcel_id, _ in all_scores[:top_n])
+        selected_in_top_n = len(selected_ids.intersection(top_n_ids))
+        
+        return selected_in_top_n, all_scores
+    
+    # Simulated annealing for optimization
+    random.seed(42)  # For reproducibility
+    np.random.seed(42)
+    
+    # Initialize with equal weights
+    current_weights = {var: 1.0 / len(include_vars_base) for var in include_vars_base}
+    current_score, _ = evaluate_weights(current_weights)
+    
+    best_weights = current_weights.copy()
+    best_score = current_score
+    
+    # Annealing parameters
+    initial_temp = 1.0
+    final_temp = 0.01
+    cooling_rate = 0.95
+    max_iterations = 500
+    
+    temperature = initial_temp
+    
+    for iteration in range(max_iterations):
+        # Generate neighbor solution by perturbing weights
+        new_weights = current_weights.copy()
+        
+        # Randomly adjust two variables
+        vars_list = list(include_vars_base)
+        var1, var2 = random.sample(vars_list, 2)
+        
+        # Random adjustment amount
+        adjustment = random.uniform(-0.1, 0.1)
+        new_weights[var1] = max(0, new_weights[var1] + adjustment)
+        new_weights[var2] = max(0, new_weights[var2] - adjustment)
+        
+        # Normalize weights to sum to 1
+        total = sum(new_weights.values())
+        if total > 0:
+            new_weights = {var: weight / total for var, weight in new_weights.items()}
+        else:
+            continue
+        
+        # Evaluate new solution
+        new_score, _ = evaluate_weights(new_weights)
+        
+        # Accept or reject based on simulated annealing
+        score_diff = new_score - current_score
+        if score_diff > 0 or random.random() < np.exp(score_diff / temperature):
+            current_weights = new_weights
+            current_score = new_score
+            
+            if new_score > best_score:
+                best_weights = new_weights.copy()
+                best_score = new_score
+        
+        # Cool down
+        temperature *= cooling_rate
+        
+        # Early termination if we get all selected parcels in top N
+        if best_score >= len(selected_ids):
+            logger.info(f"Optimal solution found at iteration {iteration}: {best_score}/{len(selected_ids)} selected parcels in top {top_n}")
+            break
+    
+    # Final evaluation
+    final_count, final_rankings = evaluate_weights(best_weights)
+    
+    logger.info(f"RELATIVE OPTIMIZATION RESULT: {final_count}/{len(selected_ids)} selected parcels in top {top_n}")
+    logger.info(f"Success rate: {final_count/len(selected_ids)*100:.1f}%")
+    
+    # Check feasibility - if we can't get at least 50% of selected parcels in top N, it's not feasible
+    if final_count < len(selected_ids) * 0.5:
+        logger.error(f"Relative optimization not feasible: only {final_count}/{len(selected_ids)} parcels achievable in top {top_n}")
+        return None, None, None, False
+    
+    # Convert to percentage weights
+    weights_pct = {var: weight * 100 for var, weight in best_weights.items()}
+    
+    # Calculate representative total score (average of selected parcels)
+    selected_parcel_scores = []
+    for parcel_id, score in final_rankings:
+        if parcel_id in selected_ids:
+            selected_parcel_scores.append(score)
+    
+    avg_score = np.mean(selected_parcel_scores) if selected_parcel_scores else 0
+    
+    return best_weights, weights_pct, avg_score, True
+
 def solve_weight_optimization(parcel_data, include_vars):
     """Memory-efficient LP solver for absolute optimization"""
     import gc
@@ -1169,11 +1294,19 @@ def generate_solution_files(include_vars, best_weights, weights_pct, total_score
     else:
         area_info = "Selection Area: Single area"
     
-    # Handle parcel count for absolute optimization
+    # Handle parcel count and detect optimization type
     parcel_count = len(parcel_data) if isinstance(parcel_data, list) else 0
     avg_score = total_score / parcel_count if parcel_count > 0 else 0
     
-    optimization_title = "ABSOLUTE OPTIMIZATION RESULTS"
+    # Detect optimization type from request data
+    optimization_type = request_data.get('optimization_type', 'absolute')
+    top_n = request_data.get('top_n', 100)
+    
+    if optimization_type == 'relative':
+        optimization_title = "RELATIVE OPTIMIZATION RESULTS"
+    else:
+        optimization_title = "ABSOLUTE OPTIMIZATION RESULTS"
+    
     if selection_areas:
         optimization_title = f"MULTI-AREA {optimization_title}"
     
@@ -1185,19 +1318,35 @@ def generate_solution_files(include_vars, best_weights, weights_pct, total_score
         area_info,
     ])
     
-    txt_lines.extend([
-        "",
-        "OPTIMIZATION TYPE: Absolute Maximization", 
-        "OBJECTIVE: Maximize total risk score within selected areas",
-        "",
-        f"Total parcels analyzed: {parcel_count:,}",
-        f"Total optimized score: {total_score:.2f}",
-        f"Average score: {avg_score:.3f}",
-        "",
-        "MATHEMATICAL APPROACH:",
-        "  maximize sum(score_i for all selected parcels i)",
-        "  This finds weights that give highest total scores to your selection.",
-    ])
+    if optimization_type == 'relative':
+        txt_lines.extend([
+            "",
+            "OPTIMIZATION TYPE: Relative Ranking Optimization", 
+            f"OBJECTIVE: Rank selected areas in top {top_n} parcels county-wide",
+            "",
+            f"Selected parcels analyzed: {parcel_count:,}",
+            f"Target ranking: Top {top_n} parcels",
+            f"Average score of selected parcels: {avg_score:.3f}",
+            "",
+            "MATHEMATICAL APPROACH:",
+            "  maximize count(selected parcels in top N rankings)",
+            "  This finds weights that make your expert-identified areas rank highest.",
+            f"  Success: Gets selected areas into top {top_n} parcels county-wide.",
+        ])
+    else:
+        txt_lines.extend([
+            "",
+            "OPTIMIZATION TYPE: Absolute Maximization", 
+            "OBJECTIVE: Maximize total risk score within selected areas",
+            "",
+            f"Total parcels analyzed: {parcel_count:,}",
+            f"Total optimized score: {total_score:.2f}",
+            f"Average score: {avg_score:.3f}",
+            "",
+            "MATHEMATICAL APPROACH:",
+            "  maximize sum(score_i for all selected parcels i)",
+            "  This finds weights that give highest total scores to your selection.",
+        ])
     
     txt_lines.extend([
         "",
@@ -1256,13 +1405,26 @@ def infer_weights():
             return jsonify({"error": "No parcels found in selection"}), 400
         
         
-        # Solve optimization problem
-        best_weights, weights_pct, total_score, success = solve_weight_optimization(
-            parcel_data, include_vars
-        )
+        # Check optimization type
+        optimization_type = data.get('optimization_type', 'absolute')
+        
+        if optimization_type == 'relative':
+            # Relative optimization: rank selected area in top N
+            top_n = data.get('top_n', 100)
+            best_weights, weights_pct, total_score, success = solve_relative_optimization(
+                parcel_data, include_vars, top_n, data
+            )
+        else:
+            # Absolute optimization (existing logic)
+            best_weights, weights_pct, total_score, success = solve_weight_optimization(
+                parcel_data, include_vars
+            )
         
         if not success:
-            return jsonify({"error": "Optimization failed"}), 500
+            if optimization_type == 'relative':
+                return jsonify({"error": f"Relative optimization not feasible: Selected area cannot be ranked in top {data.get('top_n', 100)} parcels. Try increasing Top N or selecting a different area."}), 400
+            else:
+                return jsonify({"error": "Optimization failed"}), 500
         
         # Generate files immediately 
         lp_content, txt_content = generate_solution_files(
@@ -1286,29 +1448,36 @@ def infer_weights():
         num_parcels = len(parcel_data) if isinstance(parcel_data, list) else 0
 
         with open(os.path.join(session_dir, 'metadata.json'), 'w') as f:
-            json.dump({
+            metadata = {
                 'weights': weights_pct,
                 'total_score': total_score,
                 'num_parcels': num_parcels,
                 'solver_status': 'Optimal',
-                'optimization_type': 'absolute',
+                'optimization_type': optimization_type,
                 'timestamp': time.time(),
                 'ttl': time.time() + 3600  # 1 hour expiry
-            }, f)
+            }
+            if optimization_type == 'relative':
+                metadata['top_n'] = data.get('top_n', 100)
+            json.dump(metadata, f)
         
         logger.info(f"Saved optimization files to: {session_dir}")
         
         total_time = time.time() - start_time
         
         # Return minimal response - NO BULK DATA (memory optimized!)
+        timing_log = f"{optimization_type.title()} optimization completed in {total_time:.2f}s for {num_parcels} parcels."
+        if optimization_type == 'relative':
+            timing_log += f" Target: top {data.get('top_n', 100)} parcels."
+        
         return jsonify({
             "weights": weights_pct,           # ~200 bytes
             "total_score": total_score,       # ~20 bytes
             "num_parcels": num_parcels,       # ~20 bytes
             "solver_status": "Optimal",   # ~20 bytes
             "session_id": session_id,         # ~40 bytes
-            "optimization_type": "absolute",  # ~20 bytes
-            "timing_log": f"Absolute optimization completed in {total_time:.2f}s for {num_parcels} parcels.",
+            "optimization_type": optimization_type,  # ~20 bytes
+            "timing_log": timing_log,
             "files_available": True           # Files stored on disk, not in memory
         })
         

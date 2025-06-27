@@ -1208,12 +1208,20 @@
                     <button class="button small" id="clear-all-selections" disabled>Clear All</button>
                 </div>
             </div>
-            <button class="button" id="infer-weights" disabled>Infer Weights from Multi-Selection</button>
+            <div style="display: flex; gap: 5px;">
+                <button class="button" id="infer-weights" disabled style="flex: 1;">Absolute</button>
+                <button class="button" id="infer-weights-relative" disabled style="flex: 1;">Relative</button>
+            </div>
+            <div id="relative-controls" style="display: none; margin: 8px 0; padding: 8px; background: rgba(255,255,255,0.05); border-radius: 3px;">
+                <label style="font-size: 11px; color: #aaa; display: block; margin-bottom: 3px;">Target Top N Parcels:</label>
+                <input type="number" id="top-n-input" value="100" min="10" max="5000" style="width: 80px; padding: 3px; font-size: 11px; background: rgba(0,0,0,0.3); color: #fff; border: 1px solid #444; border-radius: 2px;">
+            </div>
                                         <button class="button" id="download-lp-btn" disabled>Download .LP File</button>
                             <button class="button" id="download-txt-btn" disabled>Download .TXT Report</button>
                             <button class="button" id="view-solution-btn" disabled>View Solution Report</button>
             <div id="optimization-description" style="font-size: 10px; color: #888; margin: 5px 0;">
                 <span id="absolute-desc">Maximizes total risk score across all selected areas</span>
+                <span id="relative-desc" style="display: none;">Finds weights to rank selected areas in top N parcels</span>
             </div>
             
 
@@ -1989,6 +1997,7 @@
             document.getElementById('clear-last-selection').disabled = !hasSelections;
             document.getElementById('clear-all-selections').disabled = !hasSelections;
             document.getElementById('infer-weights').disabled = !hasSelections;
+            document.getElementById('infer-weights-relative').disabled = !hasSelections;
             
             // Clear optimization session when selections change
             if (hasSelections) {
@@ -2646,8 +2655,15 @@
                     }
                 });
 
-                normalizeWeights();
-                await updateScores();
+                // Apply the optimized weights to existing scores instead of recalculating everything
+                const appliedCount = window.fireRiskScoring.applyOptimizedWeights(data.weights, includeVars);
+                if (appliedCount > 0) {
+                    // Update the map with new risk scores
+                    updateMap();
+                    console.log(`Applied optimized weights and updated ${appliedCount} parcel scores`);
+                } else {
+                    console.error('Failed to apply optimized weights to existing scores');
+                }
                 
                 // Clear the drawn features after successful optimization
                 clearAllSelectionAreas();
@@ -2660,6 +2676,146 @@
             }
         });
 
+        // Relative optimization event listener
+        document.getElementById('infer-weights-relative').addEventListener('click', async () => {
+            if (selectionAreas.length === 0) {
+                alert('Please draw at least one selection area first!');
+                return;
+            }
+
+            if (!currentData) {
+                alert('Please calculate scores first by clicking "Calculate Scores"!');
+                return;
+            }
+
+            const combinedSelection = combineSelectionAreas();
+            if (!combinedSelection) {
+                alert('Error combining selection areas. Please try again.');
+                return;
+            }
+
+            // Collect parcel scores from client-side calculations
+            const parcelScoreData = collectParcelScoresInSelection();
+            if (parcelScoreData.selectedParcels.length === 0) {
+                alert('No parcels found in selection areas. Please ensure selection areas overlap with parcels.');
+                return;
+            }
+
+            const topN = parseInt(document.getElementById('top-n-input').value);
+            if (!topN || topN < 10) {
+                alert('Please enter a valid Top N value (minimum 10)');
+                return;
+            }
+
+            const maxParcels = parseInt(document.getElementById('max-parcels').value);
+
+            const includeVars = Array.from(weightSliders)
+                .map(slider => slider.id)
+                .filter(varName => {
+                    const cb = document.getElementById(`enable-${varName}`);
+                    return cb && cb.checked;
+                });
+
+            document.getElementById('spinner').style.display = 'block';
+
+            try {
+                console.log(`Optimizing weights for ${selectionAreas.length} selection areas (relative mode - top ${topN}):`, 
+                    selectionAreas.map(area => area.type));
+                console.log(`Sending ${parcelScoreData.selectedParcels.length} selected parcel scores to server`);
+
+                // For relative optimization, we need ALL parcel scores for ranking
+                const allParcelScores = [];
+                if (currentData && currentData.features) {
+                    currentData.features.forEach(feature => {
+                        const scores = {};
+                        includeVars.forEach(varName => {
+                            const baseVar = varName.replace('_s', '').replace('_q', '');
+                            if (feature.properties[varName] !== undefined) {
+                                scores[baseVar] = feature.properties[varName];
+                            }
+                        });
+                        allParcelScores.push({
+                            parcel_id: feature.properties.parcel_id,
+                            scores: scores
+                        });
+                    });
+                }
+                console.log(`Collected ${allParcelScores.length} total parcel scores for relative ranking`);
+
+                const data = await window.apiClient.inferWeights({
+                    selection: combinedSelection,
+                    selection_areas: selectionAreas,
+                    max_parcels: maxParcels,
+                    include_vars: includeVars,
+                    selected_parcel_scores: parcelScoreData.selectedParcels,
+                    parcel_scores: allParcelScores, // All parcel scores for relative ranking
+                    optimization_type: 'relative',
+                    top_n: topN,
+                    use_quantile: document.getElementById('use-quantile').checked,
+                    use_raw_scoring: document.getElementById('use-raw-scoring').checked,
+                    ...getCurrentFilters()
+                });
+
+                // Handle feasibility check
+                if (data.error && data.error.includes('not feasible')) {
+                    alert(`Relative optimization failed: Selected area cannot be ranked in top ${topN} parcels. Try increasing Top N or selecting a different area.`);
+                    return;
+                }
+
+                // Store session ID
+                currentOptimizationSession = data.session_id;
+                console.log(`Relative optimization succeeded: ${data.timing_log}`);
+
+                // Enable download buttons
+                document.getElementById('download-lp-btn').disabled = false;
+                document.getElementById('download-txt-btn').disabled = false;
+                document.getElementById('view-solution-btn').disabled = false;
+
+                // Update weight sliders
+                Object.entries(data.weights).forEach(([key, value]) => {
+                    const slider = document.getElementById(key);
+                    if (slider) {
+                        slider.value = value;
+                        updateSliderFill(slider);
+                    }
+                });
+
+                // Apply optimized weights
+                const appliedCount = window.fireRiskScoring.applyOptimizedWeights(data.weights, includeVars);
+                if (appliedCount > 0) {
+                    updateMap();
+                    console.log(`Applied relative optimized weights and updated ${appliedCount} parcel scores`);
+                } else {
+                    console.error('Failed to apply relative optimized weights');
+                }
+                
+                // Clear selection areas
+                clearAllSelectionAreas();
+                
+            } catch (error) {
+                console.error('Error in relative optimization:', error);
+                if (error.message && error.message.includes('not feasible')) {
+                    alert(`Relative optimization failed: Selected area cannot be ranked in top ${topN} parcels. Try increasing Top N or selecting a different area.`);
+                } else {
+                    alert('Relative optimization failed: ' + error.message);
+                }
+            } finally {
+                document.getElementById('spinner').style.display = 'none';
+            }
+        });
+
+        // Show/hide relative controls based on button clicks
+        document.getElementById('infer-weights-relative').addEventListener('mouseenter', () => {
+            document.getElementById('relative-controls').style.display = 'block';
+            document.getElementById('absolute-desc').style.display = 'none';
+            document.getElementById('relative-desc').style.display = 'block';
+        });
+
+        document.getElementById('infer-weights').addEventListener('mouseenter', () => {
+            document.getElementById('relative-controls').style.display = 'none';
+            document.getElementById('absolute-desc').style.display = 'block';
+            document.getElementById('relative-desc').style.display = 'none';
+        });
 
         document.getElementById('export-shapefile').addEventListener('click', async () => {
             if (!currentData) return;
@@ -2855,6 +3011,7 @@
             else {
                 // Regular single selection for weight inference (legacy mode)
                 document.getElementById('infer-weights').disabled = false;
+                document.getElementById('infer-weights-relative').disabled = false;
                 
                 console.log('VECTOR TILES: Legacy selection mode - using queryRenderedFeatures...');
                 
@@ -2900,6 +3057,7 @@
 
         function resetInferWeightsUI() {
             document.getElementById('infer-weights').disabled = true;
+            document.getElementById('infer-weights-relative').disabled = true;
             document.getElementById('download-lp-btn').disabled = true;
             document.getElementById('download-txt-btn').disabled = true;
             document.getElementById('view-solution-btn').disabled = true;
