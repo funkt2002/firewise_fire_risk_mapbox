@@ -40,10 +40,9 @@ class WelcomePopup {
                                     <li><strong>Local vs global scoring:</strong> Score based on your filtered data or the entire county</li>
                                     <li><strong>Multi-area selection:</strong> Draw multiple areas for combined analysis</li>
                                 </ul>
-                                <p><strong>Great for finding what factors drive fire risk in different areas.</strong></p>
                             </div>
                             
-                            <p>This tool helps you find areas with the highest wildfire risk by looking at different factors around each property.</p>
+                            <p>This tool is designed to help assess parcel level fire risk for Santa Barbara.</p>
                             
                             <h2>----- HOW IT WORKS -----</h2>
                             <p><strong>What You Can Do:</strong></p>
@@ -68,15 +67,12 @@ class WelcomePopup {
                             <p><strong>Extra Risk Factors (You Can Turn On):</strong></p>
                             <ul>
                                 <li><strong>Distance to Neighbors:</strong> Closer neighbors = higher risk</li>
-                                <li><strong>Protective Areas:</strong> Farms and firebreaks = lower risk</li>
+                                <li><strong>Protective Areas:</strong> Agriculture and firebreaks = lower risk</li>
                                 <li><strong>Burn Scars:</strong> Areas that burned before</li>
                                 <li><strong>Property Slope:</strong> Steeper land = higher risk</li>
                             </ul>
-                            
-                            <p><em>Tip: Start with the default settings, then adjust to see how risk patterns change!</em></p>
 
                             <h2>----- CALCULATING NEW SCORES -----</h2>
-                            <p>To create custom fire risk maps:</p>
                             <ul>
                                 <li><strong>Adjust Weights:</strong> Move sliders to change factor importance</li>
                                 <li><strong>Set Max Parcels:</strong> Choose how many top-risk properties to highlight (like 500)</li>
@@ -87,8 +83,8 @@ class WelcomePopup {
                             <h2>----- FILTERS AND OPTIONS -----</h2>
                             <p><strong>Advanced Score Options:</strong> Choose how scores are calculated</p>
                             <ul>
-                                <li><strong>Score Type:</strong> Basic scores vs. advanced quantile scoring</li>
-                                <li><strong>Renormalize:</strong> Recalculate scores based on filtered data only</li>
+                                <li><strong>Score Type:</strong> Basic scores, quantile scoring, or percentile ranking</li>
+                                <li><strong>Renormalize:</strong> Score data based on global pre-calculated scores or normalized to current selection</li>
                             </ul>
                             
                             <p><strong>Filters:</strong> Focus on specific properties</p>
@@ -116,13 +112,11 @@ class WelcomePopup {
                             <h2>----- OTHER FEATURES -----</h2>
                             <ul>
                                 <li><strong>Click Properties:</strong> See detailed info for any property</li>
-                                <li><strong>Map Layers:</strong> Turn on/off farms, fire zones, burn scars, etc.</li>
+                                <li><strong>Map Layers:</strong> Turn on/off agriculture, fire zones, burn scars, etc.</li>
                                 <li><strong>Export Data:</strong> Download top-risk properties as shapefiles</li>
                                 <li><strong>View Charts:</strong> See score distributions and statistics</li>
                                 <li><strong>Measure Tool:</strong> Measure distances on the map</li>
                             </ul>
-                            
-                            <p><strong>Quick Start:</strong> The map is ready to use! Try adjusting the weight sliders and clicking Calculate to see how fire risk patterns change.</p>
                         </div>
                     </div>
                     <div class="welcome-popup-footer">
