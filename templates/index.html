@@ -2582,6 +2582,13 @@
 
             // Function to get factor scores for a parcel
             function getParcelFactorScores(parcelId) {
+                // Use cached scores from the same calculation that popups use
+                const cachedScores = window.fireRiskScoring?.factorScoresMap?.get(parcelId);
+                if (cachedScores) {
+                    return cachedScores;
+                }
+                
+                // Fallback to fresh calculation if cached scores not available
                 const attributes = window.fireRiskScoring.getAttributesByParcelId(parcelId);
                 if (!attributes) {
                     return null;
