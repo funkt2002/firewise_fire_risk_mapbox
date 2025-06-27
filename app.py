@@ -410,7 +410,10 @@ def get_distribution(variable):
     try:
         if variable == 'neigh1_d':
             cur.execute(f"""
-                SELECT LEAST({variable}, 5280) as value
+                SELECT CASE 
+                    WHEN {variable} < 2 AND neigh2_d IS NOT NULL THEN LEAST(neigh2_d, 5280)
+                    ELSE LEAST({variable}, 5280)
+                END as value
                 FROM parcels
                 {full_where_clause}
             """, params)
@@ -713,16 +716,19 @@ def prepare_data():
         
         other_columns = ['yearbuilt', 'qtrmi_cnt', 'hlfmi_agri', 'hlfmi_wui', 'hlfmi_vhsz', 
                         'hlfmi_fb', 'hlfmi_brn', 'num_neighb', 'parcel_id', 'strcnt', 
-                        'neigh1_d', 'apn', 'all_ids', 'perimeter', 'par_elev', 'avg_slope',
+                        'neigh1_d', 'neigh2_d', 'apn', 'all_ids', 'perimeter', 'par_elev', 'avg_slope',
                         'par_asp_dr', 'max_slope', 'num_brns']
         
         raw_var_columns = [RAW_VAR_MAP[var_base] for var_base in WEIGHT_VARS_BASE]
         
-        # Apply neigh1_d capping at SQL level for raw variables
+        # Apply neigh1_d capping and substitution at SQL level for raw variables
         capped_raw_columns = []
         for raw_var in raw_var_columns:
             if raw_var == 'neigh1_d':
-                capped_raw_columns.append(f"LEAST({raw_var}, 5280) as {raw_var}")
+                capped_raw_columns.append(f"""CASE 
+                    WHEN {raw_var} < 2 AND neigh2_d IS NOT NULL THEN LEAST(neigh2_d, 5280)
+                    ELSE LEAST({raw_var}, 5280)
+                END as {raw_var}""")
             else:
                 capped_raw_columns.append(raw_var)
         
@@ -1179,13 +1185,13 @@ def solve_relative_optimization(parcel_data, include_vars, top_n, request_data):
     return best_weights, weights_pct, avg_score, True
 
 def solve_weight_optimization(parcel_data, include_vars):
-    """Memory-efficient LP solver for absolute optimization"""
+    """Memory-efficient LP solver for absolute optimization (maximum score)"""
     import gc
     
     # Process variable names efficiently
     include_vars_base = [var[:-2] if var.endswith(('_s', '_q')) else var for var in include_vars]
     
-    logger.info(f"ABSOLUTE OPTIMIZATION: {len(parcel_data):,} selected parcels, {len(include_vars_base)} variables")
+    logger.info(f"ABSOLUTE OPTIMIZATION (LP): {len(parcel_data):,} selected parcels, {len(include_vars_base)} variables")
     
     # Use LP solver for absolute mode
     prob = LpProblem("Maximize_Score", LpMaximize)
@@ -1232,6 +1238,104 @@ def solve_weight_optimization(parcel_data, include_vars):
         
     else:
         logger.error(f"Optimization failed with status: {LpStatus[prob.status]}")
+        gc.collect()
+        return None, None, None, False
+
+
+def solve_relative_optimization_qp(parcel_data, include_vars, top_n, request_data):
+    """Quadratic Programming solver for balanced relative optimization"""
+    import gc
+    
+    try:
+        import cvxpy as cp
+    except ImportError as e:
+        logger.error(f"RELATIVE OPTIMIZATION FAILED: cvxpy not installed - {e}")
+        logger.error("Install with: pip install cvxpy")
+        return None, None, None, False
+    
+    # Process variable names efficiently
+    include_vars_base = [var[:-2] if var.endswith(('_s', '_q')) else var for var in include_vars]
+    
+    logger.info(f"RELATIVE OPTIMIZATION (QP): {len(parcel_data):,} selected parcels, {len(include_vars_base)} variables")
+    
+    # Build coefficients (sum of all scores for each variable)
+    coefficients = {}
+    for var_base in include_vars_base:
+        total_score = sum(parcel['scores'][var_base] for parcel in parcel_data)
+        coefficients[var_base] = total_score
+    
+    # Decision variables
+    weights = cp.Variable(len(include_vars_base))
+    
+    # Calculate statistics for adaptive penalty
+    coeff_array = np.array([coefficients[var] for var in include_vars_base])
+    mean_coeff = np.mean(coeff_array)
+    max_coeff = np.max(coeff_array)
+    
+    # Objective: Maximize score while encouraging balance
+    score = coeff_array @ weights
+    
+    # Variance penalty encourages balanced weights
+    weight_variance = cp.sum_squares(weights - 1/len(include_vars_base))
+    
+    # Adaptive penalty: less penalty when coefficients vary more (indicating true differences)
+    coeff_spread = np.std(coeff_array) / mean_coeff if mean_coeff > 0 else 0
+    lambda_param = 0.1 * max_coeff * (1 - coeff_spread)
+    
+    objective = cp.Maximize(score - lambda_param * weight_variance)
+    
+    # Constraints
+    constraints = [
+        cp.sum(weights) == 1,  # Weights sum to 1
+        weights >= 0,  # Non-negative weights
+    ]
+    
+    # Solve
+    prob = cp.Problem(objective, constraints)
+    
+    try:
+        logger.info(f"Solving QP problem with {len(include_vars_base)} variables and {len(parcel_data)} parcels...")
+        prob.solve()
+        
+        if prob.status == cp.OPTIMAL:
+            # Extract results
+            optimal_weights = {}
+            for i, var_base in enumerate(include_vars_base):
+                optimal_weights[var_base] = float(weights.value[i])
+            
+            weights_pct = {var: weight * 100 for var, weight in optimal_weights.items()}
+            
+            # Log results
+            significant_weights = [(var, weight) for var, weight in optimal_weights.items() if weight > 0.01]
+            significant_weights.sort(key=lambda x: x[1], reverse=True)
+            logger.info(f"QP optimization completed successfully")
+            logger.info(f"BALANCED WEIGHTS: {[(var, f'{weight:.1%}') for var, weight in significant_weights]}")
+            
+            # Calculate total score
+            total_score = 0
+            for parcel in parcel_data:
+                for var_base in include_vars_base:
+                    score = parcel['scores'][var_base]
+                    weight = optimal_weights[var_base]
+                    total_score += weight * score
+            
+            gc.collect()
+            return optimal_weights, weights_pct, total_score, True
+            
+        else:
+            logger.error(f"QP optimization failed with status: {prob.status}")
+            logger.error("Problem details:")
+            logger.error(f"  - Variables: {len(include_vars_base)}")
+            logger.error(f"  - Coefficients: {coeff_array}")
+            logger.error(f"  - Lambda parameter: {lambda_param}")
+            gc.collect()
+            return None, None, None, False
+            
+    except Exception as e:
+        logger.error(f"QP solver error: {e}")
+        logger.error("Full traceback:")
+        import traceback
+        logger.error(traceback.format_exc())
         gc.collect()
         return None, None, None, False
 def generate_solution_files(include_vars, best_weights, weights_pct, total_score, 
@@ -1308,9 +1412,9 @@ def generate_solution_files(include_vars, best_weights, weights_pct, total_score
     top_n = request_data.get('top_n', 100)
     
     if optimization_type == 'relative':
-        optimization_title = "RELATIVE OPTIMIZATION RESULTS"
+        optimization_title = "RELATIVE OPTIMIZATION RESULTS (QP Balanced)"
     else:
-        optimization_title = "ABSOLUTE OPTIMIZATION RESULTS"
+        optimization_title = "ABSOLUTE OPTIMIZATION RESULTS (LP Maximum Score)"
     
     if selection_areas:
         optimization_title = f"MULTI-AREA {optimization_title}"
@@ -1326,22 +1430,23 @@ def generate_solution_files(include_vars, best_weights, weights_pct, total_score
     if optimization_type == 'relative':
         txt_lines.extend([
             "",
-            "OPTIMIZATION TYPE: Relative Ranking Optimization", 
-            f"OBJECTIVE: Rank selected areas in top {top_n} parcels county-wide",
+            "OPTIMIZATION TYPE: Relative Balanced Optimization (QP)", 
+            f"OBJECTIVE: Balanced weight allocation for ranking in top {top_n} parcels",
             "",
             f"Selected parcels analyzed: {parcel_count:,}",
             f"Target ranking: Top {top_n} parcels",
             f"Average score of selected parcels: {avg_score:.3f}",
             "",
             "MATHEMATICAL APPROACH:",
-            "  maximize count(selected parcels in top N rankings)",
-            "  This finds weights that make your expert-identified areas rank highest.",
-            f"  Success: Gets selected areas into top {top_n} parcels county-wide.",
+            "  maximize: Σ(weight_i × score_i) - λ × variance(weights)",
+            "  subject to: Σ(weights) = 1, weights ≥ 0",
+            "  This balances maximizing risk score with distributing weights across",
+            "  multiple risk factors for more robust risk assessment.",
         ])
     else:
         txt_lines.extend([
             "",
-            "OPTIMIZATION TYPE: Absolute Maximization", 
+            "OPTIMIZATION TYPE: Absolute Maximization (LP)", 
             "OBJECTIVE: Maximize total risk score within selected areas",
             "",
             f"Total parcels analyzed: {parcel_count:,}",
@@ -1349,8 +1454,10 @@ def generate_solution_files(include_vars, best_weights, weights_pct, total_score
             f"Average score: {avg_score:.3f}",
             "",
             "MATHEMATICAL APPROACH:",
-            "  maximize sum(score_i for all selected parcels i)",
+            "  maximize: Σ(weight_i × score_i)",
+            "  subject to: Σ(weights) = 1, weights ≥ 0",
             "  This finds weights that give highest total scores to your selection.",
+            "  May result in 100% allocation to dominant risk factor.",
         ])
     
     txt_lines.extend([
@@ -1413,27 +1520,27 @@ def infer_weights():
         optimization_type = data.get('optimization_type', 'absolute')
         
         if optimization_type == 'relative':
-            # Relative optimization: rank selected area in top N
+            # Relative optimization: balanced QP approach
             top_n = data.get('top_n', 100)
             logger.info(f"RELATIVE OPTIMIZATION: top_n={top_n}, parcel_data count={len(parcel_data)}")
             logger.info(f"RELATIVE OPTIMIZATION: Has parcel_scores key: {'parcel_scores' in data}")
             if 'parcel_scores' in data:
                 logger.info(f"RELATIVE OPTIMIZATION: parcel_scores count={len(data['parcel_scores'])}")
             
-            best_weights, weights_pct, total_score, success = solve_relative_optimization(
+            best_weights, weights_pct, total_score, success = solve_relative_optimization_qp(
                 parcel_data, include_vars, top_n, data
             )
         else:
-            # Absolute optimization (existing logic)
+            # Absolute optimization: original LP approach for maximum score
             best_weights, weights_pct, total_score, success = solve_weight_optimization(
                 parcel_data, include_vars
             )
         
         if not success:
             if optimization_type == 'relative':
-                return jsonify({"error": f"Relative optimization not feasible: Selected area cannot be ranked in top {data.get('top_n', 100)} parcels. Try increasing Top N or selecting a different area."}), 400
+                return jsonify({"error": "Relative optimization failed. Check console logs for details."}), 500
             else:
-                return jsonify({"error": "Optimization failed"}), 500
+                return jsonify({"error": "Absolute optimization failed"}), 500
         
         # Generate files immediately 
         lp_content, txt_content = generate_solution_files(
