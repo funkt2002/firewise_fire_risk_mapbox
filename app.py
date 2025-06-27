@@ -1242,103 +1242,160 @@ def solve_weight_optimization(parcel_data, include_vars):
         return None, None, None, False
 
 
-def solve_relative_optimization_qp(parcel_data, include_vars, top_n, request_data):
-    """Quadratic Programming solver for balanced relative optimization"""
+def solve_relative_optimization_heuristic(parcel_data, include_vars, top_n, request_data):
+    """Heuristic search to maximize selected parcels in top N"""
     import gc
+    import random
+    import time
     
-    try:
-        import cvxpy as cp
-    except ImportError as e:
-        logger.error(f"RELATIVE OPTIMIZATION FAILED: cvxpy not installed - {e}")
-        logger.error("Install with: pip install cvxpy")
-        return None, None, None, False
+    start_time = time.time()
     
     # Process variable names efficiently
     include_vars_base = [var[:-2] if var.endswith(('_s', '_q')) else var for var in include_vars]
     
-    logger.info(f"RELATIVE OPTIMIZATION (QP): {len(parcel_data):,} selected parcels, {len(include_vars_base)} variables")
+    logger.info(f"RELATIVE OPTIMIZATION (HEURISTIC): {len(parcel_data):,} selected parcels, target top {top_n}")
+    logger.info(f"Variables: {include_vars_base}")
     
-    # Build coefficients (sum of all scores for each variable)
-    coefficients = {}
-    for var_base in include_vars_base:
-        total_score = sum(parcel['scores'][var_base] for parcel in parcel_data)
-        coefficients[var_base] = total_score
-    
-    # Decision variables
-    weights = cp.Variable(len(include_vars_base))
-    
-    # Calculate statistics for adaptive penalty
-    coeff_array = np.array([coefficients[var] for var in include_vars_base])
-    mean_coeff = np.mean(coeff_array)
-    max_coeff = np.max(coeff_array)
-    
-    # Objective: Maximize score while encouraging balance
-    score = coeff_array @ weights
-    
-    # Variance penalty encourages balanced weights
-    weight_variance = cp.sum_squares(weights - 1/len(include_vars_base))
-    
-    # Adaptive penalty: less penalty when coefficients vary more (indicating true differences)
-    coeff_spread = np.std(coeff_array) / mean_coeff if mean_coeff > 0 else 0
-    lambda_param = max(0.01 * max_coeff, 0.1 * max_coeff * (1 - coeff_spread))
-    
-    # Fix DCP error: minimize negative score plus variance penalty (DCP-compliant)
-    objective = cp.Minimize(lambda_param * weight_variance - score)
-    
-    # Constraints
-    constraints = [
-        cp.sum(weights) == 1,  # Weights sum to 1
-        weights >= 0,  # Non-negative weights
-    ]
-    
-    # Solve
-    prob = cp.Problem(objective, constraints)
-    
-    try:
-        logger.info(f"Solving QP problem with {len(include_vars_base)} variables and {len(parcel_data)} parcels...")
-        prob.solve()
-        
-        if prob.status == cp.OPTIMAL:
-            # Extract results
-            optimal_weights = {}
-            for i, var_base in enumerate(include_vars_base):
-                optimal_weights[var_base] = float(weights.value[i])
-            
-            weights_pct = {var: weight * 100 for var, weight in optimal_weights.items()}
-            
-            # Log results
-            significant_weights = [(var, weight) for var, weight in optimal_weights.items() if weight > 0.01]
-            significant_weights.sort(key=lambda x: x[1], reverse=True)
-            logger.info(f"QP optimization completed successfully")
-            logger.info(f"BALANCED WEIGHTS: {[(var, f'{weight:.1%}') for var, weight in significant_weights]}")
-            
-            # Calculate total score
-            total_score = 0
-            for parcel in parcel_data:
-                for var_base in include_vars_base:
-                    score = parcel['scores'][var_base]
-                    weight = optimal_weights[var_base]
-                    total_score += weight * score
-            
-            gc.collect()
-            return optimal_weights, weights_pct, total_score, True
-            
-        else:
-            logger.error(f"QP optimization failed with status: {prob.status}")
-            logger.error("Problem details:")
-            logger.error(f"  - Variables: {len(include_vars_base)}")
-            logger.error(f"  - Coefficients: {coeff_array}")
-            logger.error(f"  - Lambda parameter: {lambda_param}")
-            gc.collect()
-            return None, None, None, False
-            
-    except Exception as e:
-        logger.error(f"QP solver error: {e}")
-        logger.error("Full traceback:")
-        import traceback
-        logger.error(traceback.format_exc())
-        gc.collect()
+    # Get full dataset to calculate global rankings
+    full_parcel_scores = request_data.get('parcel_scores', [])
+    if not full_parcel_scores:
+        logger.error("No full dataset provided for relative optimization")
         return None, None, None, False
+    
+    logger.info(f"Full dataset: {len(full_parcel_scores)} parcels")
+    
+    # Extract selected parcel IDs for tracking
+    selected_parcel_ids = set(parcel['parcel_id'] for parcel in parcel_data)
+    
+    def calculate_selected_in_top_n(weights):
+        """Calculate how many selected parcels end up in top N with given weights"""
+        # Calculate composite scores for all parcels
+        scored_parcels = []
+        for parcel in full_parcel_scores:
+            composite_score = 0
+            for var_base in include_vars_base:
+                if var_base in parcel['scores']:
+                    composite_score += weights.get(var_base, 0) * parcel['scores'][var_base]
+            
+            scored_parcels.append({
+                'parcel_id': parcel['parcel_id'],
+                'score': composite_score,
+                'is_selected': parcel['parcel_id'] in selected_parcel_ids
+            })
+        
+        # Sort by score and find top N
+        scored_parcels.sort(key=lambda x: x['score'], reverse=True)
+        top_n_parcels = scored_parcels[:top_n]
+        
+        # Count how many selected parcels are in top N
+        selected_in_top_n = sum(1 for p in top_n_parcels if p['is_selected'])
+        
+        return selected_in_top_n, scored_parcels
+    
+    # Start with equal weights
+    best_weights = {var: 1.0 / len(include_vars_base) for var in include_vars_base}
+    best_count, _ = calculate_selected_in_top_n(best_weights)
+    
+    logger.info(f"Starting with equal weights: {best_count}/{len(selected_parcel_ids)} selected parcels in top {top_n}")
+    
+    # If no selected parcels can make it to top N with any reasonable weights, fail early
+    if best_count == 0:
+        # Try some extreme single-variable weights to test feasibility
+        for var in include_vars_base:
+            test_weights = {v: 0.0 for v in include_vars_base}
+            test_weights[var] = 1.0
+            test_count, _ = calculate_selected_in_top_n(test_weights)
+            if test_count > best_count:
+                best_count = test_count
+                best_weights = test_weights.copy()
+        
+        if best_count == 0:
+            logger.error(f"RELATIVE OPTIMIZATION FAILED: No weighting scheme can get any selected parcels into top {top_n}")
+            raise ValueError(f"Selected area contains parcels that cannot reach top {top_n} with any weighting")
+    
+    # Heuristic search strategies
+    max_iterations = 200
+    patience = 50  # Stop if no improvement for this many iterations
+    no_improvement_count = 0
+    
+    logger.info(f"Starting heuristic search with {max_iterations} iterations...")
+    
+    for iteration in range(max_iterations):
+        # Strategy 1: Random perturbation of current best
+        if iteration < max_iterations // 2:
+            # Small random adjustments
+            new_weights = best_weights.copy()
+            
+            # Pick 2-3 variables to adjust
+            vars_to_adjust = random.sample(include_vars_base, min(3, len(include_vars_base)))
+            
+            # Transfer small amount between variables
+            transfer_amount = random.uniform(0.05, 0.15)
+            donor_var = random.choice(vars_to_adjust)
+            recipient_var = random.choice([v for v in vars_to_adjust if v != donor_var])
+            
+            if new_weights[donor_var] >= transfer_amount:
+                new_weights[donor_var] -= transfer_amount
+                new_weights[recipient_var] += transfer_amount
+        
+        # Strategy 2: More aggressive random sampling
+        else:
+            # Generate random weights that sum to 1
+            random_vals = [random.random() for _ in include_vars_base]
+            total = sum(random_vals)
+            new_weights = {var: val/total for var, val in zip(include_vars_base, random_vals)}
+        
+        # Evaluate new weights
+        new_count, _ = calculate_selected_in_top_n(new_weights)
+        
+        # Accept if better, or occasionally if equal (to explore)
+        accept_prob = 1.0 if new_count > best_count else (0.1 if new_count == best_count else 0.0)
+        
+        if random.random() < accept_prob:
+            if new_count > best_count:
+                logger.info(f"Iteration {iteration}: Improved from {best_count} to {new_count} selected parcels in top {top_n}")
+                no_improvement_count = 0
+            else:
+                no_improvement_count += 1
+                
+            best_count = new_count
+            best_weights = new_weights.copy()
+        else:
+            no_improvement_count += 1
+        
+        # Early stopping if no improvement
+        if no_improvement_count >= patience:
+            logger.info(f"Stopping early at iteration {iteration}: no improvement for {patience} iterations")
+            break
+    
+    # Final evaluation
+    final_count, final_ranking = calculate_selected_in_top_n(best_weights)
+    
+    # Convert to percentage weights
+    weights_pct = {var: weight * 100 for var, weight in best_weights.items()}
+    
+    # Calculate total score for selected parcels
+    total_score = 0
+    for parcel in parcel_data:
+        for var_base in include_vars_base:
+            if var_base in parcel['scores']:
+                score = parcel['scores'][var_base]
+                weight = best_weights[var_base]
+                total_score += weight * score
+    
+    # Log results
+    significant_weights = [(var, weight) for var, weight in best_weights.items() if weight > 0.01]
+    significant_weights.sort(key=lambda x: x[1], reverse=True)
+    
+    elapsed_time = time.time() - start_time
+    success_rate = (final_count / len(selected_parcel_ids)) * 100
+    
+    logger.info(f"HEURISTIC OPTIMIZATION COMPLETED in {elapsed_time:.2f}s")
+    logger.info(f"RESULT: {final_count}/{len(selected_parcel_ids)} selected parcels in top {top_n} ({success_rate:.1f}% success rate)")
+    logger.info(f"WEIGHTS: {[(var, f'{weight:.1%}') for var, weight in significant_weights]}")
+    
+    gc.collect()
+    return best_weights, weights_pct, total_score, True
 def generate_solution_files(include_vars, best_weights, weights_pct, total_score, 
                            parcel_data, request_data):
     """Generate LP and TXT solution files"""
@@ -1431,18 +1488,19 @@ def generate_solution_files(include_vars, best_weights, weights_pct, total_score
     if optimization_type == 'relative':
         txt_lines.extend([
             "",
-            "OPTIMIZATION TYPE: Relative Balanced Optimization (QP)", 
-            f"OBJECTIVE: Balanced weight allocation for ranking in top {top_n} parcels",
+            "OPTIMIZATION TYPE: Relative Heuristic Search", 
+            f"OBJECTIVE: Maximize selected parcels ranking in top {top_n} globally",
             "",
             f"Selected parcels analyzed: {parcel_count:,}",
             f"Target ranking: Top {top_n} parcels",
             f"Average score of selected parcels: {avg_score:.3f}",
             "",
-            "MATHEMATICAL APPROACH:",
-            "  maximize: Σ(weight_i × score_i) - λ × variance(weights)",
-            "  subject to: Σ(weights) = 1, weights ≥ 0",
-            "  This balances maximizing risk score with distributing weights across",
-            "  multiple risk factors for more robust risk assessment.",
+            "HEURISTIC APPROACH:",
+            "  1. Test multiple weight combinations using random search",
+            "  2. Evaluate how many selected parcels rank in global top N",
+            "  3. Iteratively improve to maximize selected parcels in top N",
+            "  4. Balance exploration vs exploitation with acceptance probability",
+            "  This directly optimizes the user's goal of getting their area into top rankings.",
         ])
     else:
         txt_lines.extend([
@@ -1528,7 +1586,7 @@ def infer_weights():
             if 'parcel_scores' in data:
                 logger.info(f"RELATIVE OPTIMIZATION: parcel_scores count={len(data['parcel_scores'])}")
             
-            best_weights, weights_pct, total_score, success = solve_relative_optimization_qp(
+            best_weights, weights_pct, total_score, success = solve_relative_optimization_heuristic(
                 parcel_data, include_vars, top_n, data
             )
         else:
