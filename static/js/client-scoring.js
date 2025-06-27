@@ -72,10 +72,6 @@ class FireRiskScoring {
         return this.attributeMap.get(parcelId);
     }
 
-    // Get all parcel IDs for relative optimization
-    getAllParcelIds() {
-        return Array.from(this.attributeMap.keys());
-    }
 
     // Legacy method for compatibility
     storeParcelData(geojsonData) {
