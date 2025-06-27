@@ -3,6 +3,15 @@ data/
 
 # Development/analysis files (non-essential for production)
 extras/
+archive/
+
+# Documentation files (non-essential for production)
+CLAUDE.md
+README_mbtiles.md
+
+# Utility scripts (non-essential for production)
+example_usage.sh
+create_mbtiles.sh
 
 # Local environment files
 .env

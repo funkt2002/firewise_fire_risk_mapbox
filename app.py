@@ -1280,7 +1280,7 @@ def solve_relative_optimization_qp(parcel_data, include_vars, top_n, request_dat
     
     # Adaptive penalty: less penalty when coefficients vary more (indicating true differences)
     coeff_spread = np.std(coeff_array) / mean_coeff if mean_coeff > 0 else 0
-    lambda_param = 0.1 * max_coeff * (1 - coeff_spread)
+    lambda_param = max(0.01 * max_coeff, 0.1 * max_coeff * (1 - coeff_spread))
     
     # Fix DCP error: minimize negative score plus variance penalty (DCP-compliant)
     objective = cp.Minimize(lambda_param * weight_variance - score)
