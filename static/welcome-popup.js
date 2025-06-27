@@ -33,15 +33,14 @@ class WelcomePopup {
                     <div class="welcome-popup-body">
                         <div id="welcome-popup-content">
                             <div class="development-note">
-                                <p><strong>UPDATE</strong></p>
+                                <p><strong>RECENT UPDATES</strong></p>
                                 <ul style="margin: 10px 0; padding-left: 20px;">
-                                    <li><strong>No more .geojson:</strong> All geometries are hosted as static vector tiles hosted by Mapbox, with attribute data hosted by PostgreSQL/server caching</li>
-                                    <li><strong>Client-side processing:</strong> Filtering, normalization, and score calculations all run client-side with JavaScript. This is all done just on attribute data, and mapped to vector tiles for updating via IDs. This results in high speeds and low memory usage</li>
-                                    <li><strong>Substantial calculations:</strong> Each time a user filters the data in any way, we renormalize (min-max) scores based on their selection and recalculate composite scores. This can be toggled and global scores may be used instead, but I think this is a good feature for assessing relative fire risk for given areas. </li>
-                                    <li><strong>UI improvements:</strong> The UI has been improved, and several improvements to toggling/usability have been made</li>
-                                    <li><strong>Small additions:</strong> Such as a correlation matrix between variables, or allowing for multi-area selection for the infer weights tool</li>
+                                    <li><strong>Faster performance:</strong> Map loads instantly with vector tiles and client-side calculations</li>
+                                    <li><strong>Smart weight finding:</strong> Draw any area and automatically find the best factor weights for that zone. Choose "Absolute" to maximize scores or "Relative" to rank in top parcels</li>
+                                    <li><strong>Local vs global scoring:</strong> Score based on your filtered data or the entire county</li>
+                                    <li><strong>Multi-area selection:</strong> Draw multiple areas for combined analysis</li>
                                 </ul>
-                                <p><strong>The map loads instantly with color-coded fire risk and handles complex analysis efficiently.</strong></p>
+                                <p><strong>Great for finding what factors drive fire risk in different areas.</strong></p>
                             </div>
                             
                             <p>This tool helps you find areas with the highest wildfire risk by looking at different factors around each property.</p>
