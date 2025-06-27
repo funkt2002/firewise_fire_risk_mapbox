@@ -2679,14 +2679,15 @@
                 // Update the weight sliders with optimized values
                 console.log('Optimization result weights:', data.weights);
                 Object.entries(data.weights).forEach(([key, value]) => {
-                    console.log(`Trying to update slider: ${key} = ${value}`);
-                    const slider = document.getElementById(key);
+                    const sliderKey = key + '_s'; // Add _s suffix for slider IDs
+                    console.log(`Trying to update slider: ${sliderKey} = ${value}`);
+                    const slider = document.getElementById(sliderKey);
                     if (slider) {
-                        console.log(`Found slider ${key}, updating to ${value}`);
+                        console.log(`Found slider ${sliderKey}, updating to ${value}`);
                         slider.value = value;
                         updateSliderFill(slider);
                     } else {
-                        console.log(`Slider not found for key: ${key}`);
+                        console.log(`Slider not found for key: ${sliderKey}`);
                     }
                 });
                 
