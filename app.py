@@ -1157,10 +1157,13 @@ def solve_relative_optimization(parcel_data, include_vars, top_n, request_data):
     logger.info(f"RELATIVE OPTIMIZATION RESULT: {final_count}/{len(selected_ids)} selected parcels in top {top_n}")
     logger.info(f"Success rate: {final_count/len(selected_ids)*100:.1f}%")
     
-    # Check feasibility - if we can't get at least 50% of selected parcels in top N, it's not feasible
-    if final_count < len(selected_ids) * 0.5:
-        logger.error(f"Relative optimization not feasible: only {final_count}/{len(selected_ids)} parcels achievable in top {top_n}")
+    # Check feasibility - if we can't get at least 10% or minimum 2 parcels in top N, it's not feasible
+    min_required = max(2, len(selected_ids) * 0.1)  # At least 10% or 2 parcels, whichever is higher
+    if final_count < min_required:
+        logger.error(f"Relative optimization not feasible: only {final_count}/{len(selected_ids)} parcels achievable in top {top_n} (minimum required: {min_required})")
         return None, None, None, False
+    
+    logger.info(f"Relative optimization successful: {final_count}/{len(selected_ids)} parcels in top {top_n} (success rate: {final_count/len(selected_ids)*100:.1f}%)")
     
     # Convert to percentage weights
     weights_pct = {var: weight * 100 for var, weight in best_weights.items()}
