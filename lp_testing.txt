@@ -1,0 +1,12 @@
+We need to test our absolute LP. 
+
+We need to:
+1. Read in the parcels.shp data from the data folder. 
+2. USe the raw values here (as seen else in the project) and calculate scores. (min max, robust min max, quantile, and normal) Use similar scoring techniques as seen in prpject.
+Ask me qs about this to help. 
+3. We want to test the absolute LP we have on each of these scoring types. We want to test contiguous, and non contiguous, random samples of parcels on each. 
+
+We want to see an example output table of one of the tests, see the weight assigned to each variable, scores for each parcel, etc. 
+Ask me what variables to use. 
+make sure to output a .lp file for one of the solutinos (same as for example output), in same folder
+Make plots of each dist for variables 

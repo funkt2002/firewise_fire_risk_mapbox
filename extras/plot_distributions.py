@@ -116,24 +116,25 @@ class EnhancedFireRiskAnalyzer:
         print("=" * 50)
         
         # Weight variables - using composite agri/fuel instead of individual layers
-        self.WEIGHT_VARS = ['qtrmi', 'hwui', 'hvhsz', 'slope', 'neigh1d', 'hbrn', 'hagfb']
+        self.WEIGHT_VARS = ['qtrmi', 'hwui', 'hvhsz', 'slope', 'neigh1d', 'hbrn', 'hlfmiagfb', 'par_buf_slp']
         
         # Raw data to score column mapping
         self.RAW_COLS = {
             'qtrmi': 'qtrmi_cnt', 'hwui': 'hlfmi_wui', 'hvhsz': 'hlfmi_vhsz',
             'slope': 'avg_slope', 'neigh1d': 'neigh1_d', 'hbrn': 'hlfmi_brn',
-            'hagfb': 'hlfmi_agfb'  # Composite agriculture/fuel break variable
+            'hlfmiagfb': 'hlfmi_agfb',  # Composite agriculture/fuel break variable
+            'par_buf_slp': 'par_buf_sl'  # Parcel buffer slope
         }
         
         # Factor names
         self.FACTOR_NAMES = {
             'qtrmi': 'Structures', 'hwui': 'WUI', 'hvhsz': 'Fire Hazard',
             'slope': 'Slope', 'neigh1d': 'Neighbors', 'hbrn': 'Burn Scars', 
-            'hagfb': 'Agri/Fuel Composite'
+            'hlfmiagfb': 'Agri/Fuel Composite', 'par_buf_slp': 'Parcel Buffer Slope'
         }
         
         # Variables where higher raw value = lower risk (invert scoring)
-        self.INVERT_VARS = {'neigh1d', 'hagfb'}
+        self.INVERT_VARS = {'neigh1d', 'hlfmiagfb'}
         
         # Neighbor distance configuration
         self.MAX_NEIGHBOR_DISTANCE = 1000  # feet
@@ -190,9 +191,13 @@ class EnhancedFireRiskAnalyzer:
         self.score_data = pd.DataFrame()
         print("Score calculation will be performed after subset filtering\n")
     
-    def calculate_scores_from_raw(self):
-        """Calculate normalized scores from raw data for the current subset"""
-        print("Calculating scores from raw data...")
+    def calculate_scores_from_raw(self, method='robust'):
+        """Calculate normalized scores from raw data for the current subset
+        
+        Args:
+            method: 'robust' (default) or 'true_normal' for bell curve distributions
+        """
+        print(f"Calculating scores from raw data using {method} method...")
         
         # Use the current subset of raw data
         raw_subset = self.raw_data.loc[self.gdf.index]
@@ -212,7 +217,7 @@ class EnhancedFireRiskAnalyzer:
                     raw_values[~valid_mask] = np.nan
                     raw_values = np.log(raw_values)
                     
-                elif var in ['hwui', 'hvhsz', 'hbrn', 'hagfb']:
+                elif var in ['hwui', 'hvhsz', 'hbrn', 'hlfmiagfb']:
                     # For half-mile percentage variables: exclude only missing data
                     valid_mask = (raw_values >= 0) & (raw_values.notna())
                     raw_values[~valid_mask] = np.nan
@@ -222,27 +227,104 @@ class EnhancedFireRiskAnalyzer:
                     valid_mask = (raw_values > 0) & (raw_values.notna())
                     raw_values[~valid_mask] = np.nan
                 
-                # Calculate min-max normalization on valid data
-                valid_data = raw_values.dropna()
-                if len(valid_data) > 0 and valid_data.max() > valid_data.min():
-                    min_val = valid_data.min()
-                    max_val = valid_data.max()
+                if method == 'robust':
+                    # Original robust quantile-based normalization
+                    valid_data = raw_values.dropna()
+                    if len(valid_data) > 0 and valid_data.max() > valid_data.min():
+                        # Use robust percentile-based clipping (like client-side JS)
+                        # Clip outliers to 2nd and 98th percentiles for robust scaling
+                        p2 = np.percentile(valid_data, 2)
+                        p98 = np.percentile(valid_data, 98)
+                        
+                        # Use robust min/max for normalization (based on clipped range)
+                        robust_min = p2
+                        robust_max = p98
+                        
+                        # Apply clipping to raw values
+                        clipped_values = raw_values.clip(lower=robust_min, upper=robust_max)
+                        
+                        # Quantile-based normalization to [0,1] using robust range
+                        if robust_max > robust_min:
+                            normalized = (clipped_values - robust_min) / (robust_max - robust_min)
+                        else:
+                            normalized = pd.Series(0.5, index=raw_values.index)  # Default to middle value
+                        
+                        # Invert if higher raw value means lower risk
+                        if var in self.INVERT_VARS:
+                            normalized = 1 - normalized
+                        
+                        self.score_data[var] = normalized.fillna(0)
+                        
+                        print(f"  {self.FACTOR_NAMES[var]:20s}: {len(valid_data):5d} valid, "
+                              f"robust range [{robust_min:.2f}, {robust_max:.2f}] (P2-P98), "
+                              f"mean score: {normalized.mean():.3f}")
+                    else:
+                        self.score_data[var] = 0
+                        print(f"  {self.FACTOR_NAMES[var]:20s}: No valid data")
+                        
+                elif method == 'true_normal':
+                    # TRUE normal distribution with bell curves and zero handling
+                    # Fill NaN with 0 for proper zero handling
+                    filled_values = raw_values.fillna(0)
                     
-                    # Normalize to [0,1]
-                    normalized = (raw_values - min_val) / (max_val - min_val)
+                    # Separate zeros and non-zeros
+                    zero_mask = filled_values == 0
+                    non_zero_values = filled_values[~zero_mask]
                     
-                    # Invert if higher raw value means lower risk
-                    if var in self.INVERT_VARS:
-                        normalized = 1 - normalized
+                    if len(non_zero_values) == 0:
+                        # All zeros
+                        if var in self.INVERT_VARS:
+                            normalized = pd.Series(1.0, index=filled_values.index)
+                        else:
+                            normalized = pd.Series(0.0, index=filled_values.index)
+                    else:
+                        # Use scipy.stats for ranking (need to import)
+                        try:
+                            from scipy import stats
+                            
+                            # Rank non-zero values
+                            ranks_non_zero = stats.rankdata(non_zero_values) / (len(non_zero_values) + 1)
+                            ranks_non_zero = np.clip(ranks_non_zero, 0.001, 0.999)
+                            
+                            # Transform to standard normal
+                            normal_values = stats.norm.ppf(ranks_non_zero)
+                            
+                            # Scale to desired mean and std (0.5, 0.15) - creates bell curve
+                            scaled_scores = 0.5 + (normal_values * 0.15)
+                            scaled_scores = np.clip(scaled_scores, 0, 1)
+                            
+                            # Create full series
+                            normalized = pd.Series(0.0, index=filled_values.index, dtype=float)
+                            normalized.iloc[~zero_mask] = scaled_scores
+                            
+                            # Handle zeros (don't invert separately for true_normal)
+                            if var in self.INVERT_VARS:
+                                normalized.iloc[zero_mask] = 1.0
+                            else:
+                                normalized.iloc[zero_mask] = 0.0
+                                
+                        except ImportError:
+                            print(f"  {self.FACTOR_NAMES[var]:20s}: SciPy not available, falling back to robust method")
+                            # Fallback to robust method
+                            method = 'robust'
+                            continue
                     
-                    self.score_data[var] = normalized.fillna(0)
+                    self.score_data[var] = normalized
                     
-                    print(f"  {self.FACTOR_NAMES[var]:20s}: {len(valid_data):5d} valid, "
-                          f"range [{min_val:.2f}, {max_val:.2f}], "
-                          f"mean score: {normalized.mean():.3f}")
+                    # Stats for true normal
+                    n_zeros = zero_mask.sum()
+                    pct_zeros = n_zeros / len(filled_values) * 100
+                    non_zero_scores = normalized[~zero_mask] if len(non_zero_values) > 0 else pd.Series([])
+                    if len(non_zero_scores) > 0:
+                        mean_score = non_zero_scores.mean()
+                        std_score = non_zero_scores.std()
+                        print(f"  {self.FACTOR_NAMES[var]:20s}: {len(non_zero_values):5d} valid, "
+                              f"{pct_zeros:.0f}% zeros, bell curve μ={mean_score:.3f} σ={std_score:.3f}")
+                    else:
+                        print(f"  {self.FACTOR_NAMES[var]:20s}: All zeros")
                 else:
                     self.score_data[var] = 0
-                    print(f"  {self.FACTOR_NAMES[var]:20s}: No valid data")
+                    print(f"  {self.FACTOR_NAMES[var]:20s}: Unknown method {method}")
             else:
                 self.score_data[var] = 0
                 print(f"  {self.FACTOR_NAMES[var]:20s}: Column not found")
@@ -256,7 +338,7 @@ class EnhancedFireRiskAnalyzer:
         # Use the current subset of raw data
         raw_subset = self.raw_data.loc[self.gdf.index]
         
-        # Create subplots - now 3x3 for 7 variables (2 empty spots)
+        # Create subplots - now 3x3 for 8 variables (1 empty spot)
         fig, axes = plt.subplots(3, 3, figsize=(18, 12))
         axes = axes.flatten()
         
@@ -274,7 +356,7 @@ class EnhancedFireRiskAnalyzer:
                     plot_data = valid_data
                     x_label = f'Distance (feet, capped at {self.MAX_NEIGHBOR_DISTANCE})'
                     
-                elif var in ['hwui', 'hvhsz', 'hbrn', 'hagfb']:
+                elif var in ['hwui', 'hvhsz', 'hbrn', 'hlfmiagfb']:
                     # Include all valid percentage values
                     valid_data = raw_values[(raw_values >= 0) & (raw_values.notna())]
                     plot_data = valid_data
@@ -293,26 +375,47 @@ class EnhancedFireRiskAnalyzer:
                 
                 # Create histogram
                 if len(plot_data) > 0:
-                    ax.hist(plot_data, bins=30, alpha=0.7, color='lightcoral', edgecolor='black')
+                    # Create histogram with density=True to overlay normal distribution
+                    counts, bins, _ = ax.hist(plot_data, bins=30, alpha=0.7, color='lightcoral', 
+                                            edgecolor='black', density=True, label='Actual Data')
                     
                     # Add statistics
                     mean_val = plot_data.mean()
                     std_val = plot_data.std()
-                    ax.axvline(mean_val, color='darkred', linestyle='--', linewidth=2, alpha=0.8)
+                    ax.axvline(mean_val, color='darkred', linestyle='--', linewidth=2, alpha=0.8, label='Mean')
+                    
+                    # Add normal distribution overlay
+                    if std_val > 0:  # Only if we have variation in the data
+                        x_norm = np.linspace(plot_data.min(), plot_data.max(), 100)
+                        # Normal probability density function: (1/σ√(2π)) * e^(-½((x-μ)/σ)²)
+                        y_norm = (1 / (std_val * np.sqrt(2 * np.pi))) * np.exp(-0.5 * ((x_norm - mean_val) / std_val) ** 2)
+                        ax.plot(x_norm, y_norm, 'blue', linewidth=2, alpha=0.8, label='Normal Distribution')
+                        
+                        # Calculate simple normality indicator (coefficient of variation)
+                        cv = std_val / mean_val if mean_val != 0 else float('inf')
+                        skewness = np.mean(((plot_data - mean_val) / std_val) ** 3) if std_val > 0 else 0
                     
                     # Add inversion indicator for inverted variables
                     title_suffix = " (inverted)" if var in self.INVERT_VARS else ""
                     ax.set_title(f'{self.FACTOR_NAMES[var]} - Raw{title_suffix}', fontsize=12)
                     
-                    ax.text(0.7, 0.9, f'μ={mean_val:.2f}\nσ={std_val:.2f}\nn={len(plot_data)}', 
+                    # Enhanced statistics text box
+                    if std_val > 0:
+                        stats_text = f'μ={mean_val:.2f}\nσ={std_val:.2f}\nn={len(plot_data)}\nSkew={skewness:.2f}'
+                    else:
+                        stats_text = f'μ={mean_val:.2f}\nσ={std_val:.2f}\nn={len(plot_data)}'
+                    
+                    ax.text(0.7, 0.9, stats_text, 
                            transform=ax.transAxes, bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
+                    
+                    ax.legend(fontsize=8, loc='upper left')
                 else:
                     ax.set_title(f'{self.FACTOR_NAMES[var]} - Raw (No Data)', fontsize=12)
                     ax.text(0.5, 0.5, 'No valid data', transform=ax.transAxes, 
                            ha='center', va='center', fontsize=14, color='red')
                 
                 ax.set_xlabel(x_label)
-                ax.set_ylabel('Count')
+                ax.set_ylabel('Density')
                 ax.grid(True, alpha=0.3)
             else:
                 ax.set_title(f'{self.FACTOR_NAMES[var]} - Raw (Missing)', fontsize=12)
@@ -323,7 +426,7 @@ class EnhancedFireRiskAnalyzer:
         for i in range(len(self.WEIGHT_VARS), len(axes)):
             axes[i].set_visible(False)
         
-        plt.suptitle('Distribution of Raw Fire Risk Variables', fontsize=16)
+        plt.suptitle('Distribution of Raw Fire Risk Variables with Normal Distribution Overlays', fontsize=16)
         plt.tight_layout()
         display_fig(fig)
         
@@ -349,7 +452,7 @@ class EnhancedFireRiskAnalyzer:
                     raw_values[~valid_mask] = np.nan
                     raw_values = np.log(raw_values)  # Log transform for better correlation
                     
-                elif var in ['hwui', 'hvhsz', 'hbrn', 'hagfb']:
+                elif var in ['hwui', 'hvhsz', 'hbrn', 'hlfmiagfb']:
                     # For half-mile percentage variables: use as-is but exclude missing
                     valid_mask = (raw_values >= 0) & (raw_values.notna())
                     raw_values[~valid_mask] = np.nan
@@ -401,7 +504,7 @@ class EnhancedFireRiskAnalyzer:
         """Show distribution of each normalized variable"""
         print("Creating normalized variable distributions...")
         
-        # Create subplots - now 3x3 for 7 variables (2 empty spots)
+        # Create subplots - now 3x3 for 8 variables (1 empty spot)
         fig, axes = plt.subplots(3, 3, figsize=(18, 12))
         axes = axes.flatten()
         
@@ -409,124 +512,143 @@ class EnhancedFireRiskAnalyzer:
             ax = axes[i]
             data = self.score_data[var]
             
-            # Create histogram
-            ax.hist(data, bins=30, alpha=0.7, color='steelblue', edgecolor='black')
+            # Create histogram with density=True to overlay normal distribution
+            counts, bins, _ = ax.hist(data, bins=30, alpha=0.7, color='steelblue', 
+                                    edgecolor='black', density=True, label='Actual Data')
             ax.set_title(f'{self.FACTOR_NAMES[var]}', fontsize=12)
             ax.set_xlabel('Score')
-            ax.set_ylabel('Count')
+            ax.set_ylabel('Density')
             
             # Add statistics
             mean_val = data.mean()
             std_val = data.std()
-            ax.axvline(mean_val, color='red', linestyle='--', linewidth=2, alpha=0.8)
-            ax.text(0.7, 0.9, f'μ={mean_val:.2f}\nσ={std_val:.2f}', 
+            ax.axvline(mean_val, color='red', linestyle='--', linewidth=2, alpha=0.8, label='Mean')
+            
+            # Add normal distribution overlay
+            if std_val > 0 and len(data) > 1:  # Only if we have variation and multiple data points
+                x_norm = np.linspace(data.min(), data.max(), 100)
+                # Normal probability density function
+                y_norm = (1 / (std_val * np.sqrt(2 * np.pi))) * np.exp(-0.5 * ((x_norm - mean_val) / std_val) ** 2)
+                ax.plot(x_norm, y_norm, 'darkgreen', linewidth=2, alpha=0.8, label='Normal Distribution')
+                
+                # Calculate skewness
+                skewness = np.mean(((data - mean_val) / std_val) ** 3) if std_val > 0 else 0
+                
+                # Enhanced statistics text box
+                stats_text = f'μ={mean_val:.3f}\nσ={std_val:.3f}\nSkew={skewness:.2f}'
+            else:
+                stats_text = f'μ={mean_val:.3f}\nσ={std_val:.3f}'
+            
+            ax.text(0.7, 0.9, stats_text, 
                    transform=ax.transAxes, bbox=dict(boxstyle='round', facecolor='white', alpha=0.8))
+            
+            ax.legend(fontsize=8, loc='upper left')
         
         # Hide empty subplots
         for i in range(len(self.WEIGHT_VARS), len(axes)):
             axes[i].set_visible(False)
         
-        plt.suptitle('Distribution of Normalized Fire Risk Variables', fontsize=16)
+        plt.suptitle('Distribution of Normalized Fire Risk Variables with Normal Distribution Overlays', fontsize=16)
         plt.tight_layout()
         display_fig(fig)
     
-    def create_choropleth_maps(self):
-        """Create white-to-red choropleth maps for each score variable"""
-        print("Creating choropleth maps for each score variable...")
-        
-        # Merge score data with geometries
-        gdf_with_scores = self.gdf.copy()
-        for var in self.WEIGHT_VARS:
-            if var in self.score_data.columns:
-                gdf_with_scores[var] = self.score_data[var]
-            else:
-                gdf_with_scores[var] = 0
-        
-        # Create maps in a 3x3 grid for 7 variables (2 empty spots)
-        fig, axes = plt.subplots(3, 3, figsize=(24, 18))
-        axes = axes.flatten()
-        
-        for i, var in enumerate(self.WEIGHT_VARS):
-            ax = axes[i]
-            
-            # Create choropleth map
-            gdf_with_scores.plot(
-                column=var,
-                ax=ax,
-                cmap='Reds',  # White to red colormap
-                legend=True,
-                legend_kwds={'shrink': 0.8, 'label': 'Score (0-1)'},
-                edgecolor='none',
-                linewidth=0
-            )
-            
-            ax.set_title(f'{self.FACTOR_NAMES[var]}', fontsize=12, fontweight='bold')
-            ax.set_xlabel('Easting')
-            ax.set_ylabel('Northing')
-            ax.tick_params(labelsize=8)
-            
-            # Remove axis ticks for cleaner look
-            ax.set_xticks([])
-            ax.set_yticks([])
-            
-            # Add statistics as text
-            data = gdf_with_scores[var]
-            mean_val = data.mean()
-            max_val = data.max()
-            min_val = data.min()
-            
-            # Add text box with statistics
-            stats_text = f'Min: {min_val:.2f}\nMean: {mean_val:.2f}\nMax: {max_val:.2f}'
-            ax.text(0.02, 0.98, stats_text, transform=ax.transAxes, 
-                   fontsize=8, verticalalignment='top',
-                   bbox=dict(boxstyle='round,pad=0.3', facecolor='white', alpha=0.8))
-        
-        # Hide empty subplots
-        for i in range(len(self.WEIGHT_VARS), len(axes)):
-            axes[i].set_visible(False)
-        
-        plt.suptitle('Fire Risk Score Choropleth Maps (White = Low Risk, Red = High Risk)', 
-                    fontsize=16, fontweight='bold')
-        plt.tight_layout()
-        display_fig(fig)
-        
-        # Create individual larger maps for better detail
-        print("Creating individual detailed maps...")
-        
-        for var in self.WEIGHT_VARS:
-            fig, ax = plt.subplots(figsize=(12, 10))
-            
-            # Create detailed choropleth map
-            gdf_with_scores.plot(
-                column=var,
-                ax=ax,
-                cmap='Reds',
-                legend=True,
-                legend_kwds={'shrink': 0.6, 'label': 'Score (0-1)', 'orientation': 'horizontal', 'pad': 0.05},
-                edgecolor='none',
-                linewidth=0
-            )
-            
-            ax.set_title(f'{self.FACTOR_NAMES[var]} - Fire Risk Score Distribution', 
-                        fontsize=14, fontweight='bold', pad=20)
-            ax.set_xlabel('Easting')
-            ax.set_ylabel('Northing')
-            
-            # Add comprehensive statistics
-            data = gdf_with_scores[var]
-            stats_text = (f'Statistics:\n'
-                         f'Min: {data.min():.3f}\n'
-                         f'Mean: {data.mean():.3f}\n'
-                         f'Max: {data.max():.3f}\n'
-                         f'Std: {data.std():.3f}\n'
-                         f'Parcels: {len(data):,}')
-            
-            ax.text(0.02, 0.98, stats_text, transform=ax.transAxes, 
-                   fontsize=10, verticalalignment='top',
-                   bbox=dict(boxstyle='round,pad=0.5', facecolor='white', alpha=0.9))
-            
-            plt.tight_layout()
-            display_fig(fig)
+    # def create_choropleth_maps(self):
+    #     """Create white-to-red choropleth maps for each score variable"""
+    #     print("Creating choropleth maps for each score variable...")
+    #     
+    #     # Merge score data with geometries
+    #     gdf_with_scores = self.gdf.copy()
+    #     for var in self.WEIGHT_VARS:
+    #         if var in self.score_data.columns:
+    #             gdf_with_scores[var] = self.score_data[var]
+    #         else:
+    #             gdf_with_scores[var] = 0
+    #     
+    #     # Create maps in a 3x3 grid for 8 variables (1 empty spot)
+    #     fig, axes = plt.subplots(3, 3, figsize=(24, 18))
+    #     axes = axes.flatten()
+    #     
+    #     for i, var in enumerate(self.WEIGHT_VARS):
+    #         ax = axes[i]
+    #         
+    #         # Create choropleth map
+    #         gdf_with_scores.plot(
+    #             column=var,
+    #             ax=ax,
+    #             cmap='Reds',  # White to red colormap
+    #             legend=True,
+    #             legend_kwds={'shrink': 0.8, 'label': 'Score (0-1)'},
+    #             edgecolor='none',
+    #             linewidth=0
+    #         )
+    #         
+    #         ax.set_title(f'{self.FACTOR_NAMES[var]}', fontsize=12, fontweight='bold')
+    #         ax.set_xlabel('Easting')
+    #         ax.set_ylabel('Northing')
+    #         ax.tick_params(labelsize=8)
+    #         
+    #         # Remove axis ticks for cleaner look
+    #         ax.set_xticks([])
+    #         ax.set_yticks([])
+    #         
+    #         # Add statistics as text
+    #         data = gdf_with_scores[var]
+    #         mean_val = data.mean()
+    #         max_val = data.max()
+    #         min_val = data.min()
+    #         
+    #         # Add text box with statistics
+    #         stats_text = f'Min: {min_val:.2f}\nMean: {mean_val:.2f}\nMax: {max_val:.2f}'
+    #         ax.text(0.02, 0.98, stats_text, transform=ax.transAxes, 
+    #                fontsize=8, verticalalignment='top',
+    #                bbox=dict(boxstyle='round,pad=0.3', facecolor='white', alpha=0.8))
+    #     
+    #     # Hide empty subplots
+    #     for i in range(len(self.WEIGHT_VARS), len(axes)):
+    #         axes[i].set_visible(False)
+    #     
+    #     plt.suptitle('Fire Risk Score Choropleth Maps (White = Low Risk, Red = High Risk)', 
+    #                 fontsize=16, fontweight='bold')
+    #     plt.tight_layout()
+    #     display_fig(fig)
+    #     
+    #     # Create individual larger maps for better detail
+    #     print("Creating individual detailed maps...")
+    #     
+    #     for var in self.WEIGHT_VARS:
+    #         fig, ax = plt.subplots(figsize=(12, 10))
+    #         
+    #         # Create detailed choropleth map
+    #         gdf_with_scores.plot(
+    #             column=var,
+    #             ax=ax,
+    #             cmap='Reds',
+    #             legend=True,
+    #             legend_kwds={'shrink': 0.6, 'label': 'Score (0-1)', 'orientation': 'horizontal', 'pad': 0.05},
+    #             edgecolor='none',
+    #             linewidth=0
+    #         )
+    #         
+    #         ax.set_title(f'{self.FACTOR_NAMES[var]} - Fire Risk Score Distribution', 
+    #                     fontsize=14, fontweight='bold', pad=20)
+    #         ax.set_xlabel('Easting')
+    #         ax.set_ylabel('Northing')
+    #         
+    #         # Add comprehensive statistics
+    #         data = gdf_with_scores[var]
+    #         stats_text = (f'Statistics:\n'
+    #                      f'Min: {data.min():.3f}\n'
+    #                      f'Mean: {data.mean():.3f}\n'
+    #                      f'Max: {data.max():.3f}\n'
+    #                      f'Std: {data.std():.3f}\n'
+    #                      f'Parcels: {len(data):,}')
+    #         
+    #         ax.text(0.02, 0.98, stats_text, transform=ax.transAxes, 
+    #                fontsize=10, verticalalignment='top',
+    #                bbox=dict(boxstyle='round,pad=0.5', facecolor='white', alpha=0.9))
+    #         
+    #         plt.tight_layout()
+    #         display_fig(fig)
     
     def create_composite_overlay_analysis(self):
         """Create composite fire risk overlay by summing all normalized scores"""
@@ -549,7 +671,7 @@ class EnhancedFireRiskAnalyzer:
             ax=ax1,
             cmap='YlOrRd',  # Yellow to Orange to Red
             legend=True,
-            legend_kwds={'shrink': 0.8, 'label': 'Composite Fire Risk Score (0-7)'},
+            legend_kwds={'shrink': 0.8, 'label': 'Composite Fire Risk Score (0-8)'},
             edgecolor='none',
             linewidth=0
         )
@@ -589,13 +711,13 @@ class EnhancedFireRiskAnalyzer:
         # Risk category breakdown
         ax3 = plt.subplot(2, 3, 3)
         
-        # Define risk categories (updated for 0-7 scale)
-        low_risk = (composite_scores <= 1.75).sum()
-        moderate_risk = ((composite_scores > 1.75) & (composite_scores <= 3.5)).sum()
-        high_risk = ((composite_scores > 3.5) & (composite_scores <= 5.25)).sum()
-        very_high_risk = (composite_scores > 5.25).sum()
+        # Define risk categories (updated for 0-8 scale)
+        low_risk = (composite_scores <= 2.0).sum()
+        moderate_risk = ((composite_scores > 2.0) & (composite_scores <= 4.0)).sum()
+        high_risk = ((composite_scores > 4.0) & (composite_scores <= 6.0)).sum()
+        very_high_risk = (composite_scores > 6.0).sum()
         
-        categories = ['Low\n(0-1.75)', 'Moderate\n(1.75-3.5)', 'High\n(3.5-5.25)', 'Very High\n(5.25-7)']
+        categories = ['Low\n(0-2.0)', 'Moderate\n(2.0-4.0)', 'High\n(4.0-6.0)', 'Very High\n(6.0-8)']
         counts = [low_risk, moderate_risk, high_risk, very_high_risk]
         colors = ['lightgreen', 'yellow', 'orange', 'darkred']
         
@@ -655,7 +777,7 @@ class EnhancedFireRiskAnalyzer:
             ax5.text(width + 0.01, bar.get_y() + bar.get_height()/2, 
                     f'{score:.2f}', ha='left', va='center')
         
-        plt.suptitle('Composite Fire Risk Overlay Analysis\n(Equal Weight Sum of All Factors)', 
+        plt.suptitle('Composite Fire Risk Overlay Analysis\n(Equal Weight Sum of All 8 Factors)', 
                     fontsize=16, fontweight='bold')
         plt.tight_layout()
         display_fig(fig)
@@ -672,21 +794,21 @@ class EnhancedFireRiskAnalyzer:
         """Create a map showing risk categories"""
         print("Creating risk category map...")
         
-        # Define risk categories (updated for 0-7 scale)
+        # Define risk categories (updated for 0-8 scale)
         gdf_composite['risk_category'] = pd.cut(
             composite_scores,
-            bins=[0, 1.75, 3.5, 5.25, 7],
-            labels=['Low (0-1.75)', 'Moderate (1.75-3.5)', 'High (3.5-5.25)', 'Very High (5.25-7)'],
+            bins=[0, 2.0, 4.0, 6.0, 8],
+            labels=['Low (0-2.0)', 'Moderate (2.0-4.0)', 'High (4.0-6.0)', 'Very High (6.0-8)'],
             include_lowest=True
         )
         
         fig, ax = plt.subplots(figsize=(12, 10))
         
         # Define colors for categories
-        colors = {'Low (0-1.75)': 'lightgreen', 
-                 'Moderate (1.75-3.5)': 'yellow', 
-                 'High (3.5-5.25)': 'orange', 
-                 'Very High (5.25-7)': 'darkred'}
+        colors = {'Low (0-2.0)': 'lightgreen', 
+                 'Moderate (2.0-4.0)': 'yellow', 
+                 'High (4.0-6.0)': 'orange', 
+                 'Very High (6.0-8)': 'darkred'}
         
         # Plot each category
         for category in gdf_composite['risk_category'].cat.categories:
@@ -720,18 +842,18 @@ class EnhancedFireRiskAnalyzer:
         print(f"  Standard Deviation: {composite_scores.std():.3f}")
         print(f"  Total Parcels:     {len(composite_scores):,}")
         
-        # Risk category breakdown (updated for 0-7 scale)
-        low_risk = (composite_scores <= 1.75).sum()
-        moderate_risk = ((composite_scores > 1.75) & (composite_scores <= 3.5)).sum()
-        high_risk = ((composite_scores > 3.5) & (composite_scores <= 5.25)).sum()
-        very_high_risk = (composite_scores > 5.25).sum()
+        # Risk category breakdown (updated for 0-8 scale)
+        low_risk = (composite_scores <= 2.0).sum()
+        moderate_risk = ((composite_scores > 2.0) & (composite_scores <= 4.0)).sum()
+        high_risk = ((composite_scores > 4.0) & (composite_scores <= 6.0)).sum()
+        very_high_risk = (composite_scores > 6.0).sum()
         total = len(composite_scores)
         
         print(f"\nRisk Category Distribution:")
-        print(f"  Low Risk (0-1.75):       {low_risk:6,} ({100*low_risk/total:5.1f}%)")
-        print(f"  Moderate Risk (1.75-3.5): {moderate_risk:6,} ({100*moderate_risk/total:5.1f}%)")
-        print(f"  High Risk (3.5-5.25):    {high_risk:6,} ({100*high_risk/total:5.1f}%)")
-        print(f"  Very High Risk (5.25-7):  {very_high_risk:6,} ({100*very_high_risk/total:5.1f}%)")
+        print(f"  Low Risk (0-2.0):       {low_risk:6,} ({100*low_risk/total:5.1f}%)")
+        print(f"  Moderate Risk (2.0-4.0): {moderate_risk:6,} ({100*moderate_risk/total:5.1f}%)")
+        print(f"  High Risk (4.0-6.0):    {high_risk:6,} ({100*high_risk/total:5.1f}%)")
+        print(f"  Very High Risk (6.0-8):  {very_high_risk:6,} ({100*very_high_risk/total:5.1f}%)")
         
         # Percentile analysis
         percentiles = [10, 25, 50, 75, 90, 95, 99]
@@ -759,7 +881,7 @@ class EnhancedFireRiskAnalyzer:
         
         # Define target correlation pairs - focusing on agri composite vs hazards
         target_pairs = [
-            ('hvhsz', 'hagfb', 'Fire Hazard vs Agri/Fuel Composite'),
+            ('hvhsz', 'hlfmiagfb', 'Fire Hazard vs Agri/Fuel Composite'),
             ('hvhsz', 'hwui', 'Fire Hazard vs WUI'),
             ('hvhsz', 'hbrn', 'Fire Hazard vs Burn Scars'),
             ('hwui', 'hbrn', 'WUI vs Burn Scars')
@@ -788,7 +910,7 @@ class EnhancedFireRiskAnalyzer:
                     valid_mask = (raw_data >= 5) & (raw_data.notna())
                     raw_data[~valid_mask] = np.nan
                     raw_data = np.log(raw_data)
-                elif var in ['hwui', 'hvhsz', 'hbrn', 'hagfb']:
+                elif var in ['hwui', 'hvhsz', 'hbrn', 'hlfmiagfb']:
                     valid_mask = (raw_data >= 0) & (raw_data.notna())
                     raw_data[~valid_mask] = np.nan
                 else:
@@ -881,7 +1003,7 @@ class EnhancedFireRiskAnalyzer:
         
         # Get data for the two variables
         hazard_data = self.score_data['hvhsz']
-        agri_data = self.score_data['hagfb']
+        agri_data = self.score_data['hlfmiagfb']
         
         # Remove pairs where either value is 0 (no data)
         valid_mask = (hazard_data > 0) & (agri_data > 0)
@@ -1019,7 +1141,7 @@ class EnhancedFireRiskAnalyzer:
         print("\nCreating focused correlation matrix (using raw values)...")
         
         # Focus on key variables for correlation analysis
-        focus_vars = ['hvhsz', 'hwui', 'hbrn', 'hagfb', 'slope', 'neigh1d']
+        focus_vars = ['hvhsz', 'hwui', 'hbrn', 'hlfmiagfb', 'slope', 'neigh1d']
         
         # Prepare raw data for correlation analysis
         raw_subset = self.raw_data.loc[self.gdf.index]
@@ -1037,7 +1159,7 @@ class EnhancedFireRiskAnalyzer:
                     raw_values[~valid_mask] = np.nan
                     raw_values = np.log(raw_values)  # Log transform for better correlation
                     
-                elif var in ['hwui', 'hvhsz', 'hbrn', 'hagfb']:
+                elif var in ['hwui', 'hvhsz', 'hbrn', 'hlfmiagfb']:
                     # For half-mile percentage variables: use as-is but exclude missing
                     valid_mask = (raw_values >= 0) & (raw_values.notna())
                     raw_values[~valid_mask] = np.nan
@@ -1101,13 +1223,13 @@ class EnhancedFireRiskAnalyzer:
         print(f"{'='*60}")
         
         target_correlations = [
-            ('hvhsz', 'hagfb'),
+            ('hvhsz', 'hlfmiagfb'),
             ('hvhsz', 'hwui'),
             ('hvhsz', 'hbrn'),
             ('hwui', 'hbrn'),
             ('hvhsz', 'slope'),
-            ('hagfb', 'slope'),
-            ('hagfb', 'neigh1d')
+            ('hlfmiagfb', 'slope'),
+            ('hlfmiagfb', 'neigh1d')
         ]
         
         for var1, var2 in target_correlations:
@@ -1123,7 +1245,7 @@ class EnhancedFireRiskAnalyzer:
         
         # Merge score data with geometries
         gdf_with_scores = self.gdf.copy()
-        for var in ['hvhsz', 'hwui', 'hbrn', 'hagfb']:
+        for var in ['hvhsz', 'hwui', 'hbrn', 'hlfmiagfb']:
             if var in self.score_data.columns:
                 gdf_with_scores[var] = self.score_data[var]
             else:
@@ -1133,14 +1255,14 @@ class EnhancedFireRiskAnalyzer:
         gdf_with_scores['hazard_wui_diff'] = gdf_with_scores['hvhsz'] - gdf_with_scores['hwui']
         gdf_with_scores['hazard_burn_diff'] = gdf_with_scores['hvhsz'] - gdf_with_scores['hbrn']
         gdf_with_scores['wui_burn_diff'] = gdf_with_scores['hwui'] - gdf_with_scores['hbrn']
-        gdf_with_scores['hazard_agfb_diff'] = gdf_with_scores['hvhsz'] - gdf_with_scores['hagfb']
+        gdf_with_scores['hazard_agfb_diff'] = gdf_with_scores['hvhsz'] - gdf_with_scores['hlfmiagfb']
         
         # Create maps
         fig, axes = plt.subplots(2, 3, figsize=(18, 12))
         axes = axes.flatten()
         
         # Individual variable maps
-        variables = ['hvhsz', 'hwui', 'hbrn', 'hagfb']
+        variables = ['hvhsz', 'hwui', 'hbrn', 'hlfmiagfb']
         titles = ['Fire Hazard (VHSZ)', 'WUI', 'Burn Scars', 'Agri/Fuel Composite']
         
         for i, (var, title) in enumerate(zip(variables, titles)):
@@ -1163,7 +1285,7 @@ class EnhancedFireRiskAnalyzer:
         diff_titles = ['Hazard - WUI\n(Red: Hazard > WUI)', 'Hazard - Agri/Fuel\n(Red: Hazard > Agri/Fuel)']
         
         for i, (var, title) in enumerate(zip(diff_variables, diff_titles)):
-            ax = axes[4 + i]
+            ax = axes[3 + i]
             gdf_with_scores.plot(
                 column=var,
                 ax=ax,
@@ -1195,7 +1317,7 @@ class EnhancedFireRiskAnalyzer:
             composite_without_agfb = self.score_data[original_vars].sum(axis=1)
         else:
             # If we don't have individual variables, create a dummy comparison
-            composite_without_agfb = composite_scores - self.score_data['hagfb']
+            composite_without_agfb = composite_scores - self.score_data['hlfmiagfb']
         
         # Add to geodataframe for mapping
         gdf_composite = self.gdf.copy()
@@ -1213,7 +1335,7 @@ class EnhancedFireRiskAnalyzer:
             ax=ax1,
             cmap='YlOrRd',
             legend=True,
-            legend_kwds={'shrink': 0.8, 'label': 'Score (0-6)'},
+            legend_kwds={'shrink': 0.8, 'label': 'Score (0-7)'},
             edgecolor='none'
         )
         ax1.set_title('Composite Score\n(Without Agri/Fuel Composite)', fontweight='bold')
@@ -1227,7 +1349,7 @@ class EnhancedFireRiskAnalyzer:
             ax=ax2,
             cmap='YlOrRd',
             legend=True,
-            legend_kwds={'shrink': 0.8, 'label': 'Score (0-7)'},
+            legend_kwds={'shrink': 0.8, 'label': 'Score (0-8)'},
             edgecolor='none'
         )
         ax2.set_title('Enhanced Composite Score\n(With Agri/Fuel Composite)', fontweight='bold')
@@ -1276,12 +1398,12 @@ class EnhancedFireRiskAnalyzer:
         print(f"\n{'='*60}")
         print("COMPOSITE SCORE COMPARISON")
         print(f"{'='*60}")
-        print(f"Without Agri/Fuel Composite (6 variables):")
+        print(f"Without Agri/Fuel Composite (7 variables):")
         print(f"  Mean: {composite_without_agfb.mean():.3f}")
         print(f"  Std:  {composite_without_agfb.std():.3f}")
         print(f"  Range: [{composite_without_agfb.min():.3f}, {composite_without_agfb.max():.3f}]")
         
-        print(f"\nWith Agri/Fuel Composite (7 variables):")
+        print(f"\nWith Agri/Fuel Composite (8 variables):")
         print(f"  Mean: {composite_scores.mean():.3f}")
         print(f"  Std:  {composite_scores.std():.3f}")
         print(f"  Range: [{composite_scores.min():.3f}, {composite_scores.max():.3f}]")
@@ -1350,7 +1472,11 @@ def main():
         analyzer.show_raw_variable_distributions()
         
         # Calculate scores from raw data (for current subset or full dataset)
-        analyzer.calculate_scores_from_raw()
+        # Calculate fire risk scores from raw data subset
+        # Use 'true_normal' for bell curve distributions, 'robust' for original method
+        scoring_method = 'true_normal'  # Change this to 'robust' for original scoring
+        print(f"Using scoring method: {scoring_method}")
+        analyzer.calculate_scores_from_raw(method=scoring_method)
 
         # ===== ORIGINAL ANALYSIS =====
         # 1. Analyze all variable interactions (complete correlation matrix)
@@ -1359,8 +1485,8 @@ def main():
         # 2. Show normalized variable distributions
         analyzer.show_variable_distributions()
         
-        # 3. Create choropleth maps for each score variable
-        analyzer.create_choropleth_maps()
+        # 3. Create choropleth maps for each score variable (DISABLED)
+        # analyzer.create_choropleth_maps()
         
         # 4. Create original composite overlay analysis (sum all scores)
         composite_scores = analyzer.create_composite_overlay_analysis()
@@ -1385,12 +1511,12 @@ def main():
         print("COMPLETE FIRE RISK ANALYSIS FINISHED!")
         print("="*50)
         print("\nAnalysis Included:")
-        print("✓ Raw variable distributions (7 variables)")
-        print("✓ Score calculation and normalization")
+        print("✓ Raw variable distributions (8 variables)")
+        print("✓ Robust score calculation and quantile normalization (P2-P98 scaling)")
         print("✓ Complete variable interaction matrix") 
         print("✓ Normalized variable distributions")
-        print("✓ Individual choropleth maps for all variables")
-        print("✓ Original composite risk overlay analysis (0-7 scale)")
+        print("• Individual choropleth maps for all variables (DISABLED)")
+        print("✓ Original composite risk overlay analysis (0-8 scale)")
         print("✓ Deep correlation analysis focusing on Agri/Fuel vs Hazards")
         print("✓ Detailed Agriculture/Fuel Composite vs Fire Hazard plot")
         print("✓ Agriculture/Fuel Break composite variable (hlfmi_agfb)")

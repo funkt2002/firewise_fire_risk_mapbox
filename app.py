@@ -1619,18 +1619,11 @@ def generate_enhanced_solution_html(txt_content, lp_content, parcel_data, weight
     <!DOCTYPE html>
     <html>
     <head>
-        <title>Enhanced Fire Risk Optimization Report</title>
+        <title>Infer Weights Solution Summary</title>
         <style>
             body { font-family: Arial, sans-serif; margin: 20px; }
             .section { margin-bottom: 30px; }
             .section h2 { color: #333; border-bottom: 2px solid #ddd; padding-bottom: 5px; }
-            .toggle-button { 
-                background: #007cba; color: white; border: none; padding: 8px 15px; 
-                cursor: pointer; border-radius: 4px; margin-bottom: 10px; 
-            }
-            .toggle-button:hover { background: #005a87; }
-            .collapsible-content { display: none; }
-            .collapsible-content.show { display: block; }
             pre { background: #f5f5f5; padding: 15px; overflow-x: auto; border-radius: 4px; max-height: 400px; }
             table { border-collapse: collapse; width: 100%; margin-top: 10px; }
             th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
@@ -1639,22 +1632,9 @@ def generate_enhanced_solution_html(txt_content, lp_content, parcel_data, weight
             .score { text-align: right; }
             .composite-score { font-weight: bold; background-color: #e8f4f8; }
         </style>
-        <script>
-            function toggleSection(id) {
-                const content = document.getElementById(id);
-                const button = document.querySelector(`[onclick="toggleSection('${id}')"]`);
-                if (content.classList.contains('show')) {
-                    content.classList.remove('show');
-                    button.textContent = button.textContent.replace('Hide', 'Show');
-                } else {
-                    content.classList.add('show');
-                    button.textContent = button.textContent.replace('Show', 'Hide');
-                }
-            }
-        </script>
     </head>
     <body>
-        <h1>Enhanced Fire Risk Optimization Report</h1>
+        <h1>Infer Weights Solution Summary</h1>
     """)
     
     # Solution summary section
@@ -1666,10 +1646,7 @@ def generate_enhanced_solution_html(txt_content, lp_content, parcel_data, weight
     # LP file section
     html_parts.append('<div class="section">')
     html_parts.append('<h2>Linear Programming Formulation</h2>')
-    html_parts.append('<button class="toggle-button" onclick="toggleSection(\'lp-content\')">Show LP File</button>')
-    html_parts.append('<div id="lp-content" class="collapsible-content">')
     html_parts.append(f'<pre>{lp_content}</pre>')
-    html_parts.append('</div>')
     html_parts.append('</div>')
     
     # Parcel scores table section
@@ -1677,8 +1654,6 @@ def generate_enhanced_solution_html(txt_content, lp_content, parcel_data, weight
         html_parts.append('<div class="section">')
         html_parts.append('<h2>Parcel Scores Analysis</h2>')
         html_parts.append(f'<p>Showing top {len(display_parcels)} parcels by composite score (out of {len(parcel_data)} total parcels)</p>')
-        html_parts.append('<button class="toggle-button" onclick="toggleSection(\'parcel-table\')">Show Parcel Scores Table</button>')
-        html_parts.append('<div id="parcel-table" class="collapsible-content">')
         
         # Build table
         html_parts.append('<table>')
@@ -1705,7 +1680,6 @@ def generate_enhanced_solution_html(txt_content, lp_content, parcel_data, weight
             html_parts.append('<tr>' + ''.join(row) + '</tr>')
         
         html_parts.append('</table>')
-        html_parts.append('</div>')
         html_parts.append('</div>')
     
     # Close HTML
