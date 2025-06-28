@@ -1563,6 +1563,156 @@ def generate_solution_files(include_vars, best_weights, weights_pct, total_score
     
     return lp_content, txt_content
 
+def generate_enhanced_solution_html(txt_content, lp_content, parcel_data, weights):
+    """Generate enhanced HTML solution report with LP file and parcel table"""
+    
+    # Factor names for display
+    factor_names = {
+        'qtrmi': 'Structures (1/4 mile)',
+        'hwui': 'WUI Coverage (1/2 mile)',
+        'hagri': 'Agriculture (1/2 mile)',
+        'hvhsz': 'Fire Hazard (1/2 mile)',
+        'hfb': 'Fuel Breaks (1/2 mile)',
+        'slope': 'Slope',
+        'neigh1d': 'Neighbor Distance',
+        'hbrn': 'Burn Scars (1/2 mile)',
+        'par_buf_sl': 'Slope within 100 ft of structure',
+        'hlfmi_agfb': 'Agriculture & Fuelbreaks (1/2 mile)'
+    }
+    
+    # Calculate composite scores for each parcel
+    parcels_with_composite_scores = []
+    for parcel in parcel_data:
+        composite_score = 0
+        parcel_scores_display = {}
+        
+        for var_name, score in parcel.get('scores', {}).items():
+            # Remove suffix to get base variable name
+            if var_name.endswith('_s'):
+                var_base = var_name[:-2]
+            elif var_name.endswith('_q'):
+                var_base = var_name[:-2]
+            else:
+                var_base = var_name
+            
+            weight = weights.get(var_base, 0) / 100.0  # Convert percentage to decimal
+            composite_score += weight * score
+            parcel_scores_display[var_base] = score
+        
+        parcels_with_composite_scores.append({
+            'parcel_id': parcel.get('parcel_id'),
+            'scores': parcel_scores_display,
+            'composite_score': composite_score
+        })
+    
+    # Sort parcels by composite score (highest first)
+    parcels_with_composite_scores.sort(key=lambda x: x['composite_score'], reverse=True)
+    
+    # Limit to top 50 parcels for display (to keep report manageable)
+    display_parcels = parcels_with_composite_scores[:50]
+    
+    # Build HTML content
+    html_parts = []
+    
+    # HTML header with basic styling
+    html_parts.append("""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Enhanced Fire Risk Optimization Report</title>
+        <style>
+            body { font-family: Arial, sans-serif; margin: 20px; }
+            .section { margin-bottom: 30px; }
+            .section h2 { color: #333; border-bottom: 2px solid #ddd; padding-bottom: 5px; }
+            .toggle-button { 
+                background: #007cba; color: white; border: none; padding: 8px 15px; 
+                cursor: pointer; border-radius: 4px; margin-bottom: 10px; 
+            }
+            .toggle-button:hover { background: #005a87; }
+            .collapsible-content { display: none; }
+            .collapsible-content.show { display: block; }
+            pre { background: #f5f5f5; padding: 15px; overflow-x: auto; border-radius: 4px; max-height: 400px; }
+            table { border-collapse: collapse; width: 100%; margin-top: 10px; }
+            th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+            th { background-color: #f2f2f2; }
+            tr:nth-child(even) { background-color: #f9f9f9; }
+            .score { text-align: right; }
+            .composite-score { font-weight: bold; background-color: #e8f4f8; }
+        </style>
+        <script>
+            function toggleSection(id) {
+                const content = document.getElementById(id);
+                const button = document.querySelector(`[onclick="toggleSection('${id}')"]`);
+                if (content.classList.contains('show')) {
+                    content.classList.remove('show');
+                    button.textContent = button.textContent.replace('Hide', 'Show');
+                } else {
+                    content.classList.add('show');
+                    button.textContent = button.textContent.replace('Show', 'Hide');
+                }
+            }
+        </script>
+    </head>
+    <body>
+        <h1>Enhanced Fire Risk Optimization Report</h1>
+    """)
+    
+    # Solution summary section
+    html_parts.append('<div class="section">')
+    html_parts.append('<h2>Solution Summary</h2>')
+    html_parts.append(f'<pre>{txt_content}</pre>')
+    html_parts.append('</div>')
+    
+    # LP file section
+    html_parts.append('<div class="section">')
+    html_parts.append('<h2>Linear Programming Formulation</h2>')
+    html_parts.append('<button class="toggle-button" onclick="toggleSection(\'lp-content\')">Show LP File</button>')
+    html_parts.append('<div id="lp-content" class="collapsible-content">')
+    html_parts.append(f'<pre>{lp_content}</pre>')
+    html_parts.append('</div>')
+    html_parts.append('</div>')
+    
+    # Parcel scores table section
+    if display_parcels:
+        html_parts.append('<div class="section">')
+        html_parts.append('<h2>Parcel Scores Analysis</h2>')
+        html_parts.append(f'<p>Showing top {len(display_parcels)} parcels by composite score (out of {len(parcel_data)} total parcels)</p>')
+        html_parts.append('<button class="toggle-button" onclick="toggleSection(\'parcel-table\')">Show Parcel Scores Table</button>')
+        html_parts.append('<div id="parcel-table" class="collapsible-content">')
+        
+        # Build table
+        html_parts.append('<table>')
+        
+        # Table header
+        header_row = ['<th>Parcel ID</th>']
+        # Get all unique variables from first parcel for consistent column order
+        if display_parcels:
+            sorted_vars = sorted(display_parcels[0]['scores'].keys())
+            for var_base in sorted_vars:
+                factor_name = factor_names.get(var_base, var_base)
+                weight_pct = weights.get(var_base, 0)
+                header_row.append(f'<th>{factor_name}<br><small>({weight_pct:.1f}% weight)</small></th>')
+        header_row.append('<th>Composite Score</th>')
+        html_parts.append('<tr>' + ''.join(header_row) + '</tr>')
+        
+        # Table rows
+        for parcel in display_parcels:
+            row = [f'<td>{parcel["parcel_id"]}</td>']
+            for var_base in sorted_vars:
+                score = parcel['scores'].get(var_base, 0)
+                row.append(f'<td class="score">{score:.3f}</td>')
+            row.append(f'<td class="score composite-score">{parcel["composite_score"]:.3f}</td>')
+            html_parts.append('<tr>' + ''.join(row) + '</tr>')
+        
+        html_parts.append('</table>')
+        html_parts.append('</div>')
+        html_parts.append('</div>')
+    
+    # Close HTML
+    html_parts.append('</body></html>')
+    
+    return ''.join(html_parts)
+
 @app.route('/api/infer-weights', methods=['POST'])
 def infer_weights():
     """Infer optimal weights using linear programming - memory optimized with file system storage"""
@@ -1634,6 +1784,18 @@ def infer_weights():
             f.write(lp_content)
         with open(os.path.join(session_dir, 'solution.txt'), 'w') as f:
             f.write(txt_content)
+        
+        # Save parcel data for enhanced solution report
+        parcel_data_for_report = []
+        for parcel in parcel_data:
+            parcel_data_for_report.append({
+                'parcel_id': parcel.get('parcel_id'),
+                'scores': parcel.get('scores', {})
+            })
+        
+        with open(os.path.join(session_dir, 'parcel_data.json'), 'w') as f:
+            json.dump(parcel_data_for_report, f)
+        
         # Handle parcel count in metadata  
         num_parcels = len(parcel_data) if isinstance(parcel_data, list) else 0
 
@@ -1752,16 +1914,18 @@ def download_txt_file(session_id):
 
 @app.route('/api/view-solution/<session_id>')
 def view_solution(session_id):
-    """View solution report from file system storage"""
+    """View enhanced solution report from file system storage"""
     try:
         session_dir = os.path.join(tempfile.gettempdir(), 'fire_risk_sessions', session_id)
         txt_file_path = os.path.join(session_dir, 'solution.txt')
+        lp_file_path = os.path.join(session_dir, 'optimization.lp')
+        parcel_data_path = os.path.join(session_dir, 'parcel_data.json')
+        metadata_path = os.path.join(session_dir, 'metadata.json')
         
         if not os.path.exists(txt_file_path):
             return "Optimization session expired or not found", 404
         
         # Check if session has expired
-        metadata_path = os.path.join(session_dir, 'metadata.json')
         if os.path.exists(metadata_path):
             with open(metadata_path, 'r') as f:
                 metadata = json.load(f)
@@ -1771,14 +1935,36 @@ def view_solution(session_id):
                     shutil.rmtree(session_dir, ignore_errors=True)
                     return "Optimization session expired", 404
         
-        # Read and return file for viewing (minimal memory usage)
+        # Read solution report content
         with open(txt_file_path, 'r') as f:
             txt_content = f.read()
         
-        response = make_response(f"<pre>{txt_content}</pre>")
+        # Read LP file content
+        lp_content = ""
+        if os.path.exists(lp_file_path):
+            with open(lp_file_path, 'r') as f:
+                lp_content = f.read()
+        
+        # Read parcel data
+        parcel_data = []
+        if os.path.exists(parcel_data_path):
+            with open(parcel_data_path, 'r') as f:
+                parcel_data = json.load(f)
+        
+        # Read metadata for weights
+        weights = {}
+        if os.path.exists(metadata_path):
+            with open(metadata_path, 'r') as f:
+                metadata = json.load(f)
+                weights = metadata.get('weights', {})
+        
+        # Generate enhanced HTML report
+        html_content = generate_enhanced_solution_html(txt_content, lp_content, parcel_data, weights)
+        
+        response = make_response(html_content)
         response.headers['Content-Type'] = 'text/html'
         
-        logger.info(f"Viewed solution for session {session_id}")
+        logger.info(f"Viewed enhanced solution for session {session_id}")
         return response
         
     except Exception as e:
