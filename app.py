@@ -1191,11 +1191,14 @@ def solve_weight_optimization(parcel_data, include_vars):
     # Process variable names efficiently
     include_vars_base = [var[:-2] if var.endswith(('_s', '_q')) else var for var in include_vars]
     
-    logger.info(f"ABSOLUTE OPTIMIZATION (LP): {len(parcel_data):,} selected parcels, {len(include_vars_base)} variables")
+    # Set minimum weight to prevent single-variable dominance (5% minimum per variable)
+    min_weight = 0.05 if len(include_vars_base) > 1 else 0
     
-    # Use LP solver for absolute mode
+    logger.info(f"ABSOLUTE OPTIMIZATION (LP): {len(parcel_data):,} selected parcels, {len(include_vars_base)} variables, min weight: {min_weight:.1%}")
+    
+    # Use LP solver for absolute mode with minimum weight constraint
     prob = LpProblem("Maximize_Score", LpMaximize)
-    w_vars = LpVariable.dicts('w', include_vars_base, lowBound=0)
+    w_vars = LpVariable.dicts('w', include_vars_base, lowBound=min_weight)
     
     # Build coefficients (sum of all scores for each variable)
     coefficients = {}
@@ -1522,6 +1525,7 @@ def generate_solution_files(include_vars, best_weights, weights_pct, total_score
             "",
             "OPTIMIZATION TYPE: Absolute Maximization (LP)", 
             "OBJECTIVE: Maximize total risk score within selected areas",
+            "CONSTRAINT: Minimum 5% weight per variable (prevents single-variable dominance)",
             "",
             f"Total parcels analyzed: {parcel_count:,}",
             f"Total optimized score: {total_score:.2f}",
@@ -1763,7 +1767,7 @@ def infer_weights():
         parcel_data_for_report = []
         for parcel in parcel_data:
             parcel_data_for_report.append({
-                'parcel_id': parcel.get('parcel_id'),
+                'parcel_id': parcel.get('id'),  # Fix: use 'id' key where parcel ID is actually stored
                 'scores': parcel.get('scores', {})
             })
         
