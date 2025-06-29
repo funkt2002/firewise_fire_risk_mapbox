@@ -969,7 +969,6 @@
                     <button class="button" id="export-shapefile" style="margin: 8px 0;">Export Shapefile</button>
                     <button class="button" id="score-distribution-btn" style="margin-bottom: 8px;" onclick="window.plottingManager.showScoreDistribution()">Calculated Risk Score Distribution</button>
                     <button class="button" id="show-correlation-matrix" style="margin-bottom: 8px;">Variable Correlation Matrix</button>
-                    <button class="button" id="show-morans-matrix" style="margin-bottom: 8px;">Moran's I Spatial Correlation Matrix</button>
                 </div>
             </div>
         </div>
@@ -2891,11 +2890,6 @@
             window.plottingManager.showCorrelationMatrix();
         });
 
-        // Show Moran's I matrix
-        document.getElementById('show-morans-matrix').addEventListener('click', () => {
-            window.plottingManager.showCorrelationMatrix('morans_i');
-        });
-
         // Close correlation modal (if element exists)
         const closeCorrelationModal = document.getElementById('close-correlation-modal');
         if (closeCorrelationModal) {
@@ -3469,36 +3463,6 @@
             }
         }
 
-        // Function to refresh correlation plot when method changes
-        function refreshCorrelationPlot() {
-            const modal = document.getElementById('correlation-modal');
-            if (modal.style.display === 'block') {
-                // Check if we have a current variable stored or if we're showing the matrix
-                if (window.plottingManager.currentCorrelationVariable) {
-                    // Refresh the variable correlation plot
-                    window.plottingManager.showVariableCorrelation(window.plottingManager.currentCorrelationVariable);
-                } else {
-                    // Check if we can detect it's a matrix by plot type
-                    const plotDiv = document.getElementById('correlation-plot');
-                    const plotData = plotDiv.data;
-                    
-                    if (plotData && plotData.length > 0) {
-                        const plot = plotData[0];
-                        if (plot.type === 'heatmap') {
-                            // This is a correlation matrix
-                            window.plottingManager.showCorrelationMatrix();
-                        } else {
-                            // Unknown plot type, close modal
-                            console.log('Unknown plot type, please re-open correlation plot');
-                            modal.style.display = 'none';
-                        }
-                    } else {
-                        // No existing plot, close modal
-                        modal.style.display = 'none';
-                    }
-                }
-            }
-        }
 
         // Load Turf.js
         const script = document.createElement('script');
