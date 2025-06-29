@@ -177,10 +177,10 @@ class DataProcessingService:
         
         for row in rows:
             properties = dict(row)
-            # Handle None values
+            # Handle None values - set score columns to 0 if null
             for key, value in properties.items():
-                if value is None:
-                    properties[key] = 0 if key in RAW_VAR_MAP.values() else None
+                if value is None and key.endswith('_s'):
+                    properties[key] = 0
             
             attributes.append(properties)
         
@@ -379,8 +379,8 @@ def prepare_data():
         data = request.get_json() or {}
         filters = data.get('filters', {})
         
-        # Build cache key - v4 to invalidate old cache format with reduced columns
-        cache_key = f"parcels_v4_{json.dumps(filters, sort_keys=True)}"
+        # Build cache key - v5 to invalidate old cache format with correct columns
+        cache_key = f"parcels_v5_{json.dumps(filters, sort_keys=True)}"
         
         # Check cache
         cached_data = RedisService.get_cached_data(cache_key)
@@ -388,7 +388,9 @@ def prepare_data():
             return jsonify(cached_data)
         
         # Build query - only select necessary columns (no geometry for vector tiles!)
-        needed_columns = ['parcel_id', 'yearbuilt'] + list(RAW_VAR_MAP.values())
+        # Use the actual column names with _s suffix
+        score_columns = [f"{var}_s" for var in WEIGHT_VARS_BASE]
+        needed_columns = ['parcel_id', 'yearbuilt'] + score_columns
         column_list = ', '.join(needed_columns)
         query = f"SELECT {column_list} FROM parcels"
         conditions, params = DatabaseService.build_filter_conditions(filters)
