@@ -173,7 +173,7 @@ class DataProcessingService:
     @staticmethod
     def format_attribute_collection(rows):
         """Format database rows as AttributeCollection"""
-        features = []
+        attributes = []
         
         for row in rows:
             properties = dict(row)
@@ -182,14 +182,11 @@ class DataProcessingService:
                 if value is None:
                     properties[key] = 0 if key in RAW_VAR_MAP.values() else None
             
-            features.append({
-                "type": "Feature",
-                "properties": properties
-            })
+            attributes.append(properties)
         
         return {
             "type": "AttributeCollection",
-            "features": features
+            "attributes": attributes
         }
     
     @staticmethod
