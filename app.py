@@ -340,8 +340,8 @@ def prepare_data():
         data = request.get_json() or {}
         filters = data.get('filters', {})
         
-        # Build cache key
-        cache_key = f"parcels_v2_{json.dumps(filters, sort_keys=True)}"
+        # Build cache key - v3 to invalidate old cache format
+        cache_key = f"parcels_v3_{json.dumps(filters, sort_keys=True)}"
         
         # Check cache
         cached_data = RedisService.get_cached_data(cache_key)

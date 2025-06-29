@@ -18,6 +18,8 @@ class FireRiskScoring {
         const start = performance.now();
         
         console.log('VECTOR TILES: Storing complete attribute dataset for client-side processing...');
+        console.log('DEBUG: Received data structure:', Object.keys(attributeData));
+        console.log('DEBUG: Data type:', attributeData.type);
         
         // Clear existing data
         this.attributeMap.clear();
@@ -28,6 +30,11 @@ class FireRiskScoring {
             // New format from vector tile backend
             attributes = attributeData.attributes;
             console.log('VECTOR TILES: Received AttributeCollection format');
+            if (!attributes) {
+                console.error('VECTOR TILES: AttributeCollection missing attributes field');
+                console.log('DEBUG: Full data:', attributeData);
+                return 0;
+            }
         } else if (attributeData.type === "FeatureCollection") {
             // Legacy format - extract properties
             attributes = attributeData.features.map(feature => feature.properties);
