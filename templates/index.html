@@ -969,6 +969,7 @@
                     <button class="button" id="export-shapefile" style="margin: 8px 0;">Export Shapefile</button>
                     <button class="button" id="score-distribution-btn" style="margin-bottom: 8px;" onclick="window.plottingManager.showScoreDistribution()">Calculated Risk Score Distribution</button>
                     <button class="button" id="show-correlation-matrix" style="margin-bottom: 8px;">Variable Correlation Matrix</button>
+                    <button class="button" id="show-morans-matrix" style="margin-bottom: 8px;">Moran's I Spatial Correlation Matrix</button>
                 </div>
             </div>
         </div>
@@ -2890,6 +2891,11 @@
             window.plottingManager.showCorrelationMatrix();
         });
 
+        // Show Moran's I matrix
+        document.getElementById('show-morans-matrix').addEventListener('click', () => {
+            window.plottingManager.showCorrelationMatrix('morans_i');
+        });
+
         // Close correlation modal (if element exists)
         const closeCorrelationModal = document.getElementById('close-correlation-modal');
         if (closeCorrelationModal) {
@@ -3506,17 +3512,7 @@
     <div id="correlation-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 10000;">
         <div style="position: relative; margin: 2% auto; width: 90%; height: 90%; background: #1a1a1a; border-radius: 8px; padding: 20px; box-shadow: 0 4px 20px rgba(0,0,0,0.5);">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; border-bottom: 1px solid rgba(255,255,255,0.2); padding-bottom: 10px;">
-                <div style="display: flex; align-items: center; gap: 15px;">
-                    <h3 style="color: #fff; margin: 0; font-size: 16px;">Variable Correlation Analysis</h3>
-                    <div style="display: flex; align-items: center; gap: 8px;">
-                        <label for="correlation-method-toggle" style="color: #aaa; font-size: 12px;">Method:</label>
-                        <select id="correlation-method-toggle" style="background: #333; color: #fff; border: 1px solid #555; border-radius: 3px; padding: 4px 8px; font-size: 11px;">
-                            <option value="pearson">Pearson Correlation</option>
-                            <option value="morans_i">Moran's I (Spatial)</option>
-                        </select>
-                        <button onclick="refreshCorrelationPlot()" style="background: #4a90e2; color: white; border: none; border-radius: 3px; padding: 4px 8px; font-size: 11px; cursor: pointer;">Refresh</button>
-                    </div>
-                </div>
+                <h3 style="color: #fff; margin: 0; font-size: 16px;">Variable Correlation Analysis</h3>
                 <button onclick="document.getElementById('correlation-modal').style.display = 'none'" style="background: #555; color: white; border: none; border-radius: 3px; padding: 5px 10px; cursor: pointer; font-size: 14px;">&times;</button>
             </div>
             <div id="correlation-plot" style="width: 100%; height: calc(100% - 60px);"></div>

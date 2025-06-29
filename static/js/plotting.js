@@ -493,7 +493,7 @@ class PlottingManager {
     }
 
     // Show variable correlation matrix
-    async showCorrelationMatrix() {
+    async showCorrelationMatrix(method = null) {
         // Clear current variable since we're showing the matrix
         this.currentCorrelationVariable = null;
         // Try to get data from multiple sources
@@ -552,7 +552,7 @@ class PlottingManager {
         // Calculate correlation matrix
         const correlationMatrix = [];
         const labels = [];
-        const correlationMethod = this.getCorrelationMethod();
+        const correlationMethod = method || this.getCorrelationMethod();
         
         // Get coordinates for spatial correlation if needed
         let coordinates = null;
