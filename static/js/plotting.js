@@ -2,6 +2,7 @@
 
 class PlottingManager {
     constructor() {
+        this.currentCorrelationVariable = null; // Store current variable for refresh functionality
         this.rawVarMap = {
             'qtrmi': 'qtrmi_cnt',
             'hwui': 'hlfmi_wui', 
@@ -145,8 +146,140 @@ class PlottingManager {
         return denominator === 0 ? 0 : numerator / denominator;
     }
 
+    // Create spatial weights matrix using K-nearest neighbors
+    createSpatialWeightsMatrix(coordinates, k = 8) {
+        const n = coordinates.length;
+        const W = Array(n).fill().map(() => Array(n).fill(0));
+        
+        for (let i = 0; i < n; i++) {
+            // Calculate distances to all other points
+            const distances = [];
+            for (let j = 0; j < n; j++) {
+                if (i !== j) {
+                    const dx = coordinates[i][0] - coordinates[j][0];
+                    const dy = coordinates[i][1] - coordinates[j][1];
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+                    distances.push({ index: j, distance: distance });
+                }
+            }
+            
+            // Sort by distance and get k nearest neighbors
+            distances.sort((a, b) => a.distance - b.distance);
+            const neighbors = distances.slice(0, Math.min(k, distances.length));
+            
+            // Set weights for neighbors
+            for (const neighbor of neighbors) {
+                W[i][neighbor.index] = 1;
+            }
+        }
+        
+        // Row-standardize weights
+        for (let i = 0; i < n; i++) {
+            const rowSum = W[i].reduce((sum, w) => sum + w, 0);
+            if (rowSum > 0) {
+                for (let j = 0; j < n; j++) {
+                    W[i][j] = W[i][j] / rowSum;
+                }
+            }
+        }
+        
+        return W;
+    }
+
+    // Calculate Moran's I spatial autocorrelation
+    calculateMoransI(values, coordinates) {
+        const n = values.length;
+        if (n !== coordinates.length || n < 3) return 0;
+        
+        // Create spatial weights matrix
+        const W = this.createSpatialWeightsMatrix(coordinates);
+        
+        // Calculate mean
+        const mean = values.reduce((sum, val) => sum + val, 0) / n;
+        
+        // Center the values
+        const centered = values.map(val => val - mean);
+        
+        // Calculate Moran's I
+        let numerator = 0;
+        let wSum = 0;
+        
+        for (let i = 0; i < n; i++) {
+            for (let j = 0; j < n; j++) {
+                if (i !== j) {
+                    numerator += W[i][j] * centered[i] * centered[j];
+                    wSum += W[i][j];
+                }
+            }
+        }
+        
+        const denominator = centered.reduce((sum, val) => sum + val * val, 0);
+        
+        if (wSum === 0 || denominator === 0) return 0;
+        
+        return (n / wSum) * (numerator / denominator);
+    }
+
+    // Calculate bivariate Moran's I (spatial cross-correlation)
+    calculateBivariateMoransI(values1, values2, coordinates) {
+        const n = values1.length;
+        if (n !== values2.length || n !== coordinates.length || n < 3) return 0;
+        
+        // Create spatial weights matrix
+        const W = this.createSpatialWeightsMatrix(coordinates);
+        
+        // Calculate means
+        const mean1 = values1.reduce((sum, val) => sum + val, 0) / n;
+        const mean2 = values2.reduce((sum, val) => sum + val, 0) / n;
+        
+        // Center the values
+        const centered1 = values1.map(val => val - mean1);
+        const centered2 = values2.map(val => val - mean2);
+        
+        // Calculate bivariate Moran's I
+        let numerator = 0;
+        let wSum = 0;
+        
+        for (let i = 0; i < n; i++) {
+            for (let j = 0; j < n; j++) {
+                if (i !== j) {
+                    numerator += W[i][j] * centered1[i] * centered2[j];
+                    wSum += W[i][j];
+                }
+            }
+        }
+        
+        const denom1 = Math.sqrt(centered1.reduce((sum, val) => sum + val * val, 0));
+        const denom2 = Math.sqrt(centered2.reduce((sum, val) => sum + val * val, 0));
+        
+        if (wSum === 0 || denom1 === 0 || denom2 === 0) return 0;
+        
+        return (n / wSum) * (numerator / (denom1 * denom2));
+    }
+
+    // Get current correlation method from toggle
+    getCorrelationMethod() {
+        const toggle = document.getElementById('correlation-method-toggle');
+        return toggle ? toggle.value : 'pearson';
+    }
+
+    // Calculate correlation using selected method
+    calculateCorrelationByMethod(data1, data2, coordinates = null, method = null) {
+        if (!method) {
+            method = this.getCorrelationMethod();
+        }
+        
+        if (method === 'morans_i' && coordinates && coordinates.length === data1.length) {
+            return this.calculateBivariateMoransI(data1, data2, coordinates);
+        } else {
+            return this.calculateCorrelation(data1, data2);
+        }
+    }
+
     // Show correlation for a specific variable vs all others  
     async showVariableCorrelation(targetVariable) {
+        // Store current variable for refresh functionality
+        this.currentCorrelationVariable = targetVariable;
         // Try to get data from multiple sources
         let features = null;
         
@@ -261,7 +394,22 @@ class PlottingManager {
             if (commonIndices.length > 10) {
                 const x = commonIndices.map(idx => targetData[idx]);
                 const y = commonIndices.map(idx => compareData[idx]);
-                correlation = this.calculateCorrelation(x, y);
+                
+                // Get coordinates for spatial correlation if available
+                let coordinates = null;
+                const correlationMethod = this.getCorrelationMethod();
+                
+                if (correlationMethod === 'morans_i') {
+                    coordinates = commonIndices.map(idx => {
+                        const feature = features[idx];
+                        return [
+                            feature.properties.longitude || feature.properties.centroid_x || 0,
+                            feature.properties.latitude || feature.properties.centroid_y || 0
+                        ];
+                    });
+                }
+                
+                correlation = this.calculateCorrelationByMethod(x, y, coordinates, correlationMethod);
             }
             
             correlations.push(correlation);
@@ -296,9 +444,11 @@ class PlottingManager {
         const normalizationText = filters.use_local_normalization ? ' (Local)' : ' (Global)';
         const scoreTypeText = useQuantile ? ' (Quantile)' : useRawScoring ? ' (Raw Min-Max)' : ' (Robust Min-Max)';
         const titleSuffix = isScoreVariable ? scoreTypeText + normalizationText : '';
+        const correlationMethod = this.getCorrelationMethod();
+        const methodText = correlationMethod === 'morans_i' ? " (Moran's I)" : " (Pearson)";
         
         const layout = {
-            title: `${targetVarName} - Correlations with Enabled Variables${titleSuffix}`,
+            title: `${targetVarName} - Correlations with Enabled Variables${titleSuffix}${methodText}`,
             paper_bgcolor: '#1a1a1a',
             plot_bgcolor: '#1a1a1a',
             font: { color: '#fff' },
@@ -344,6 +494,8 @@ class PlottingManager {
 
     // Show variable correlation matrix
     async showCorrelationMatrix() {
+        // Clear current variable since we're showing the matrix
+        this.currentCorrelationVariable = null;
         // Try to get data from multiple sources
         let features = null;
         
@@ -400,6 +552,16 @@ class PlottingManager {
         // Calculate correlation matrix
         const correlationMatrix = [];
         const labels = [];
+        const correlationMethod = this.getCorrelationMethod();
+        
+        // Get coordinates for spatial correlation if needed
+        let coordinates = null;
+        if (correlationMethod === 'morans_i') {
+            coordinates = features.map(f => [
+                f.properties.longitude || f.properties.centroid_x || 0,
+                f.properties.latitude || f.properties.centroid_y || 0
+            ]);
+        }
         
         for (let i = 0; i < variables.length; i++) {
             correlationMatrix[i] = [];
@@ -425,7 +587,14 @@ class PlottingManager {
                     if (commonIndices.length > 10) {
                         const x = commonIndices.map(idx => data1[idx]);
                         const y = commonIndices.map(idx => data2[idx]);
-                        correlationMatrix[i][j] = this.calculateCorrelation(x, y);
+                        
+                        // Get corresponding coordinates for spatial correlation
+                        let subCoordinates = null;
+                        if (correlationMethod === 'morans_i' && coordinates) {
+                            subCoordinates = commonIndices.map(idx => coordinates[idx]);
+                        }
+                        
+                        correlationMatrix[i][j] = this.calculateCorrelationByMethod(x, y, subCoordinates, correlationMethod);
                     } else {
                         correlationMatrix[i][j] = 0;
                     }
@@ -459,8 +628,9 @@ class PlottingManager {
             hoverinfo: 'none'
         };
 
+        const methodText = correlationMethod === 'morans_i' ? " - Moran's I" : " - Pearson";
         const layout = {
-            title: `Variable Correlation Matrix (${variables.length} Enabled Variables)`,
+            title: `Variable Correlation Matrix (${variables.length} Enabled Variables)${methodText}`,
             paper_bgcolor: '#1a1a1a',
             plot_bgcolor: '#1a1a1a',
             font: { color: '#fff' },
