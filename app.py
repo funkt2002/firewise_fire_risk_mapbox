@@ -244,6 +244,13 @@ class OptimizationService:
         """Solve absolute optimization problem"""
         logger.info(f"Starting absolute optimization for {len(parcel_scores)} parcels, target: {target_count}")
         
+        # Check if we have enough parcels
+        if len(parcel_scores) < target_count:
+            logger.warning(f"Not enough parcels: {len(parcel_scores)} available, {target_count} requested")
+            # Adjust target to available parcels
+            target_count = len(parcel_scores)
+            logger.info(f"Adjusted target count to {target_count}")
+        
         # Create LP problem
         prob = LpProblem("Fire_Risk_Absolute_Optimization", LpMaximize)
         
@@ -372,16 +379,18 @@ def prepare_data():
         data = request.get_json() or {}
         filters = data.get('filters', {})
         
-        # Build cache key - v3 to invalidate old cache format
-        cache_key = f"parcels_v3_{json.dumps(filters, sort_keys=True)}"
+        # Build cache key - v4 to invalidate old cache format with reduced columns
+        cache_key = f"parcels_v4_{json.dumps(filters, sort_keys=True)}"
         
         # Check cache
         cached_data = RedisService.get_cached_data(cache_key)
         if cached_data:
             return jsonify(cached_data)
         
-        # Build query
-        query = "SELECT * FROM parcels"
+        # Build query - only select necessary columns (no geometry for vector tiles!)
+        needed_columns = ['parcel_id', 'yearbuilt'] + list(RAW_VAR_MAP.values())
+        column_list = ', '.join(needed_columns)
+        query = f"SELECT {column_list} FROM parcels"
         conditions, params = DatabaseService.build_filter_conditions(filters)
         
         if conditions:
@@ -518,7 +527,10 @@ def infer_weights():
             'selected_count': len(selected_parcels),
             'objective_value': value(prob.objective),
             'session_id': session_id,
-            'temp_dir': temp_dir
+            'temp_dir': temp_dir,
+            'message': f"Selected {len(selected_parcels)} parcels" + 
+                      (f" (adjusted from {data.get('max_parcels', 500)} due to limited selection)" 
+                       if len(parcel_scores) < data.get('max_parcels', 500) else "")
         })
         
     except Exception as e:
