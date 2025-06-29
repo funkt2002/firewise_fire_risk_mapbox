@@ -246,10 +246,25 @@ class PlottingManager {
     // Calculate bivariate Moran's I (spatial cross-correlation)
     calculateBivariateMoransI(values1, values2, coordinates) {
         const n = values1.length;
-        if (n !== values2.length || n !== coordinates.length || n < 3) return 0;
+        console.log(`Calculating Moran's I for ${n} points`);
+        
+        if (n !== values2.length || n !== coordinates.length || n < 3) {
+            console.error('Moran\'s I: Invalid input lengths or too few points');
+            return 0;
+        }
+        
+        // Check if coordinates are valid
+        const validCoords = coordinates.filter(c => c && c[0] !== 0 && c[1] !== 0);
+        console.log(`Valid coordinates: ${validCoords.length} out of ${n}`);
+        
+        if (validCoords.length < 10) {
+            console.error('Not enough valid coordinates for Moran\'s I calculation');
+            return 0;
+        }
         
         // For large datasets, use a sampling approach
         if (n > 5000) {
+            console.log('Using sampling approach for large dataset');
             return this.calculateBivariateMoransISampled(values1, values2, coordinates);
         }
         
@@ -545,13 +560,26 @@ class PlottingManager {
     async showCorrelationMatrix(method = null) {
         // Clear current variable since we're showing the matrix
         this.currentCorrelationVariable = null;
+        
         // Try to get data from multiple sources
         let features = null;
+        let attributes = null;
         
-        if (window.fireRiskScoring && window.fireRiskScoring.currentDataset && window.fireRiskScoring.currentDataset.features) {
+        // Check for AttributeCollection format first
+        if (window.currentData && window.currentData.type === "AttributeCollection") {
+            attributes = window.currentData.attributes;
+            console.log('Using AttributeCollection format');
+        } else if (window.fireRiskScoring && window.fireRiskScoring.currentDataset && window.fireRiskScoring.currentDataset.features) {
             features = window.fireRiskScoring.currentDataset.features;
         } else if (window.currentData && window.currentData.features) {
             features = window.currentData.features;
+        }
+        
+        // Convert attributes to features format if needed
+        if (attributes && !features) {
+            features = attributes.map(attr => ({
+                properties: attr
+            }));
         }
         
         if (!features || features.length === 0) {
@@ -631,16 +659,19 @@ class PlottingManager {
                 const lat = f.properties.latitude || f.properties.lat || f.properties.y || 
                            f.properties.centroid_y || f.properties.center_y || f.properties.LATITUDE || 0;
                 
-                if (lon === 0 && lat === 0) {
-                    console.warn('No coordinates found for feature:', f.properties.parcel_id);
-                }
-                
                 return [lon, lat];
             });
             
             // Log coordinate statistics
             const validCoords = coordinates.filter(c => c[0] !== 0 || c[1] !== 0);
             console.log(`Found ${validCoords.length} features with valid coordinates out of ${coordinates.length} total`);
+            
+            // If no coordinates found, fall back to Pearson
+            if (validCoords.length < 10) {
+                console.warn('Insufficient coordinate data for Moran\'s I. Falling back to Pearson correlation.');
+                alert('Note: Coordinate data not available in current dataset. Showing Pearson correlation instead of Moran\'s I.');
+                correlationMethod = 'pearson';
+            }
         }
         
         for (let i = 0; i < variables.length; i++) {
