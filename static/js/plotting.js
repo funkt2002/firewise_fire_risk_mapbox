@@ -575,27 +575,38 @@ class PlottingManager {
         console.log(`Generating correlation matrix for ${variables.length} enabled variables:`, variables);
         
         // Extract data for each variable with log transformations
+        // Keep track of indices to maintain mapping to coordinates
         const variableData = {};
+        const variableIndices = {};
+        
         for (const varBase of variables) {
             const rawVar = this.rawVarMap[varBase];
-            variableData[varBase] = features
-                .map(f => {
-                    let rawValue = f.properties[rawVar];
-                    if (rawValue === null || rawValue === undefined || isNaN(rawValue)) {
-                        return null;
-                    }
+            const values = [];
+            const indices = [];
+            
+            features.forEach((f, idx) => {
+                let rawValue = f.properties[rawVar];
+                if (rawValue !== null && rawValue !== undefined && !isNaN(rawValue)) {
                     rawValue = parseFloat(rawValue);
                     
                     // Apply log transformations like in scoring system
+                    let transformedValue;
                     if (varBase === 'neigh1d') {
                         const cappedValue = Math.min(rawValue, 5280);
-                        return Math.log(1 + cappedValue);
+                        transformedValue = Math.log(1 + cappedValue);
                     } else if (varBase === 'hagri' || varBase === 'hfb') {
-                        return Math.log(1 + rawValue);
+                        transformedValue = Math.log(1 + rawValue);
+                    } else {
+                        transformedValue = rawValue;
                     }
-                    return rawValue;
-                })
-                .filter(v => v !== null);
+                    
+                    values.push(transformedValue);
+                    indices.push(idx);
+                }
+            });
+            
+            variableData[varBase] = values;
+            variableIndices[varBase] = indices;
         }
 
         // Calculate correlation matrix
@@ -606,10 +617,30 @@ class PlottingManager {
         // Get coordinates for spatial correlation if needed
         let coordinates = null;
         if (correlationMethod === 'morans_i') {
-            coordinates = features.map(f => [
-                f.properties.longitude || f.properties.centroid_x || 0,
-                f.properties.latitude || f.properties.centroid_y || 0
-            ]);
+            // Check what coordinate fields are available
+            if (features.length > 0) {
+                const sampleProps = features[0].properties;
+                console.log('Sample feature properties:', Object.keys(sampleProps));
+                console.log('Looking for coordinate fields...');
+            }
+            
+            coordinates = features.map(f => {
+                // Try multiple possible coordinate field names
+                const lon = f.properties.longitude || f.properties.lon || f.properties.x || 
+                           f.properties.centroid_x || f.properties.center_x || f.properties.LONGITUDE || 0;
+                const lat = f.properties.latitude || f.properties.lat || f.properties.y || 
+                           f.properties.centroid_y || f.properties.center_y || f.properties.LATITUDE || 0;
+                
+                if (lon === 0 && lat === 0) {
+                    console.warn('No coordinates found for feature:', f.properties.parcel_id);
+                }
+                
+                return [lon, lat];
+            });
+            
+            // Log coordinate statistics
+            const validCoords = coordinates.filter(c => c[0] !== 0 || c[1] !== 0);
+            console.log(`Found ${validCoords.length} features with valid coordinates out of ${coordinates.length} total`);
         }
         
         for (let i = 0; i < variables.length; i++) {
@@ -623,27 +654,33 @@ class PlottingManager {
                     const data1 = variableData[variables[i]];
                     const data2 = variableData[variables[j]];
                     
-                    // Find common indices where both variables have data
-                    const commonIndices = [];
-                    const minLength = Math.min(data1.length, data2.length);
+                    // Find common original indices where both variables have data
+                    const indices1 = variableIndices[variables[i]];
+                    const indices2 = variableIndices[variables[j]];
                     
-                    for (let k = 0; k < minLength; k++) {
-                        if (!isNaN(data1[k]) && !isNaN(data2[k])) {
-                            commonIndices.push(k);
+                    // Find intersection of indices
+                    const commonOriginalIndices = [];
+                    const commonData1 = [];
+                    const commonData2 = [];
+                    
+                    for (let k = 0; k < indices1.length; k++) {
+                        const originalIdx = indices1[k];
+                        const idx2 = indices2.indexOf(originalIdx);
+                        if (idx2 !== -1) {
+                            commonOriginalIndices.push(originalIdx);
+                            commonData1.push(data1[k]);
+                            commonData2.push(data2[idx2]);
                         }
                     }
                     
-                    if (commonIndices.length > 10) {
-                        const x = commonIndices.map(idx => data1[idx]);
-                        const y = commonIndices.map(idx => data2[idx]);
-                        
+                    if (commonOriginalIndices.length > 10) {
                         // Get corresponding coordinates for spatial correlation
                         let subCoordinates = null;
                         if (correlationMethod === 'morans_i' && coordinates) {
-                            subCoordinates = commonIndices.map(idx => coordinates[idx]);
+                            subCoordinates = commonOriginalIndices.map(idx => coordinates[idx]);
                         }
                         
-                        correlationMatrix[i][j] = this.calculateCorrelationByMethod(x, y, subCoordinates, correlationMethod);
+                        correlationMatrix[i][j] = this.calculateCorrelationByMethod(commonData1, commonData2, subCoordinates, correlationMethod);
                     } else {
                         correlationMatrix[i][j] = 0;
                     }
