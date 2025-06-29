@@ -149,6 +149,13 @@ class PlottingManager {
     // Create spatial weights matrix using K-nearest neighbors
     createSpatialWeightsMatrix(coordinates, k = 8) {
         const n = coordinates.length;
+        
+        // For large datasets, use sampling to avoid memory issues
+        if (n > 5000) {
+            console.log(`Dataset too large (${n} points) for full spatial weights matrix. Using sampling approach.`);
+            return null;
+        }
+        
         const W = Array(n).fill().map(() => Array(n).fill(0));
         
         for (let i = 0; i < n; i++) {
@@ -191,8 +198,24 @@ class PlottingManager {
         const n = values.length;
         if (n !== coordinates.length || n < 3) return 0;
         
+        // For large datasets, use a sampling approach
+        if (n > 5000) {
+            const sampleSize = 2000;
+            const indices = [];
+            const step = Math.floor(n / sampleSize);
+            for (let i = 0; i < n; i += step) {
+                indices.push(i);
+            }
+            
+            const sampledValues = indices.map(i => values[i]);
+            const sampledCoords = indices.map(i => coordinates[i]);
+            
+            return this.calculateMoransI(sampledValues, sampledCoords);
+        }
+        
         // Create spatial weights matrix
         const W = this.createSpatialWeightsMatrix(coordinates);
+        if (!W) return 0;
         
         // Calculate mean
         const mean = values.reduce((sum, val) => sum + val, 0) / n;
@@ -225,8 +248,14 @@ class PlottingManager {
         const n = values1.length;
         if (n !== values2.length || n !== coordinates.length || n < 3) return 0;
         
+        // For large datasets, use a sampling approach
+        if (n > 5000) {
+            return this.calculateBivariateMoransISampled(values1, values2, coordinates);
+        }
+        
         // Create spatial weights matrix
         const W = this.createSpatialWeightsMatrix(coordinates);
+        if (!W) return 0;
         
         // Calculate means
         const mean1 = values1.reduce((sum, val) => sum + val, 0) / n;
@@ -255,6 +284,26 @@ class PlottingManager {
         if (wSum === 0 || denom1 === 0 || denom2 === 0) return 0;
         
         return (n / wSum) * (numerator / (denom1 * denom2));
+    }
+
+    // Sampling-based approach for large datasets
+    calculateBivariateMoransISampled(values1, values2, coordinates, sampleSize = 2000) {
+        const n = values1.length;
+        
+        // Random sample indices
+        const indices = [];
+        const step = Math.floor(n / sampleSize);
+        for (let i = 0; i < n; i += step) {
+            indices.push(i);
+        }
+        
+        // Get sampled data
+        const sampledValues1 = indices.map(i => values1[i]);
+        const sampledValues2 = indices.map(i => values2[i]);
+        const sampledCoords = indices.map(i => coordinates[i]);
+        
+        // Calculate on sample
+        return this.calculateBivariateMoransI(sampledValues1, sampledValues2, sampledCoords);
     }
 
     // Get current correlation method from toggle
@@ -629,8 +678,9 @@ class PlottingManager {
         };
 
         const methodText = correlationMethod === 'morans_i' ? " - Moran's I" : " - Pearson";
+        const sampleText = features.length > 5000 && correlationMethod === 'morans_i' ? " (Sampled)" : "";
         const layout = {
-            title: `Variable Correlation Matrix (${variables.length} Enabled Variables)${methodText}`,
+            title: `Variable Correlation Matrix (${variables.length} Enabled Variables)${methodText}${sampleText}`,
             paper_bgcolor: '#1a1a1a',
             plot_bgcolor: '#1a1a1a',
             font: { color: '#fff' },
