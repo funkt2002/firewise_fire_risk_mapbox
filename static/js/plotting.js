@@ -653,11 +653,9 @@ class PlottingManager {
             }
             
             coordinates = features.map(f => {
-                // Try multiple possible coordinate field names
-                const lon = f.properties.longitude || f.properties.lon || f.properties.x || 
-                           f.properties.centroid_x || f.properties.center_x || f.properties.LONGITUDE || 0;
-                const lat = f.properties.latitude || f.properties.lat || f.properties.y || 
-                           f.properties.centroid_y || f.properties.center_y || f.properties.LATITUDE || 0;
+                // Use the centroid coordinates from the API
+                const lon = f.properties.centroid_lon || f.properties.longitude || f.properties.lon || 0;
+                const lat = f.properties.centroid_lat || f.properties.latitude || f.properties.lat || 0;
                 
                 return [lon, lat];
             });
@@ -666,11 +664,9 @@ class PlottingManager {
             const validCoords = coordinates.filter(c => c[0] !== 0 || c[1] !== 0);
             console.log(`Found ${validCoords.length} features with valid coordinates out of ${coordinates.length} total`);
             
-            // If no coordinates found, fall back to Pearson
             if (validCoords.length < 10) {
-                console.warn('Insufficient coordinate data for Moran\'s I. Falling back to Pearson correlation.');
-                alert('Note: Coordinate data not available in current dataset. Showing Pearson correlation instead of Moran\'s I.');
-                correlationMethod = 'pearson';
+                alert('Error: No coordinate data available. Moran\'s I requires spatial coordinates.');
+                return;
             }
         }
         

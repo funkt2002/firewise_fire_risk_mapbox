@@ -742,7 +742,9 @@ def prepare_data():
         query = f"""
         SELECT
             id,
-            {', '.join(all_columns)}
+            {', '.join(all_columns)},
+            ST_X(ST_Transform(ST_Centroid(geom), 4326)) as centroid_lon,
+            ST_Y(ST_Transform(ST_Centroid(geom), 4326)) as centroid_lat
         FROM parcels
         {where_clause}
         """
