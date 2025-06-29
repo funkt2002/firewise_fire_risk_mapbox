@@ -214,14 +214,28 @@ class OptimizationService:
         if not parcel_scores_data:
             raise ValueError("No parcel scores provided")
         
-        # Correct variable names
+        # Handle both dictionary and array formats
         corrected_scores = {}
-        for parcel_id, scores in parcel_scores_data.items():
-            corrected_parcel_scores = {}
-            for var_name, score in scores.items():
-                corrected_name = VARIABLE_NAME_CORRECTIONS.get(var_name, var_name)
-                corrected_parcel_scores[corrected_name] = score
-            corrected_scores[parcel_id] = corrected_parcel_scores
+        
+        # Check if it's a list (array format from relative optimization)
+        if isinstance(parcel_scores_data, list):
+            for item in parcel_scores_data:
+                parcel_id = item.get('parcel_id')
+                scores = item.get('scores', {})
+                if parcel_id:
+                    corrected_parcel_scores = {}
+                    for var_name, score in scores.items():
+                        corrected_name = VARIABLE_NAME_CORRECTIONS.get(var_name, var_name)
+                        corrected_parcel_scores[corrected_name] = score
+                    corrected_scores[parcel_id] = corrected_parcel_scores
+        else:
+            # Dictionary format (original)
+            for parcel_id, scores in parcel_scores_data.items():
+                corrected_parcel_scores = {}
+                for var_name, score in scores.items():
+                    corrected_name = VARIABLE_NAME_CORRECTIONS.get(var_name, var_name)
+                    corrected_parcel_scores[corrected_name] = score
+                corrected_scores[parcel_id] = corrected_parcel_scores
         
         return corrected_scores
     
@@ -242,6 +256,24 @@ class OptimizationService:
         objective_terms = []
         for parcel_id, scores in parcel_scores.items():
             composite_score = scores.get('composite_score', 0)
+            
+            # If composite_score is missing, calculate it from individual scores
+            if composite_score == 0 and any(k.endswith('_s') for k in scores.keys()):
+                total_weighted = 0
+                total_weight = 0
+                for var_name, score in scores.items():
+                    if var_name.endswith('_s') and score is not None:
+                        # Extract weight from variable name (e.g., qtrmi_s -> qtrmi)
+                        base_var = var_name.replace('_s', '')
+                        if base_var in WEIGHT_VARS_BASE:
+                            # Assume equal weights if not provided
+                            weight = 1.0
+                            total_weighted += score * weight
+                            total_weight += weight
+                
+                if total_weight > 0:
+                    composite_score = total_weighted / total_weight
+            
             objective_terms.append(composite_score * parcel_vars[parcel_id])
         
         prob += lpSum(objective_terms), "Total_Risk_Score"
@@ -250,7 +282,7 @@ class OptimizationService:
         prob += lpSum(parcel_vars.values()) == target_count, "Parcel_Count"
         
         # Solve
-        solver = COIN_CMD(msg=1, threads=4)
+        solver = COIN_CMD(msg=True, threads=4)
         prob.solve(solver)
         
         # Extract results
@@ -451,7 +483,14 @@ def infer_weights():
         current_weights = data.get('current_weights', {})
         max_parcels = data.get('max_parcels', 500)
         optimization_type = data.get('optimization_type', 'absolute')
-        scoring_method = data.get('scoring_method', 'robust_minmax')
+        
+        # Derive scoring method from flags
+        if data.get('use_quantile'):
+            scoring_method = 'quantile'
+        elif data.get('use_raw_scoring'):
+            scoring_method = 'raw_minmax'
+        else:
+            scoring_method = 'robust_minmax'
         
         if optimization_type != 'absolute':
             return jsonify({"error": "Only absolute optimization is supported"}), 400
