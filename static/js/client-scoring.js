@@ -44,6 +44,11 @@ class FireRiskScoring {
             return 0;
         }
         
+        // Apply Float32 conversion for memory optimization
+        if (window.convertToFloat32) {
+            attributes = window.convertToFloat32(attributes);
+        }
+        
         // Build fast lookup map by parcel_id for vector tile interactions
         attributes.forEach(attr => {
             if (attr.parcel_id) {
