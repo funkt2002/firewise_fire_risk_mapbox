@@ -119,7 +119,7 @@ RAW_VAR_MAP = {
     'hagri': 'hlfmi_agri',
     'hvhsz': 'hlfmi_vhsz',
     'hfb': 'hlfmi_fb',
-    'slope': 'slope_s',
+    'slope': 'avg_slope',  # Fixed: should be avg_slope, not slope_s
     'neigh1d': 'neigh1_d',
     'hbrn': 'hlfmi_brn',
     'par_buf_sl': 'par_buf_sl',
@@ -1592,7 +1592,7 @@ def generate_enhanced_solution_html(txt_content, lp_content, parcel_data, weight
         'hagri': 'hlfmi_agri',
         'hvhsz': 'hlfmi_vhsz',
         'hfb': 'hlfmi_fb',
-        'slope': 'slope_s',
+        'slope': 'avg_slope',  # Fixed: should be avg_slope, not slope_s
         'neigh1d': 'neigh1_d',
         'hbrn': 'hlfmi_brn',
         'par_buf_sl': 'par_buf_sl',

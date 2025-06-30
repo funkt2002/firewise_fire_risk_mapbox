@@ -3127,6 +3127,23 @@
                     hlfmi_agfb: attributes.hlfmi_agfb,
                     parcel_id: attributes.parcel_id
                 });
+                
+                // Debug raw variables
+                console.log(`🔍 POPUP DEBUG - Raw variables for parcel ${parcelId}:`, {
+                    qtrmi_cnt: attributes.qtrmi_cnt,
+                    hlfmi_wui: attributes.hlfmi_wui,
+                    hlfmi_agri: attributes.hlfmi_agri,
+                    hlfmi_vhsz: attributes.hlfmi_vhsz,
+                    hlfmi_fb: attributes.hlfmi_fb,
+                    avg_slope: attributes.avg_slope,
+                    neigh1_d: attributes.neigh1_d,
+                    hlfmi_brn: attributes.hlfmi_brn,
+                    par_buf_sl: attributes.par_buf_sl,
+                    hlfmi_agfb: attributes.hlfmi_agfb
+                });
+                
+                // Also debug the shared data store
+                window.sharedDataStore?.debugParcel(parcelId);
                 new mapboxgl.Popup()
                     .setLngLat(e.lngLat)
                     .setHTML(createPopupContent(attributes))

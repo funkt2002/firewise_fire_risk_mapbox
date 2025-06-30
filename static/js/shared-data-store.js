@@ -9,6 +9,20 @@ class SharedDataStore {
             'qtrmi', 'hwui', 'hagri', 'hvhsz', 'hfb', 
             'slope', 'neigh1d', 'hbrn', 'par_buf_sl', 'hlfmi_agfb'
         ];
+        
+        // Raw variable mapping for actual database column names
+        this.rawVarMap = {
+            'qtrmi': 'qtrmi_cnt',
+            'hwui': 'hlfmi_wui',
+            'hagri': 'hlfmi_agri',
+            'hvhsz': 'hlfmi_vhsz',
+            'hfb': 'hlfmi_fb',
+            'slope': 'avg_slope',
+            'neigh1d': 'neigh1_d',
+            'hbrn': 'hlfmi_brn',
+            'par_buf_sl': 'par_buf_sl',
+            'hlfmi_agfb': 'hlfmi_agfb'
+        };
     }
 
     // Store the complete dataset and build lookup structures once
@@ -64,21 +78,16 @@ class SharedDataStore {
         attributeData.attributes.forEach(attributes => {
             const parcelId = attributes.parcel_id;
             
-            // Store base variables only for memory efficiency
-            const baseAttrs = {};
-            this.baseVariables.forEach(varName => {
-                if (attributes.hasOwnProperty(varName)) {
-                    baseAttrs[varName] = attributes[varName];
-                }
-            });
+            // Store ALL attributes for popup access (including raw variables)
+            const allAttrs = { ...attributes };
             
             // Also store parcel_id and any score fields
-            baseAttrs.parcel_id = parcelId;
-            if (attributes.score !== undefined) baseAttrs.score = attributes.score;
-            if (attributes.rank !== undefined) baseAttrs.rank = attributes.rank;
-            if (attributes.top500 !== undefined) baseAttrs.top500 = attributes.top500;
+            allAttrs.parcel_id = parcelId;
+            if (attributes.score !== undefined) allAttrs.score = attributes.score;
+            if (attributes.rank !== undefined) allAttrs.rank = attributes.rank;
+            if (attributes.top500 !== undefined) allAttrs.top500 = attributes.top500;
             
-            this.attributeMap.set(parcelId, baseAttrs);
+            this.attributeMap.set(parcelId, allAttrs);
         });
     }
 
@@ -110,6 +119,28 @@ class SharedDataStore {
     clear() {
         this.completeDataset = null;
         this.attributeMap.clear();
+    }
+    
+    // Debug method to check what's stored for a parcel
+    debugParcel(parcelId) {
+        const attrs = this.attributeMap.get(parcelId);
+        if (attrs) {
+            console.log(`🔍 SharedDataStore DEBUG for parcel ${parcelId}:`, {
+                qtrmi_cnt: attrs.qtrmi_cnt,
+                hlfmi_wui: attrs.hlfmi_wui,
+                hlfmi_agri: attrs.hlfmi_agri,
+                hlfmi_vhsz: attrs.hlfmi_vhsz,
+                hlfmi_fb: attrs.hlfmi_fb,
+                avg_slope: attrs.avg_slope,
+                neigh1_d: attrs.neigh1_d,
+                hlfmi_brn: attrs.hlfmi_brn,
+                par_buf_sl: attrs.par_buf_sl,
+                hlfmi_agfb: attrs.hlfmi_agfb,
+                total_keys: Object.keys(attrs).length
+            });
+        } else {
+            console.log(`❌ SharedDataStore DEBUG: No data found for parcel ${parcelId}`);
+        }
     }
 }
 
