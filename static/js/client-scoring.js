@@ -1,16 +1,17 @@
 // client-scoring.js - Enhanced Client-side Fire Risk Scoring with Filtering Integration
 
 class FireRiskScoring {
-    constructor() {
-        this.completeDataset = null;
-        this.currentDataset = null;
-        this.attributeMap = new Map();        // NEW: parcel_id -> attributes lookup for vector tiles
-        this.factorScoresMap = new Map();     // NEW: parcel_id -> factor scores lookup for popups
+    constructor(sharedDataStore) {
+        this.dataStore = sharedDataStore || window.sharedDataStore;
+        this.currentDataset = null;           // Filtered/scored dataset
+        this.factorScoresMap = new Map();     // parcel_id -> factor scores lookup for popups
         this.timings = {};
         this.lastWeights = null;
         this.lastFilters = null;
         this.lastNormalizationSettings = null;
         this.firstCalculationDone = false;
+        
+        console.log('🎯 FireRiskScoring: Initialized with shared data store (no duplicate data storage)');
     }
 
     // Store complete dataset from server (attributes only for vector tiles)
@@ -21,68 +22,31 @@ class FireRiskScoring {
         console.log('DEBUG: Received data structure:', Object.keys(attributeData));
         console.log('DEBUG: Data type:', attributeData.type);
         
-        // Clear existing data
-        this.attributeMap.clear();
+        // Use shared data store to convert and store data once
+        console.log('🎯 FireRiskScoring: Storing data via shared data store (eliminating duplicates)');
+        const featureCollection = this.dataStore.storeCompleteData(attributeData);
         
-        // Handle both old FeatureCollection and new AttributeCollection formats
-        let attributes;
-        if (attributeData.type === "AttributeCollection") {
-            // New format from vector tile backend
-            attributes = attributeData.attributes;
-            console.log('VECTOR TILES: Received AttributeCollection format');
-            if (!attributes) {
-                console.error('VECTOR TILES: AttributeCollection missing attributes field');
-                console.log('DEBUG: Full data:', attributeData);
-                return 0;
-            }
-        } else if (attributeData.type === "FeatureCollection") {
-            // Legacy format - extract properties
-            attributes = attributeData.features.map(feature => feature.properties);
-            console.log('VECTOR TILES: Converting legacy FeatureCollection format');
-        } else {
-            console.error('VECTOR TILES: Unknown data format:', attributeData.type);
+        if (!featureCollection) {
+            console.error('Failed to store data in shared data store');
             return 0;
         }
         
-        // Apply Float32 conversion for memory optimization
-        if (window.convertToFloat32) {
-            attributes = window.convertToFloat32(attributes);
-        }
+        // Managers now automatically access data from shared store - no manual notification needed
+        console.log('🔄 FireRiskScoring: Data stored in shared store - managers will access automatically');
         
-        // Build fast lookup map by parcel_id for vector tile interactions
-        attributes.forEach(attr => {
-            if (attr.parcel_id) {
-                this.attributeMap.set(attr.parcel_id, attr);
-            }
-        });
-        
-        // Create FeatureCollection format for compatibility with existing filtering logic
-        const featureCollection = {
-            type: "FeatureCollection",
-            features: attributes.map(attr => ({
-                type: "Feature", 
-                geometry: null, // No geometry for vector tiles
-                properties: attr
-            }))
-        };
-        
-        // Store in both filtering and scoring systems
-        window.clientFilterManager.storeCompleteDataset(featureCollection);
-        window.clientNormalizationManager.storeCompleteDataset(featureCollection);
-        
-        this.completeDataset = featureCollection;
         this.currentDataset = featureCollection;
         
         const loadTime = performance.now() - start;
         this.logTiming('Complete Data Storage', loadTime);
         
-        console.log(`VECTOR TILES: Stored ${attributes.length} parcel attributes (${this.attributeMap.size} with parcel_id) for client-side processing`);
-        return attributes.length;
+        const parcelCount = featureCollection.features.length;
+        console.log(`VECTOR TILES: Stored ${parcelCount} parcel attributes for client-side processing`);
+        return parcelCount;
     }
 
-    // NEW: Get attributes by parcel ID for vector tile interactions
+    // Get attributes by parcel ID for vector tile interactions
     getAttributesByParcelId(parcelId) {
-        return this.attributeMap.get(parcelId);
+        return this.dataStore.getAttributeMap().get(parcelId);
     }
 
 
@@ -93,7 +57,9 @@ class FireRiskScoring {
  
     // Process data with filters and calculate scores (comprehensive client-side)
     processData(weights, filters, maxParcels = 500, use_local_normalization = false, use_quantile = false, use_raw_scoring = false) {
-        if (!this.completeDataset) {
+        console.log('🎯 FireRiskScoring: Accessing shared dataset (no duplicate copy)');
+        const completeDataset = this.dataStore.getCompleteDataset();
+        if (!completeDataset) {
             console.error('No complete dataset stored. Call storeCompleteData() first.');
             return null;
         }
@@ -173,7 +139,8 @@ class FireRiskScoring {
 
     // Calculate composite scores using weights (client-side)
     calculateScores(weights, maxParcels = 500, use_local_normalization = false, use_quantile = false, use_raw_scoring = false, features = null) {
-        const parcelsToScore = features || this.currentDataset?.features || this.completeDataset?.features;
+        const completeDataset = this.dataStore.getCompleteDataset();
+        const parcelsToScore = features || this.currentDataset?.features || completeDataset?.features;
         
         if (!parcelsToScore) {
             console.error('No data available for scoring.');
@@ -205,6 +172,8 @@ class FireRiskScoring {
             // Store factor scores for popup lookup
             if (parcel.properties.parcel_id) {
                 this.factorScoresMap.set(parcel.properties.parcel_id, factorScores);
+                // Also update shared attribute map with score data
+                this.dataStore.updateAttributeMapProperty(parcel.properties.parcel_id, 'score', compositeScore);
             }
             
             // Calculate weighted sum of factor scores
@@ -231,6 +200,12 @@ class FireRiskScoring {
         scoredParcels.forEach((parcel, index) => {
             parcel.properties.rank = index + 1;
             parcel.properties.top500 = index < maxParcels;
+            
+            // Update shared attribute map with ranking data
+            if (parcel.properties.parcel_id) {
+                this.dataStore.updateAttributeMapProperty(parcel.properties.parcel_id, 'rank', index + 1);
+                this.dataStore.updateAttributeMapProperty(parcel.properties.parcel_id, 'top500', index < maxParcels);
+            }
         });
 
         this.logTiming('Sorting and Ranking', performance.now() - sortingStart);
@@ -287,13 +262,15 @@ class FireRiskScoring {
 
     // Get current parcel count
     getParcelCount() {
+        const completeDataset = this.dataStore.getCompleteDataset();
         return this.currentDataset ? this.currentDataset.features.length : 
-               (this.completeDataset ? this.completeDataset.features.length : 0);
+               (completeDataset ? completeDataset.features.length : 0);
     }
 
     // Get complete dataset count
     getCompleteDatasetCount() {
-        return this.completeDataset ? this.completeDataset.features.length : 0;
+        const completeDataset = this.dataStore.getCompleteDataset();
+        return completeDataset ? completeDataset.features.length : 0;
     }
 
     // Get filtered dataset count
@@ -303,13 +280,15 @@ class FireRiskScoring {
 
     // Clear stored data
     clear() {
-        this.completeDataset = null;
         this.currentDataset = null;
-        this.attributeMap.clear(); // NEW: Clear vector tile attribute map
+        this.factorScoresMap.clear();
         this.timings = {};
         this.lastWeights = null;
         this.lastFilters = null;
         this.lastNormalizationSettings = null;
+        
+        // Clear shared data store
+        this.dataStore.clear();
         
         // Also clear the filter manager
         if (window.clientFilterManager) {
@@ -539,10 +518,7 @@ class TimedAPIClient {
     }
 }
 
-// Global instances
-window.fireRiskScoring = new FireRiskScoring();
-window.performanceTracker = new PerformanceTracker();
-window.apiClient = new TimedAPIClient();
+  // Global instances (all will be initialized in index.html after SharedDataStore is loaded)
 
 // Export for module systems
 if (typeof module !== 'undefined' && module.exports) {

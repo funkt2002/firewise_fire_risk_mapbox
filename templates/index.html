@@ -12,6 +12,7 @@
     <script src="https://unpkg.com/@turf/turf@6/turf.min.js"></script>
     <script src="{{ url_for('static', filename='welcome-popup.js') }}"></script>
     <script src="{{ url_for('static', filename='js/float32-converter.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/shared-data-store.js') }}"></script>
     <script src="{{ url_for('static', filename='js/client-filtering.js') }}"></script>
     <script src="{{ url_for('static', filename='js/client-scoring.js') }}"></script>
     <script src="{{ url_for('static', filename='js/plotting.js') }}"></script>
@@ -3361,6 +3362,25 @@
         // Map load
         map.on('load', () => {
             console.log('Map loaded - starting application initialization...');
+            
+            // Initialize shared data store first
+            console.log('🏗️ MEMORY OPTIMIZATION: Initializing shared data store...');
+            window.sharedDataStore = new SharedDataStore();
+            console.log('✅ SharedDataStore created - will eliminate duplicate data copies');
+            
+            // Initialize utility instances
+            window.performanceTracker = new PerformanceTracker();
+            window.apiClient = new TimedAPIClient();
+            console.log('📈 Utility instances created');
+            
+            // Initialize all managers with shared data store
+            console.log('🔧 Initializing managers with shared data store...');
+            window.clientFilterManager = new ClientFilterManager(window.sharedDataStore);
+            window.clientNormalizationManager = new ClientNormalizationManager(window.sharedDataStore);
+            window.fireRiskScoring = new FireRiskScoring(window.sharedDataStore);
+            console.log('✅ MEMORY OPTIMIZATION: All managers using single shared dataset (no duplicates)');
+            console.log('💾 EXPECTED BENEFIT: ~66% reduction in client memory usage for large datasets');
+            
             initializeLayers();
             normalizeWeights();
             updateMaxParcels();

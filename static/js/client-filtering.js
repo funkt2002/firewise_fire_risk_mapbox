@@ -1,41 +1,24 @@
 // client-filtering.js - Client-side Filtering and Data Management
 
 class ClientFilterManager {
-    constructor() {
-        this.completeDataset = null;
+    constructor(sharedDataStore) {
+        this.dataStore = sharedDataStore || window.sharedDataStore;
         this.filteredDataset = null;
         this.currentFilters = {};
         this.spatialIndex = null;
         this.timings = {};
+        
+        console.log('🔍 ClientFilterManager: Initialized with shared data store (no duplicate data storage)');
     }
 
-    // Store the complete unfiltered dataset from server
-    storeCompleteDataset(geojsonData) {
-        const start = performance.now();
-        
-        console.log('Storing complete dataset for client-side filtering...');
-        
-        this.completeDataset = {
-            type: "FeatureCollection",
-            features: geojsonData.features.map(feature => ({
-                ...feature,
-                properties: { ...feature.properties }
-            }))
-        };
-        
-        this.filteredDataset = this.completeDataset; // Initially no filtering
-        
-        const loadTime = performance.now() - start;
-        this.logTiming('Complete Dataset Storage', loadTime);
-        
-        console.log(`Stored ${this.completeDataset.features.length} parcels for client-side filtering`);
-        return this.completeDataset.features.length;
-    }
+    // REMOVED: storeCompleteDataset - now uses shared data store automatically
 
     // Apply all filters client-side
     applyFilters(filters) {
-        if (!this.completeDataset) {
-            console.error('No complete dataset stored. Call storeCompleteDataset() first.');
+        console.log('🔍 ClientFilterManager: Accessing shared dataset (no duplicate copy)');
+        const completeDataset = this.dataStore.getCompleteDataset();
+        if (!completeDataset) {
+            console.error('No complete dataset in shared store. Call storeCompleteData() first.');
             return null;
         }
 
@@ -46,7 +29,7 @@ class ClientFilterManager {
         
         // Filter parcels
         const filterStart = performance.now();
-        let filteredFeatures = this.completeDataset.features.filter(feature => 
+        let filteredFeatures = completeDataset.features.filter(feature => 
             this.passesAllFilters(feature, filters)
         );
         this.logTiming('Basic Filtering', performance.now() - filterStart);
@@ -78,7 +61,7 @@ class ClientFilterManager {
         this.logTiming('Total Filtering', totalTime);
         
         console.log(`Client-side filtering completed in ${totalTime.toFixed(1)}ms`);
-        console.log(`Filtered from ${this.completeDataset.features.length} to ${filteredFeatures.length} parcels`);
+        console.log(`Filtered from ${completeDataset.features.length} to ${filteredFeatures.length} parcels`);
         
         return this.filteredDataset;
     }
@@ -265,24 +248,25 @@ class ClientFilterManager {
 
     // Get current filtered dataset
     getFilteredDataset() {
-        return this.filteredDataset || this.completeDataset;
+        return this.filteredDataset || this.dataStore.getCompleteDataset();
     }
 
     // Get complete unfiltered dataset
     getCompleteDataset() {
-        return this.completeDataset;
+        return this.dataStore.getCompleteDataset();
     }
 
     // Get filter statistics
     getFilterStats() {
-        if (!this.completeDataset || !this.filteredDataset) {
+        const completeDataset = this.dataStore.getCompleteDataset();
+        if (!completeDataset || !this.filteredDataset) {
             return null;
         }
 
         return {
-            total_parcels_before_filter: this.completeDataset.features.length,
+            total_parcels_before_filter: completeDataset.features.length,
             total_parcels_after_filter: this.filteredDataset.features.length,
-            filter_ratio: this.filteredDataset.features.length / this.completeDataset.features.length,
+            filter_ratio: this.filteredDataset.features.length / completeDataset.features.length,
             current_filters: { ...this.currentFilters }
         };
     }
@@ -306,7 +290,6 @@ class ClientFilterManager {
 
     // Clear all data
     clear() {
-        this.completeDataset = null;
         this.filteredDataset = null;
         this.currentFilters = {};
         this.timings = {};
@@ -331,7 +314,8 @@ class ClientFilterManager {
         }
 
         try {
-            if (filteredFeatures.length === this.completeDataset.features.length) {
+            const completeDataset = this.dataStore.getCompleteDataset();
+            if (filteredFeatures.length === completeDataset.features.length) {
                 // All parcels pass filters - show all parcels normally
                 console.log('VECTOR TILES: All parcels pass filters - showing all parcels normally');
                 
@@ -346,7 +330,7 @@ class ClientFilterManager {
                 console.log('VECTOR TILES: Reset to normal visibility for all parcels');
             } else {
                 // Some parcels filtered out - use paint expressions to make excluded parcels transparent
-                console.log(`VECTOR TILES: Applying transparency to show ${filteredFeatures.length} of ${this.completeDataset.features.length} parcels`);
+                console.log(`VECTOR TILES: Applying transparency to show ${filteredFeatures.length} of ${completeDataset.features.length} parcels`);
                 
                 // Create lookup object for visible parcels (more efficient than arrays)
                 const visibleParcelIds = {};
@@ -384,17 +368,15 @@ class ClientFilterManager {
 
 // Client-side normalization calculator
 class ClientNormalizationManager {
-    constructor() {
+    constructor(sharedDataStore) {
+        this.dataStore = sharedDataStore || window.sharedDataStore;
         this.normalizationCache = {};
         this.globalNormalizationCache = {};
-        this.completeDataset = null;
+        
+        console.log('📊 ClientNormalizationManager: Initialized with shared data store (no duplicate data storage)');
     }
     
-    // Store complete dataset for global normalization
-    storeCompleteDataset(completeDataset) {
-        this.completeDataset = completeDataset;
-        console.log('ClientNormalizationManager: Stored complete dataset for global normalization');
-    }
+    // REMOVED: storeCompleteDataset - now uses shared data store automatically
 
     // Calculate local normalization on filtered dataset
     calculateLocalNormalization(filteredFeatures, use_quantile, use_raw_scoring = false) {
@@ -653,8 +635,9 @@ class ClientNormalizationManager {
 
     // Calculate global normalization parameters using complete dataset
     calculateGlobalNormalization(use_quantile, use_raw_scoring = false) {
-        if (!this.completeDataset) {
-            console.error('No complete dataset available for global normalization');
+        const completeDataset = this.dataStore.getCompleteDataset();
+        if (!completeDataset) {
+            console.error('No complete dataset available in shared store for global normalization');
             return null;
         }
 
@@ -667,7 +650,7 @@ class ClientNormalizationManager {
         }
 
         const start = performance.now();
-        console.log(`🌍 GLOBAL NORMALIZATION DEBUG: Calculating parameters (${use_quantile ? 'quantile' : 'min-max'}, ${use_raw_scoring ? 'raw' : 'log-transformed'}) for ${this.completeDataset.features.length} parcels`);
+        console.log(`🌍 GLOBAL NORMALIZATION DEBUG: Calculating parameters (${use_quantile ? 'quantile' : 'min-max'}, ${use_raw_scoring ? 'raw' : 'log-transformed'}) for ${completeDataset.features.length} parcels`);
 
         const rawVarMap = {
             'qtrmi': 'qtrmi_cnt',
@@ -689,7 +672,7 @@ class ClientNormalizationManager {
             const rawVar = rawVarMap[varBase];
             const values = [];
 
-            for (const feature of this.completeDataset.features) {
+            for (const feature of completeDataset.features) {
                 let rawValue = feature.properties[rawVar];
                 if (rawValue !== null && rawValue !== undefined) {
                     const originalValue = parseFloat(rawValue);
@@ -925,9 +908,8 @@ class ClientNormalizationManager {
     }
 }
 
-// Global instances
-window.clientFilterManager = new ClientFilterManager();
-window.clientNormalizationManager = new ClientNormalizationManager();
+// Global instances (will be initialized after SharedDataStore is loaded)
+// window.clientFilterManager and window.clientNormalizationManager will be created in index.html
 
 // Export for module systems
 if (typeof module !== 'undefined' && module.exports) {
