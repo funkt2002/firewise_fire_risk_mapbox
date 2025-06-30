@@ -1030,7 +1030,8 @@ def get_parcel_scores_for_optimization(data, include_vars):
             
             processed_parcels.append({
                 'id': parcel.get('parcel_id'),
-                'scores': parcel_scores
+                'scores': parcel_scores,
+                'raw': parcel.get('raw', {})  # Preserve raw data for the report
             })
         return processed_parcels
     
@@ -1584,6 +1585,20 @@ def generate_enhanced_solution_html(txt_content, lp_content, parcel_data, weight
         'hlfmi_agfb': 'Agriculture & Fuelbreaks (1/2 mile)'
     }
     
+    # Mapping from base variable to raw property name
+    raw_var_map = {
+        'qtrmi': 'qtrmi_cnt',
+        'hwui': 'hlfmi_wui',
+        'hagri': 'hlfmi_agri',
+        'hvhsz': 'hlfmi_vhsz',
+        'hfb': 'hlfmi_fb',
+        'slope': 'slope_s',
+        'neigh1d': 'neigh1_d',
+        'hbrn': 'hlfmi_brn',
+        'par_buf_sl': 'par_buf_sl',
+        'hlfmi_agfb': 'hlfmi_agfb'
+    }
+    
     # Calculate composite scores for each parcel
     parcels_with_composite_scores = []
     for parcel in parcel_data:
@@ -1606,7 +1621,8 @@ def generate_enhanced_solution_html(txt_content, lp_content, parcel_data, weight
         parcels_with_composite_scores.append({
             'parcel_id': parcel.get('parcel_id'),
             'scores': parcel_scores_display,
-            'composite_score': composite_score
+            'composite_score': composite_score,
+            'raw': parcel.get('raw', {})  # Ensure raw data is included
         })
     
     # Sort parcels by composite score (highest first)
@@ -1677,13 +1693,21 @@ def generate_enhanced_solution_html(txt_content, lp_content, parcel_data, weight
         header_row.append('<th>Composite Score</th>')
         html_parts.append('<tr>' + ''.join(header_row) + '</tr>')
         
-        # Table rows
+        # Table rows with actual raw values
         for parcel in display_parcels:
             row = [f'<td>{parcel["parcel_id"]}</td>']
             for var_base in sorted_vars:
-                raw_value = parcel['scores'].get(var_base, 0)
+                raw_prop = raw_var_map.get(var_base, var_base)
+                raw_value = parcel.get('raw', {}).get(raw_prop, 'N/A')
                 score = parcel['scores'].get(var_base, 0)
-                row.append(f'<td class="raw">{raw_value:.3f}</td>')
+                
+                # Format raw value - handle different data types
+                if isinstance(raw_value, (int, float)):
+                    raw_display = f'{raw_value:.3f}'
+                else:
+                    raw_display = str(raw_value) if raw_value != 'N/A' else 'N/A'
+                
+                row.append(f'<td class="raw">{raw_display}</td>')
                 row.append(f'<td class="score">{score:.3f}</td>')
             row.append(f'<td class="score composite-score">{parcel["composite_score"]:.3f}</td>')
             html_parts.append('<tr>' + ''.join(row) + '</tr>')
@@ -1692,25 +1716,43 @@ def generate_enhanced_solution_html(txt_content, lp_content, parcel_data, weight
         html_parts.append('</div>')
         html_parts.append("""<script>
 document.getElementById('download-table').addEventListener('click', function() {
-    var table = document.querySelector('table');
-    var csv = [];
-    var rows = table.querySelectorAll('tr');
-    for (var i = 0; i < rows.length; i++) {
-        var cols = rows[i].querySelectorAll('th, td');
-        var row = [];
-        for (var j = 0; j < cols.length; j++) {
-            row.push('"' + cols[j].innerText.replace(/"/g, '""') + '"');
+    try {
+        var table = document.querySelector('table');
+        if (!table) {
+            alert('Table not found');
+            return;
         }
-        csv.push(row.join(','));
+        
+        var csv = [];
+        var rows = table.querySelectorAll('tr');
+        
+        for (var i = 0; i < rows.length; i++) {
+            var cols = rows[i].querySelectorAll('th, td');
+            var row = [];
+            for (var j = 0; j < cols.length; j++) {
+                // Clean the text content and handle special characters
+                var text = cols[j].innerText || cols[j].textContent || '';
+                text = text.replace(/"/g, '""').trim();
+                row.push('"' + text + '"');
+            }
+            csv.push(row.join(','));
+        }
+        
+        var csvString = csv.join('\\n');
+        var blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
+        var link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = 'parcel_scores.csv';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(link.href);
+        
+        console.log('CSV download completed successfully');
+    } catch (error) {
+        console.error('Error downloading CSV:', error);
+        alert('Error downloading table. Please try again.');
     }
-    var csvString = csv.join('\n');
-    var blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
-    var link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = 'parcel_scores.csv';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
 });
 </script>""")
     
@@ -1794,9 +1836,11 @@ def infer_weights():
         # Save parcel data for enhanced solution report
         parcel_data_for_report = []
         for parcel in parcel_data:
+            # Include raw values saved from client
             parcel_data_for_report.append({
-                'parcel_id': parcel.get('id'),  # Fix: use 'id' key where parcel ID is actually stored
-                'scores': parcel.get('scores', {})
+                'parcel_id': parcel.get('parcel_id') or parcel.get('id'),  # Handle both key names
+                'scores': parcel.get('scores', {}),
+                'raw': parcel.get('raw', {})
             })
         
         with open(os.path.join(session_dir, 'parcel_data.json'), 'w') as f:

@@ -2615,9 +2615,12 @@
             for (const parcelId of selectedParcelIds) {
                 const factorScores = getParcelFactorScores(parcelId);
                 if (factorScores) {
+                    // Include raw attribute values alongside factor scores
+                    const attributes = window.fireRiskScoring.getAttributesByParcelId(parcelId) || {};
                     selectedParcels.push({
                         parcel_id: parcelId,
-                        scores: factorScores
+                        scores: factorScores,
+                        raw: attributes
                     });
                 }
             }
