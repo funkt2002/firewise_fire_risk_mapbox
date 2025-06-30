@@ -36,7 +36,7 @@ class WelcomePopup {
                                 <p><strong>RECENT UPDATES</strong></p>
                                 <ul style="margin: 10px 0; padding-left: 20px;">
                                     <li><strong>Faster performance:</strong> Map loads instantly with vector tiles and client-side calculations</li>
-                                    <li><strong>Smart weight finding:</strong> Draw any area and automatically find the best factor weights for that zone. Choose "Absolute" to maximize scores or "Relative" to rank in top parcels</li>
+                                    <li><strong>Infer Weights:</strong> Draw a polygon (rectange/lasso) and infer what weighting will maximize composite fire risk scores. After clicking infer weights, click 'Solutiuon Summary' to see formulation and results. Test this tool with different scoring methods and subsets of data.</li>
                                     <li><strong>Local vs global scoring:</strong> Score based on your filtered data or the entire county</li>
                                     <li><strong>Multi-area selection:</strong> Draw multiple areas for combined analysis</li>
                                 </ul>
@@ -47,7 +47,7 @@ class WelcomePopup {
                             <h2>----- HOW IT WORKS -----</h2>
                             <p><strong>What You Can Do:</strong></p>
                             <ul>
-                                <li>See fire risk scores for all properties (red = high risk, white = low risk)</li>
+                                <li>See fire risk scores for all parcels (red = high risk, white = low risk)</li>
                                 <li>Adjust how important each risk factor is using sliders</li>
                                 <li>Filter to focus on specific areas or property types</li>
                                 <li>Find the best weights for any area you select</li>
@@ -75,9 +75,9 @@ class WelcomePopup {
                             <h2>----- CALCULATING NEW SCORES -----</h2>
                             <ul>
                                 <li><strong>Adjust Weights:</strong> Move sliders to change factor importance</li>
-                                <li><strong>Set Max Parcels:</strong> Choose how many top-risk properties to highlight (like 500)</li>
+                                <li><strong>Set Max Parcels:</strong> Choose how many top-risk parcels to highlight (like 500)</li>
                                 <li><strong>Click Calculate:</strong> Map updates with your new settings</li>
-                                <li><strong>View Results:</strong> Red areas = highest risk, blue outlines = top properties</li>
+                                <li><strong>View Results:</strong> Red areas = highest risk, blue outlines = top parcels</li>
                             </ul>
                             
                             <h2>----- FILTERS AND OPTIONS -----</h2>
@@ -87,11 +87,11 @@ class WelcomePopup {
                                 <li><strong>Renormalize:</strong> Score data based on global pre-calculated scores or normalized to current selection</li>
                             </ul>
                             
-                            <p><strong>Filters:</strong> Focus on specific properties</p>
+                            <p><strong>Filters:</strong> Focus on specific parcels</p>
                             <ul>
-                                <li><strong>Building Age:</strong> Only newer or older buildings</li>
-                                <li><strong>Structure Count:</strong> Properties with at least X buildings</li>
-                                <li><strong>Neighbor Distance:</strong> Properties with neighbors within X feet</li>
+                                <li><strong>Structure Age:</strong> Filter parcels with newer or older structures, or those with an unknown year built</li>
+                                <li><strong>Structure Count:</strong> parcels with at least X buildings</li>
+                                <li><strong>Neighbor Distance:</strong> parcels with neighbors within X feet</li>
                                 <li><strong>Coverage Requirements:</strong> Areas with fire zones, wild lands, etc.</li>
                             </ul>
                             
@@ -99,21 +99,21 @@ class WelcomePopup {
                             <p><strong>Spatial Filter:</strong> Focus on specific geographic areas</p>
                             <ul>
                                 <li><strong>Draw Rectangle/Lasso:</strong> Select an area to filter the map</li>
-                                <li><strong>Filter Parcels:</strong> Only show properties in your selected area</li>
+                                <li><strong>Filter Parcels:</strong> Only show parcels in your selected area</li>
                             </ul>
                             
-                            <p><strong>Weight Inference:</strong> Find the best settings for any area</p>
+                            <p><strong>Weight Inference:</strong> Find risk weights for selected area</p>
                             <ul>
                                 <li><strong>Draw Multiple Areas:</strong> Select one or more high-risk zones</li>
-                                <li><strong>Infer Weights:</strong> Tool finds factor weights that maximize risk in your selections</li>
+                                <li><strong>Absolute Optimization:</strong> Tool finds factor weights that maximize calculated risk in your selections</li>
                                 <li><strong>Download Results:</strong> Get detailed reports and optimization files</li>
                             </ul>
                             
                             <h2>----- OTHER FEATURES -----</h2>
                             <ul>
-                                <li><strong>Click Properties:</strong> See detailed info for any property</li>
+                                <li><strong>Click parcels:</strong> See detailed info for any property</li>
                                 <li><strong>Map Layers:</strong> Turn on/off agriculture, fire zones, burn scars, etc.</li>
-                                <li><strong>Export Data:</strong> Download top-risk properties as shapefiles</li>
+
                                 <li><strong>View Charts:</strong> See score distributions and statistics</li>
                                 <li><strong>Measure Tool:</strong> Measure distances on the map</li>
                             </ul>
