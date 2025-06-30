@@ -1201,12 +1201,15 @@
                         Absolute: Linear Program (Maximize total risk score)
                     </label>
                 </div>
+                <!-- Relative optimization temporarily disabled -->
+                <!--
                 <div class="toggle-container">
                     <label class="toggle-label">
                         <input type="radio" name="optimization-type" id="optimization-relative" value="relative">
                         Relative: Quadratic Program (Balanced weights across factors)
                     </label>
                 </div>
+                -->
             </div>
             
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 5px;">
@@ -2658,8 +2661,9 @@
                 });
 
             // Check optimization type from radio buttons
-            const optimizationType = document.getElementById('optimization-relative').checked ? 'relative' : 'absolute';
-            const isRelative = optimizationType === 'relative';
+            // Relative optimization temporarily disabled - always use absolute
+            const optimizationType = 'absolute';
+            const isRelative = false;
 
             document.getElementById('spinner').style.display = 'block';
 
