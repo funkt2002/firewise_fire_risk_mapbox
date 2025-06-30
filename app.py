@@ -1191,12 +1191,12 @@ def solve_weight_optimization(parcel_data, include_vars):
     # Process variable names efficiently
     include_vars_base = [var[:-2] if var.endswith(('_s', '_q')) else var for var in include_vars]
     
-    # Set minimum weight to prevent single-variable dominance (5% minimum per variable)
-    min_weight = 0.05 if len(include_vars_base) > 1 else 0
+    # Allow unrestricted weights - dominant solutions are acceptable
+    min_weight = 0.0
     
-    logger.info(f"ABSOLUTE OPTIMIZATION (LP): {len(parcel_data):,} selected parcels, {len(include_vars_base)} variables, min weight: {min_weight:.1%}")
+    logger.info(f"ABSOLUTE OPTIMIZATION (LP): {len(parcel_data):,} selected parcels, {len(include_vars_base)} variables, unrestricted weights")
     
-    # Use LP solver for absolute mode with minimum weight constraint
+    # Use LP solver for absolute mode without minimum weight constraint
     prob = LpProblem("Maximize_Score", LpMaximize)
     w_vars = LpVariable.dicts('w', include_vars_base, lowBound=min_weight)
     
@@ -1525,7 +1525,7 @@ def generate_solution_files(include_vars, best_weights, weights_pct, total_score
             "",
             "OPTIMIZATION TYPE: Absolute Maximization (LP)", 
             "OBJECTIVE: Maximize total risk score within selected areas",
-            "CONSTRAINT: Minimum 5% weight per variable (prevents single-variable dominance)",
+            "CONSTRAINT: Weights sum to 1, no minimum weight limits",
             "",
             f"Total parcels analyzed: {parcel_count:,}",
             f"Total optimized score: {total_score:.2f}",
@@ -1535,7 +1535,7 @@ def generate_solution_files(include_vars, best_weights, weights_pct, total_score
             "  maximize: Σ(weight_i × score_i)",
             "  subject to: Σ(weights) = 1, weights ≥ 0",
             "  This finds weights that give highest total scores to your selection.",
-            "  May result in 100% allocation to dominant risk factor.",
+            "  Will allocate 100% weight to the most impactful risk factor if optimal.",
         ])
     
     txt_lines.extend([
