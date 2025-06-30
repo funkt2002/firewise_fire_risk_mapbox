@@ -1634,6 +1634,7 @@ def generate_enhanced_solution_html(txt_content, lp_content, parcel_data, weight
             th { background-color: #f2f2f2; }
             tr:nth-child(even) { background-color: #f9f9f9; }
             .score { text-align: right; }
+            .raw { text-align: right; color: #666; }
             .composite-score { font-weight: bold; background-color: #e8f4f8; }
         </style>
     </head>
@@ -1658,6 +1659,7 @@ def generate_enhanced_solution_html(txt_content, lp_content, parcel_data, weight
         html_parts.append('<div class="section">')
         html_parts.append('<h2>Parcel Scores Analysis</h2>')
         html_parts.append(f'<p>Showing top {len(display_parcels)} parcels by composite score (out of {len(parcel_data)} total parcels)</p>')
+        html_parts.append('<button id="download-table">Download Table</button>')
         
         # Build table
         html_parts.append('<table>')
@@ -1670,6 +1672,7 @@ def generate_enhanced_solution_html(txt_content, lp_content, parcel_data, weight
             for var_base in sorted_vars:
                 factor_name = factor_names.get(var_base, var_base)
                 weight_pct = weights.get(var_base, 0)
+                header_row.append(f'<th>{factor_name} Raw</th>')
                 header_row.append(f'<th>{factor_name}<br><small>({weight_pct:.1f}% weight)</small></th>')
         header_row.append('<th>Composite Score</th>')
         html_parts.append('<tr>' + ''.join(header_row) + '</tr>')
@@ -1678,13 +1681,38 @@ def generate_enhanced_solution_html(txt_content, lp_content, parcel_data, weight
         for parcel in display_parcels:
             row = [f'<td>{parcel["parcel_id"]}</td>']
             for var_base in sorted_vars:
+                raw_value = parcel['scores'].get(var_base, 0)
                 score = parcel['scores'].get(var_base, 0)
+                row.append(f'<td class="raw">{raw_value:.3f}</td>')
                 row.append(f'<td class="score">{score:.3f}</td>')
             row.append(f'<td class="score composite-score">{parcel["composite_score"]:.3f}</td>')
             html_parts.append('<tr>' + ''.join(row) + '</tr>')
         
         html_parts.append('</table>')
         html_parts.append('</div>')
+        html_parts.append("""<script>
+document.getElementById('download-table').addEventListener('click', function() {
+    var table = document.querySelector('table');
+    var csv = [];
+    var rows = table.querySelectorAll('tr');
+    for (var i = 0; i < rows.length; i++) {
+        var cols = rows[i].querySelectorAll('th, td');
+        var row = [];
+        for (var j = 0; j < cols.length; j++) {
+            row.push('"' + cols[j].innerText.replace(/"/g, '""') + '"');
+        }
+        csv.push(row.join(','));
+    }
+    var csvString = csv.join('\n');
+    var blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
+    var link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = 'parcel_scores.csv';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+});
+</script>""")
     
     # Close HTML
     html_parts.append('</body></html>')
