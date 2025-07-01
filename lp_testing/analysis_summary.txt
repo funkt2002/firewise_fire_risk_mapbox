@@ -1,0 +1,123 @@
+LP Optimization Data Analysis Summary
+============================================================
+Generated: 2025-06-30 18:35:14
+Number of Parcels: 1000
+Variables Analyzed: qtrmi, hwui, hagri, hvhsz, hfb, slope, neigh1d, hbrn, par_buf_sl
+
+Scoring Methods Applied:
+------------------------------
+1. Raw Min-Max: Direct normalization of raw values
+2. Robust Min-Max: Log transform with percentile caps (P2-P98, P97 for structures)
+3. Quantile: Percentile ranking with log transform
+
+Files Generated:
+------------------------------
+- lp_data_raw.csv: Raw min-max normalized data
+- lp_data_robust.csv: Robust min-max normalized data
+- lp_data_quantile.csv: Quantile normalized data
+- lp_data_combined.csv: All methods in one file
+- optimization_*.lp: LP formulation files for each method
+- *_distributions.png: Distribution plots for each variable
+- scoring_methods_comparison.png: Comparison of all methods
+
+Variable Statistics:
+------------------------------
+
+Structures (1/4 mile) (qtrmi):
+  Count: 1000
+  Non-zero: 983
+  Mean: 141.50
+  Std: 81.97
+  Min: 2.00
+  Max: 466.00
+  25th percentile: 83.00
+  50th percentile: 131.00
+  75th percentile: 184.00
+
+WUI Coverage (1/2 mile) (hwui):
+  Count: 1000
+  Non-zero: 790
+  Mean: 51.90
+  Std: 33.82
+  Min: 0.00
+  Max: 99.99
+  25th percentile: 16.68
+  50th percentile: 56.81
+  75th percentile: 84.01
+
+Agriculture (1/2 mile) (hagri):
+  Count: 1000
+  Non-zero: 821
+  Mean: 10.06
+  Std: 11.74
+  Min: 0.00
+  Max: 70.30
+  25th percentile: 1.12
+  50th percentile: 5.45
+  75th percentile: 14.43
+
+Fire Hazard (1/2 mile) (hvhsz):
+  Count: 1000
+  Non-zero: 677
+  Mean: 11.64
+  Std: 15.70
+  Min: 0.00
+  Max: 81.28
+  25th percentile: 1.52
+  50th percentile: 4.50
+  75th percentile: 14.68
+
+Fuel Breaks (1/2 mile) (hfb):
+  Count: 1000
+  Non-zero: 215
+  Mean: 3.50
+  Std: 4.61
+  Min: 0.00
+  Max: 22.33
+  25th percentile: 0.58
+  50th percentile: 1.66
+  75th percentile: 4.32
+
+Slope (slope):
+  Count: 1000
+  Non-zero: 992
+  Mean: 5.66
+  Std: 5.64
+  Min: 0.20
+  Max: 35.72
+  25th percentile: 2.01
+  50th percentile: 3.42
+  75th percentile: 7.29
+
+Neighbor Distance (neigh1d):
+  Count: 1000
+  Non-zero: 930
+  Mean: 21.42
+  Std: 43.15
+  Min: 0.84
+  Max: 555.39
+  25th percentile: 6.84
+  50th percentile: 11.29
+  75th percentile: 19.30
+
+Burn Scars (1/2 mile) (hbrn):
+  Count: 1000
+  Non-zero: 369
+  Mean: 33.54
+  Std: 47.12
+  Min: 0.00
+  Max: 340.74
+  25th percentile: 1.58
+  50th percentile: 12.66
+  75th percentile: 48.65
+
+Slope within 100 ft (par_buf_sl):
+  Count: 1000
+  Non-zero: 1000
+  Mean: 5.69
+  Std: 5.02
+  Min: 0.28
+  Max: 35.73
+  25th percentile: 2.47
+  50th percentile: 3.82
+  75th percentile: 7.15

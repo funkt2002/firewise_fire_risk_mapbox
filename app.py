@@ -1667,7 +1667,8 @@ def generate_enhanced_solution_html(txt_content, lp_content, parcel_data, weight
     # LP file section
     html_parts.append('<div class="section">')
     html_parts.append('<h2>Linear Programming Formulation</h2>')
-    html_parts.append(f'<pre>{lp_content}</pre>')
+    html_parts.append('<button id="download-lp">Download LP File</button>')
+    html_parts.append(f'<pre id="lp-content">{lp_content}</pre>')
     html_parts.append('</div>')
     
     # Parcel scores table section
@@ -1675,7 +1676,9 @@ def generate_enhanced_solution_html(txt_content, lp_content, parcel_data, weight
         html_parts.append('<div class="section">')
         html_parts.append('<h2>Parcel Scores Analysis</h2>')
         html_parts.append(f'<p>Showing top {len(display_parcels)} parcels by composite score (out of {len(parcel_data)} total parcels)</p>')
-        html_parts.append('<button id="download-table">Download Table</button>')
+        html_parts.append('<button id="download-table">Download Table (Top 50)</button>')
+        html_parts.append(' ')
+        html_parts.append('<button id="download-all">Download Full Dataset</button>')
         
         # Build table
         html_parts.append('<table>')
@@ -1714,7 +1717,13 @@ def generate_enhanced_solution_html(txt_content, lp_content, parcel_data, weight
         
         html_parts.append('</table>')
         html_parts.append('</div>')
+        
+        # Add hidden data for full dataset download
+        import json
+        html_parts.append(f'<script>var fullParcelData = {json.dumps(parcels_with_composite_scores)};</script>')
+        
         html_parts.append("""<script>
+// Download table as CSV
 document.getElementById('download-table').addEventListener('click', function() {
     try {
         var table = document.querySelector('table');
@@ -1752,6 +1761,114 @@ document.getElementById('download-table').addEventListener('click', function() {
     } catch (error) {
         console.error('Error downloading CSV:', error);
         alert('Error downloading table. Please try again.');
+    }
+});
+
+// Download LP file
+document.getElementById('download-lp').addEventListener('click', function() {
+    try {
+        var lpContent = document.getElementById('lp-content').textContent;
+        var blob = new Blob([lpContent], { type: 'text/plain;charset=utf-8;' });
+        var link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = 'optimization.lp';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(link.href);
+        
+        console.log('LP file download completed successfully');
+    } catch (error) {
+        console.error('Error downloading LP file:', error);
+        alert('Error downloading LP file. Please try again.');
+    }
+});
+
+// Download full dataset
+document.getElementById('download-all').addEventListener('click', function() {
+    try {
+        if (!fullParcelData || fullParcelData.length === 0) {
+            alert('No data available for download');
+            return;
+        }
+        
+        // Build CSV header
+        var headers = ['Parcel ID'];
+        var firstParcel = fullParcelData[0];
+        var sortedVars = Object.keys(firstParcel.scores).sort();
+        
+        // Add headers for raw values and scores
+        sortedVars.forEach(function(varName) {
+            var factorNames = {
+                'qtrmi': 'Structures (1/4 mile)',
+                'hwui': 'WUI Coverage (1/2 mile)',
+                'hagri': 'Agriculture (1/2 mile)',
+                'hvhsz': 'Fire Hazard (1/2 mile)',
+                'hfb': 'Fuel Breaks (1/2 mile)',
+                'slope': 'Slope',
+                'neigh1d': 'Neighbor Distance',
+                'hbrn': 'Burn Scars (1/2 mile)',
+                'par_buf_sl': 'Slope within 100 ft',
+                'hlfmi_agfb': 'Agriculture & Fuelbreaks (1/2 mile)'
+            };
+            var displayName = factorNames[varName] || varName;
+            headers.push(displayName + ' Raw');
+            headers.push(displayName + ' Score');
+        });
+        headers.push('Composite Score');
+        
+        // Build CSV rows
+        var csv = [headers.map(function(h) { return '"' + h + '"'; }).join(',')];
+        
+        fullParcelData.forEach(function(parcel) {
+            var row = [parcel.parcel_id];
+            
+            sortedVars.forEach(function(varName) {
+                // Map variable names to raw property names
+                var rawVarMap = {
+                    'qtrmi': 'qtrmi_cnt',
+                    'hwui': 'hlfmi_wui',
+                    'hagri': 'hlfmi_agri',
+                    'hvhsz': 'hlfmi_vhsz',
+                    'hfb': 'hlfmi_fb',
+                    'slope': 'avg_slope',
+                    'neigh1d': 'neigh1_d',
+                    'hbrn': 'hlfmi_brn',
+                    'par_buf_sl': 'par_buf_sl',
+                    'hlfmi_agfb': 'hlfmi_agfb'
+                };
+                
+                var rawProp = rawVarMap[varName] || varName;
+                var rawValue = parcel.raw[rawProp] !== undefined ? parcel.raw[rawProp] : 'N/A';
+                var score = parcel.scores[varName] || 0;
+                
+                // Format values
+                if (typeof rawValue === 'number') {
+                    row.push(rawValue.toFixed(3));
+                } else {
+                    row.push(rawValue);
+                }
+                row.push(score.toFixed(3));
+            });
+            
+            row.push(parcel.composite_score.toFixed(3));
+            csv.push(row.map(function(v) { return '"' + v + '"'; }).join(','));
+        });
+        
+        var csvString = csv.join('\\n');
+        var blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
+        var link = document.createElement('a');
+        link.href = URL.createObjectURL(blob);
+        link.download = 'full_parcel_scores.csv';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(link.href);
+        
+        console.log('Full dataset download completed successfully');
+    } catch (error) {
+        console.error('Error downloading full dataset:', error);
+        alert('Error downloading full dataset. Please try again.');
     }
 });
 </script>""")
