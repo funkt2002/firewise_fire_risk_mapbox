@@ -1726,6 +1726,10 @@ def generate_enhanced_solution_html(txt_content, lp_content, parcel_data, weight
         html_parts.append(f'<script>var sessionId = "{session_id}";</script>')
         
         html_parts.append("""<script>
+// Log for debugging
+console.log('Session ID:', sessionId);
+console.log('Selection parcel data available:', typeof selectionParcelData !== 'undefined' ? selectionParcelData.length + ' parcels' : 'Not found');
+
 // Download table as CSV
 document.getElementById('download-table').addEventListener('click', function() {
     try {
@@ -1770,17 +1774,43 @@ document.getElementById('download-table').addEventListener('click', function() {
 // Download LP file
 document.getElementById('download-lp').addEventListener('click', function() {
     try {
-        var lpContent = document.getElementById('lp-content').textContent;
-        var blob = new Blob([lpContent], { type: 'text/plain;charset=utf-8;' });
-        var link = document.createElement('a');
-        link.href = URL.createObjectURL(blob);
-        link.download = 'optimization.lp';
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        URL.revokeObjectURL(link.href);
-        
-        console.log('LP file download completed successfully');
+        // Try to get LP content from the page first
+        var lpContentElement = document.getElementById('lp-content');
+        if (lpContentElement && lpContentElement.textContent) {
+            var lpContent = lpContentElement.textContent;
+            var blob = new Blob([lpContent], { type: 'text/plain;charset=utf-8;' });
+            var link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = 'optimization.lp';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(link.href);
+            console.log('LP file download completed successfully');
+        } else {
+            // Fallback: fetch from server
+            fetch('/api/download-lp/' + sessionId)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Failed to download LP file');
+                    }
+                    return response.blob();
+                })
+                .then(blob => {
+                    var link = document.createElement('a');
+                    link.href = URL.createObjectURL(blob);
+                    link.download = 'optimization.lp';
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                    URL.revokeObjectURL(link.href);
+                    console.log('LP file download completed from server');
+                })
+                .catch(error => {
+                    console.error('Error downloading LP file:', error);
+                    alert('Error downloading LP file. Please try again.');
+                });
+        }
     } catch (error) {
         console.error('Error downloading LP file:', error);
         alert('Error downloading LP file. Please try again.');
@@ -2174,53 +2204,30 @@ def view_solution(session_id):
 
 @app.route('/api/download-all-parcels/<session_id>')
 def download_all_parcels(session_id):
-    """Download complete dataset with scores for all parcels (not just selection)"""
+    """Download dataset with scores for parcels used in optimization"""
     try:
-        # Get session metadata to retrieve weights and scoring method
+        # Get session data
         session_dir = os.path.join(tempfile.gettempdir(), 'fire_risk_sessions', session_id)
         metadata_path = os.path.join(session_dir, 'metadata.json')
+        parcel_data_path = os.path.join(session_dir, 'parcel_data.json')
         
-        if not os.path.exists(metadata_path):
+        if not os.path.exists(metadata_path) or not os.path.exists(parcel_data_path):
             return jsonify({"error": "Session not found"}), 404
             
         with open(metadata_path, 'r') as f:
             metadata = json.load(f)
             weights = metadata.get('weights', {})
+            
+        with open(parcel_data_path, 'r') as f:
+            parcels = json.load(f)
         
-        # Get scoring method from session (stored during optimization)
-        # For now, default to robust if not specified
-        use_quantile = metadata.get('use_quantile', False)
-        use_raw_scoring = metadata.get('use_raw_scoring', False)
-        
-        logger.info(f"Downloading all parcels with weights: {weights}")
-        
-        # Connect to database and get ALL parcels
-        conn = get_db_connection()
-        cur = conn.cursor()
-        
-        # Get all parcels with scores
-        query = """
-            SELECT parcel_id, apn, yearbuilt, strcnt,
-                   qtrmi_cnt, hlfmi_wui, hlfmi_agri, hlfmi_vhsz, hlfmi_fb,
-                   avg_slope, neigh1_d, hlfmi_brn, par_buf_sl, hlfmi_agfb,
-                   qtrmi_s, hwui_s, hagri_s, hvhsz_s, hfb_s, 
-                   slope_s, neigh1d_s, hbrn_s, par_buf_sl_s, hlfmi_agfb_s,
-                   qtrmi_q, hwui_q, hagri_q, hvhsz_q, hfb_q,
-                   slope_q, neigh1d_q, hbrn_q, par_buf_sl_q, hlfmi_agfb_q
-            FROM parcels_withscores
-            ORDER BY parcel_id
-        """
-        
-        cur.execute(query)
-        parcels = cur.fetchall()
-        cur.close()
-        conn.close()
+        logger.info(f"Downloading {len(parcels)} parcels from optimization session")
         
         # Prepare CSV data
         csv_lines = []
         
         # Header
-        headers = ['Parcel ID', 'APN', 'Year Built', 'Structure Count']
+        headers = ['Parcel ID']
         
         # Add headers for each variable (raw and score)
         var_names = ['qtrmi', 'hwui', 'hagri', 'hvhsz', 'hfb', 'slope', 'neigh1d', 'hbrn', 'par_buf_sl', 'hlfmi_agfb']
@@ -2237,17 +2244,6 @@ def download_all_parcels(session_id):
             'hlfmi_agfb': 'Agriculture & Fuelbreaks'
         }
         
-        for var in var_names:
-            if var in weights:
-                display_name = factor_names.get(var, var)
-                headers.append(f'{display_name} Raw')
-                headers.append(f'{display_name} Score')
-                headers.append(f'{display_name} Weight (%)')
-        
-        headers.append('Composite Score')
-        csv_lines.append(','.join([f'"{h}"' for h in headers]))
-        
-        # Process each parcel
         raw_var_map = {
             'qtrmi': 'qtrmi_cnt',
             'hwui': 'hlfmi_wui',
@@ -2261,38 +2257,41 @@ def download_all_parcels(session_id):
             'hlfmi_agfb': 'hlfmi_agfb'
         }
         
+        # Determine which variables are present
+        included_vars = []
+        for var in var_names:
+            if var in weights and weights[var] > 0:
+                included_vars.append(var)
+                display_name = factor_names.get(var, var)
+                headers.append(f'{display_name} Raw')
+                headers.append(f'{display_name} Score')
+                headers.append(f'{display_name} Weight (%)')
+        
+        headers.append('Composite Score')
+        csv_lines.append(','.join([f'"{h}"' for h in headers]))
+        
+        # Process each parcel
         for parcel in parcels:
-            row = [
-                str(parcel['parcel_id']),
-                str(parcel.get('apn', '')),
-                str(parcel.get('yearbuilt', '')),
-                str(parcel.get('strcnt', ''))
-            ]
+            row = [str(parcel['parcel_id'])]
             
             composite_score = 0
             
-            for var in var_names:
-                if var in weights:
-                    # Get raw value
-                    raw_col = raw_var_map.get(var, var)
-                    raw_value = parcel.get(raw_col, 0)
-                    
-                    # Get appropriate score based on scoring method
-                    if use_quantile:
-                        score_col = f'{var}_q'
-                    else:
-                        score_col = f'{var}_s'
-                    
-                    score = parcel.get(score_col, 0)
-                    weight = weights.get(var, 0)
-                    
-                    # Calculate weighted score
-                    composite_score += (weight / 100.0) * score
-                    
-                    # Add to row
-                    row.append(f'{raw_value:.3f}' if isinstance(raw_value, (int, float)) else str(raw_value))
-                    row.append(f'{score:.3f}')
-                    row.append(f'{weight:.1f}')
+            for var in included_vars:
+                # Get raw value from parcel data
+                raw_col = raw_var_map.get(var, var)
+                raw_value = parcel.get('raw', {}).get(raw_col, 0)
+                
+                # Get score from parcel data (already normalized)
+                score = parcel.get('scores', {}).get(var, 0)
+                weight = weights.get(var, 0)
+                
+                # Calculate weighted score
+                composite_score += (weight / 100.0) * score
+                
+                # Add to row
+                row.append(f'{raw_value:.3f}' if isinstance(raw_value, (int, float)) else str(raw_value))
+                row.append(f'{score:.3f}')
+                row.append(f'{weight:.1f}')
             
             row.append(f'{composite_score:.3f}')
             csv_lines.append(','.join([f'"{v}"' for v in row]))
