@@ -464,15 +464,21 @@ class ClientNormalizationManager {
 
             if (values.length > 0) {
                 if (use_quantile) {
-                    // True quantile normalization - create equal-sized bins
-                    const sortedValues = [...values].sort((a, b) => a - b);
+                    // True quantile normalization - exclude zeros for better risk discrimination
+                    const allValues = [...values];
+                    const nonZeroValues = allValues.filter(v => v > 0);
+                    const sortedNonZeroValues = nonZeroValues.sort((a, b) => a - b);
+                    const nZeros = allValues.length - nonZeroValues.length;
+                    const pctZeros = (nZeros / allValues.length * 100).toFixed(1);
                     
                     normData[varBase] = {
-                        sorted_values: sortedValues,
-                        total_count: sortedValues.length,
-                        norm_type: 'true_quantile'
+                        sorted_values: sortedNonZeroValues,  // Only non-zero values for ranking
+                        total_count: sortedNonZeroValues.length,  // Count of non-zero values
+                        has_zeros: nZeros > 0,
+                        zero_count: nZeros,
+                        norm_type: 'true_quantile_no_zeros'
                     };
-                    console.log(`${varBase}: True quantile normalization with ${sortedValues.length} values (min: ${sortedValues[0].toFixed(3)}, max: ${sortedValues[sortedValues.length-1].toFixed(3)})`);
+                    console.log(`${varBase}: Quantile normalization with ${sortedNonZeroValues.length} non-zero values (${pctZeros}% zeros excluded)`);
                 } else {
                     // Basic min-max
                     const min = Math.min(...values);
@@ -574,27 +580,33 @@ class ClientNormalizationManager {
                     const normInfo = normData[varBase];
                     let normalizedScore;
 
-                    if (normInfo.norm_type === 'true_quantile') {
-                        // True quantile normalization - find percentile rank
-                        const sortedValues = normInfo.sorted_values;
-                        const totalCount = normInfo.total_count;
-                        
-                        // Binary search to find rank
-                        let left = 0;
-                        let right = sortedValues.length;
-                        while (left < right) {
-                            const mid = Math.floor((left + right) / 2);
-                            if (sortedValues[mid] <= rawValue) {
-                                left = mid + 1;
-                            } else {
-                                right = mid;
+                    if (normInfo.norm_type === 'true_quantile' || normInfo.norm_type === 'true_quantile_no_zeros') {
+                        // Check if value is zero
+                        if (rawValue === 0 && normInfo.has_zeros) {
+                            // Assign score of 0 for zero values (will be inverted later if needed)
+                            normalizedScore = 0.0;
+                        } else {
+                            // True quantile normalization - find percentile rank among non-zero values
+                            const sortedValues = normInfo.sorted_values;
+                            const totalCount = normInfo.total_count;
+                            
+                            // Binary search to find rank
+                            let left = 0;
+                            let right = sortedValues.length;
+                            while (left < right) {
+                                const mid = Math.floor((left + right) / 2);
+                                if (sortedValues[mid] <= rawValue) {
+                                    left = mid + 1;
+                                } else {
+                                    right = mid;
+                                }
                             }
+                            const rank = left;
+                            
+                            // Convert rank to percentile (0.0 to 1.0)
+                            normalizedScore = rank / totalCount;
+                            normalizedScore = Math.max(0.0, Math.min(1.0, normalizedScore));
                         }
-                        const rank = left;
-                        
-                        // Convert rank to percentile (0.0 to 1.0)
-                        normalizedScore = rank / totalCount;
-                        normalizedScore = Math.max(0.0, Math.min(1.0, normalizedScore));
                     } else {
                         normalizedScore = (rawValue - normInfo.min) / normInfo.range;
                         normalizedScore = Math.max(0, Math.min(1, normalizedScore));
@@ -602,7 +614,12 @@ class ClientNormalizationManager {
 
                     // Apply inversion for certain variables
                     if (invertVars.has(varBase)) {
-                        normalizedScore = 1 - normalizedScore;
+                        if (rawValue === 0 && normInfo.has_zeros && normInfo.norm_type === 'true_quantile_no_zeros') {
+                            // For inverted variables, zeros should get score of 1 (best)
+                            normalizedScore = 1.0;
+                        } else {
+                            normalizedScore = 1 - normalizedScore;
+                        }
                     }
 
                     // Always store in _s columns - scoring method determined by calculation logic
@@ -611,8 +628,8 @@ class ClientNormalizationManager {
                     // CRITICAL DEBUG: Show final scores for first few features
                     if (featureCounter <= 3 && (varBase === 'neigh1d' || varBase === 'hagri' || varBase === 'hfb')) {
                         const scoringType = use_raw_scoring ? 'RAW' : 'ROBUST';
-                        if (normInfo.norm_type === 'true_quantile') {
-                            console.log(`🔧 FEATURE ${featureCounter} ${scoringType} FINAL: ${varBase}_s = ${normalizedScore.toFixed(4)} (quantile rank from ${normInfo.total_count} values)`);
+                        if (normInfo.norm_type === 'true_quantile' || normInfo.norm_type === 'true_quantile_no_zeros') {
+                            console.log(`🔧 FEATURE ${featureCounter} ${scoringType} FINAL: ${varBase}_s = ${normalizedScore.toFixed(4)} (quantile rank from ${normInfo.total_count} non-zero values)`);
                         } else {
                             console.log(`🔧 FEATURE ${featureCounter} ${scoringType} FINAL: ${varBase}_s = ${normalizedScore.toFixed(4)} (using min:${normInfo.min.toFixed(3)}, max:${normInfo.max.toFixed(3)})`);
                         }
@@ -707,14 +724,21 @@ class ClientNormalizationManager {
 
             if (values.length > 0) {
                 if (use_quantile) {
-                    // True quantile normalization
-                    const sortedValues = [...values].sort((a, b) => a - b);
+                    // True quantile normalization - exclude zeros for better risk discrimination
+                    const allValues = [...values];
+                    const nonZeroValues = allValues.filter(v => v > 0);
+                    const sortedNonZeroValues = nonZeroValues.sort((a, b) => a - b);
+                    const nZeros = allValues.length - nonZeroValues.length;
+                    const pctZeros = (nZeros / allValues.length * 100).toFixed(1);
                     
                     normData[varBase] = {
-                        sorted_values: sortedValues,
-                        total_count: sortedValues.length,
-                        norm_type: 'true_quantile'
+                        sorted_values: sortedNonZeroValues,  // Only non-zero values for ranking
+                        total_count: sortedNonZeroValues.length,  // Count of non-zero values
+                        has_zeros: nZeros > 0,
+                        zero_count: nZeros,
+                        norm_type: 'true_quantile_no_zeros'
                     };
+                    console.log(`🌍 ${varBase}: Global quantile normalization with ${sortedNonZeroValues.length} non-zero values (${pctZeros}% zeros excluded)`);
                 } else {
                     // Basic min-max
                     const min = Math.min(...values);
