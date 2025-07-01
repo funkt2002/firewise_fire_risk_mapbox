@@ -1652,6 +1652,8 @@ def generate_enhanced_solution_html(txt_content, lp_content, parcel_data, weight
             .score { text-align: right; }
             .raw { text-align: right; color: #666; }
             .composite-score { font-weight: bold; background-color: #e8f4f8; }
+            button { padding: 8px 16px; margin-right: 10px; cursor: pointer; background-color: #4CAF50; color: white; border: none; border-radius: 4px; }
+            button:hover { background-color: #45a049; }
         </style>
     </head>
     <body>
@@ -1728,6 +1730,12 @@ def generate_enhanced_solution_html(txt_content, lp_content, parcel_data, weight
         html_parts.append("""<script>
 // Initialize download handlers
 function initializeDownloadHandlers() {
+    // Prevent multiple initializations
+    if (window.downloadHandlersInitialized) {
+        console.log('Download handlers already initialized, skipping...');
+        return;
+    }
+    
     // Log for debugging
     console.log('Initializing download handlers...');
     console.log('Session ID:', sessionId);
@@ -1743,7 +1751,9 @@ function initializeDownloadHandlers() {
     // Download table as CSV
     var downloadTableBtn = document.getElementById('download-table');
     if (downloadTableBtn) {
+        console.log('Adding click handler to download-table button');
         downloadTableBtn.addEventListener('click', function() {
+    console.log('Download table button clicked');
     try {
         var table = document.querySelector('table');
         if (!table) {
@@ -1789,7 +1799,9 @@ function initializeDownloadHandlers() {
     // Download LP file
     var downloadLpBtn = document.getElementById('download-lp');
     if (downloadLpBtn) {
+        console.log('Adding click handler to download-lp button');
         downloadLpBtn.addEventListener('click', function() {
+    console.log('Download LP button clicked');
     try {
         // Try to get LP content from the page first
         var lpContentElement = document.getElementById('lp-content');
@@ -1840,7 +1852,9 @@ function initializeDownloadHandlers() {
     // Download selection dataset (parcels used in optimization)
     var downloadDatasetBtn = document.getElementById('download-all-dataset');
     if (downloadDatasetBtn) {
+        console.log('Adding click handler to download-all-dataset button');
         downloadDatasetBtn.addEventListener('click', function() {
+    console.log('Download all dataset button clicked');
     try {
         // Fetch complete dataset from server
         fetch('/api/download-all-parcels/' + sessionId)
@@ -1872,15 +1886,42 @@ function initializeDownloadHandlers() {
     } else {
         console.error('Download dataset button not found');
     }
+    
+    // Mark handlers as initialized
+    window.downloadHandlersInitialized = true;
+    console.log('Download handlers initialization complete');
+}
+
+// Initialize handlers multiple ways to ensure they attach
+function ensureHandlersAttached() {
+    initializeDownloadHandlers();
+    
+    // Also try attaching handlers directly after a small delay as fallback
+    setTimeout(function() {
+        console.log('Running fallback handler attachment...');
+        if (!window.handlersAttached) {
+            initializeDownloadHandlers();
+            window.handlersAttached = true;
+        }
+    }, 100);
 }
 
 // Check if DOM is already loaded, otherwise wait for it
 if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', initializeDownloadHandlers);
+    document.addEventListener('DOMContentLoaded', ensureHandlersAttached);
 } else {
     // DOM is already loaded, initialize immediately
-    initializeDownloadHandlers();
+    ensureHandlersAttached();
 }
+
+// Also attach on window load as extra fallback
+window.addEventListener('load', function() {
+    if (!window.handlersAttached) {
+        console.log('Window load fallback handler attachment...');
+        initializeDownloadHandlers();
+        window.handlersAttached = true;
+    }
+});
 
 // Keep the old function for backward compatibility but rename it
 function downloadSelectionData() {
