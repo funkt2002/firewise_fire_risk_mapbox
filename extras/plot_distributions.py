@@ -41,7 +41,7 @@ except ImportError:
     console = None
 
 # Subset toggle: if True, restrict analysis to a shapefile clip area
-SUBSET_ANALYSIS = False  # set to False to disable subset clipping
+SUBSET_ANALYSIS = True  # set to False to disable subset clipping
 SUBSET_SHAPEFILE = r"/Users/theofunk/Desktop/firewise_fire_risk_mapbox-master/data/fire_risk_selected_parcels/fire_risk_selected_parcels.shp"
 
 def display_fig(fig):
@@ -115,26 +115,37 @@ class EnhancedFireRiskAnalyzer:
         print("Enhanced Fire Risk Score Analyzer (SciPy-Free)")
         print("=" * 50)
         
-        # Weight variables - using composite agri/fuel instead of individual layers
-        self.WEIGHT_VARS = ['qtrmi', 'hwui', 'hvhsz', 'slope', 'neigh1d', 'hbrn', 'hlfmiagfb', 'par_buf_slp']
+        # Weight variables - matching web application exactly (excluding avg_slope, individual ag/fb)
+        self.WEIGHT_VARS = ['qtrmi', 'hwui', 'hagri', 'hvhsz', 'hfb', 'neigh1d', 'hbrn', 'par_buf_sl', 'hlfmi_agfb']
         
-        # Raw data to score column mapping
+        # Raw data to score column mapping - matching web app
         self.RAW_COLS = {
-            'qtrmi': 'qtrmi_cnt', 'hwui': 'hlfmi_wui', 'hvhsz': 'hlfmi_vhsz',
-            'slope': 'avg_slope', 'neigh1d': 'neigh1_d', 'hbrn': 'hlfmi_brn',
-            'hlfmiagfb': 'hlfmi_agfb',  # Composite agriculture/fuel break variable
-            'par_buf_slp': 'par_buf_sl'  # Parcel buffer slope
+            'qtrmi': 'qtrmi_cnt',
+            'hwui': 'hlfmi_wui',
+            'hagri': 'hlfmi_agri',
+            'hvhsz': 'hlfmi_vhsz',
+            'hfb': 'hlfmi_fb',
+            'neigh1d': 'neigh1_d',
+            'hbrn': 'hlfmi_brn',
+            'par_buf_sl': 'par_buf_sl',
+            'hlfmi_agfb': 'hlfmi_agfb'  # Composite agriculture/fuel break variable
         }
         
-        # Factor names
+        # Factor names - matching web app display names
         self.FACTOR_NAMES = {
-            'qtrmi': 'Structures', 'hwui': 'WUI', 'hvhsz': 'Fire Hazard',
-            'slope': 'Slope', 'neigh1d': 'Neighbors', 'hbrn': 'Burn Scars', 
-            'hlfmiagfb': 'Agri/Fuel Composite', 'par_buf_slp': 'Parcel Buffer Slope'
+            'qtrmi': 'Structures (1/4 mile)',
+            'hwui': 'WUI Coverage (1/2 mile)',
+            'hagri': 'Agriculture (1/2 mile)',
+            'hvhsz': 'Fire Hazard (1/2 mile)',
+            'hfb': 'Fuel Breaks (1/2 mile)',
+            'neigh1d': 'Neighbor Distance',
+            'hbrn': 'Burn Scars (1/2 mile)',
+            'par_buf_sl': 'Slope within 100 ft',
+            'hlfmi_agfb': 'Agriculture & Fuelbreaks'
         }
         
         # Variables where higher raw value = lower risk (invert scoring)
-        self.INVERT_VARS = {'neigh1d', 'hlfmiagfb'}
+        self.INVERT_VARS = {'neigh1d', 'hlfmi_agfb'}
         
         # Neighbor distance configuration
         self.MAX_NEIGHBOR_DISTANCE = 1000  # feet
@@ -217,7 +228,7 @@ class EnhancedFireRiskAnalyzer:
                     raw_values[~valid_mask] = np.nan
                     raw_values = np.log(raw_values)
                     
-                elif var in ['hwui', 'hvhsz', 'hbrn', 'hlfmiagfb']:
+                elif var in ['hwui', 'hvhsz', 'hbrn', 'hlfmi_agfb', 'hagri', 'hfb']:
                     # For half-mile percentage variables: exclude only missing data
                     valid_mask = (raw_values >= 0) & (raw_values.notna())
                     raw_values[~valid_mask] = np.nan
@@ -331,6 +342,62 @@ class EnhancedFireRiskAnalyzer:
         
         print(f"Score calculation complete for {len(self.score_data)} parcels\n")
     
+    def calculate_raw_minmax_scores(self):
+        """Calculate raw min-max scores matching web app"""
+        print("Calculating RAW MIN-MAX scores (no log transform)...")
+        
+        raw_subset = self.raw_data.loc[self.gdf.index]
+        self.score_data = pd.DataFrame(index=raw_subset.index)
+        
+        for var in self.WEIGHT_VARS:
+            if var in raw_subset.columns:
+                raw_values = raw_subset[var].copy()
+                
+                # Simple min-max normalization
+                min_val = raw_values.min()
+                max_val = raw_values.max()
+                
+                if max_val > min_val:
+                    normalized = (raw_values - min_val) / (max_val - min_val)
+                else:
+                    normalized = pd.Series(0.5, index=raw_values.index)
+                
+                # Invert if needed
+                if var in self.INVERT_VARS:
+                    normalized = 1 - normalized
+                
+                self.score_data[var] = normalized
+                print(f"  {self.FACTOR_NAMES[var]:30s}: min={min_val:.2f}, max={max_val:.2f}")
+        
+        print(f"Raw min-max calculation complete for {len(self.score_data)} parcels\n")
+    
+    def calculate_quantile_scores(self):
+        """Calculate quantile scores matching web app"""
+        print("Calculating QUANTILE scores (percentile ranking)...")
+        
+        raw_subset = self.raw_data.loc[self.gdf.index]
+        self.score_data = pd.DataFrame(index=raw_subset.index)
+        
+        for var in self.WEIGHT_VARS:
+            if var in raw_subset.columns:
+                raw_values = raw_subset[var].copy()
+                
+                # Apply log transform for quantile (except percentage variables)
+                if var not in ['hwui', 'hvhsz', 'hbrn', 'hlfmi_agfb', 'hagri', 'hfb']:
+                    raw_values = np.log1p(raw_values)
+                
+                # Calculate percentile ranks
+                ranks = raw_values.rank(pct=True, method='average')
+                
+                # Invert if needed
+                if var in self.INVERT_VARS:
+                    ranks = 1 - ranks
+                
+                self.score_data[var] = ranks
+                print(f"  {self.FACTOR_NAMES[var]:30s}: using percentile ranking")
+        
+        print(f"Quantile calculation complete for {len(self.score_data)} parcels\n")
+    
     def show_raw_variable_distributions(self):
         """Show distribution of raw variables before normalization"""
         print("Creating raw variable distributions...")
@@ -338,7 +405,7 @@ class EnhancedFireRiskAnalyzer:
         # Use the current subset of raw data
         raw_subset = self.raw_data.loc[self.gdf.index]
         
-        # Create subplots - now 3x3 for 8 variables (1 empty spot)
+        # Create subplots - 3x3 for 9 variables
         fig, axes = plt.subplots(3, 3, figsize=(18, 12))
         axes = axes.flatten()
         
@@ -428,6 +495,12 @@ class EnhancedFireRiskAnalyzer:
         
         plt.suptitle('Distribution of Raw Fire Risk Variables with Normal Distribution Overlays', fontsize=16)
         plt.tight_layout()
+        
+        # Save as PNG
+        output_path = 'raw_variable_distributions.png'
+        fig.savefig(output_path, dpi=300, bbox_inches='tight')
+        print(f"Saved raw distributions to: {output_path}")
+        
         display_fig(fig)
         
     def analyze_variable_interactions(self):
@@ -500,11 +573,11 @@ class EnhancedFireRiskAnalyzer:
                     print(f"  {self.FACTOR_NAMES[var1]} <-> {self.FACTOR_NAMES[var2]}: {corr_val:.3f}")
         print()
         
-    def show_variable_distributions(self):
+    def show_variable_distributions(self, method_name=''):
         """Show distribution of each normalized variable"""
-        print("Creating normalized variable distributions...")
+        print(f"Creating normalized variable distributions for {method_name}...")
         
-        # Create subplots - now 3x3 for 8 variables (1 empty spot)
+        # Create subplots - 3x3 for 9 variables
         fig, axes = plt.subplots(3, 3, figsize=(18, 12))
         axes = axes.flatten()
         
@@ -548,9 +621,67 @@ class EnhancedFireRiskAnalyzer:
         for i in range(len(self.WEIGHT_VARS), len(axes)):
             axes[i].set_visible(False)
         
-        plt.suptitle('Distribution of Normalized Fire Risk Variables with Normal Distribution Overlays', fontsize=16)
+        title = f'Distribution of Normalized Fire Risk Variables - {method_name.upper()} Method' if method_name else 'Distribution of Normalized Fire Risk Variables'
+        plt.suptitle(title, fontsize=16)
         plt.tight_layout()
+        
+        # Save as PNG with method name
+        output_path = f'normalized_variable_distributions_{method_name}.png' if method_name else 'normalized_variable_distributions.png'
+        fig.savefig(output_path, dpi=300, bbox_inches='tight')
+        print(f"Saved normalized distributions to: {output_path}")
+        
         display_fig(fig)
+    
+    def create_scoring_comparison_plot(self, all_scores_data):
+        """Create comparison plot showing all scoring methods side by side"""
+        print("\nCreating scoring method comparison plots...")
+        
+        # Create a plot for each variable
+        for var in self.WEIGHT_VARS:
+            if var not in self.raw_data.columns:
+                continue
+                
+            fig, axes = plt.subplots(1, 4, figsize=(20, 5))
+            
+            # Plot 0: Raw data
+            raw_values = self.raw_data.loc[self.gdf.index, var]
+            axes[0].hist(raw_values[raw_values > 0], bins=50, alpha=0.7, color='blue', edgecolor='black')
+            axes[0].set_title('Raw Data')
+            axes[0].set_xlabel('Raw Value')
+            axes[0].set_ylabel('Frequency')
+            
+            # Plot 1: Raw Min-Max
+            if 'raw' in all_scores_data and var in all_scores_data['raw']:
+                scores = all_scores_data['raw'][var]
+                axes[1].hist(scores, bins=50, alpha=0.7, color='green', edgecolor='black')
+                axes[1].set_title('Raw Min-Max')
+                axes[1].set_xlabel('Normalized Score')
+                axes[1].set_xlim(0, 1)
+            
+            # Plot 2: Robust Min-Max
+            if 'robust' in all_scores_data and var in all_scores_data['robust']:
+                scores = all_scores_data['robust'][var]
+                axes[2].hist(scores, bins=50, alpha=0.7, color='orange', edgecolor='black')
+                axes[2].set_title('Robust Min-Max')
+                axes[2].set_xlabel('Normalized Score')
+                axes[2].set_xlim(0, 1)
+            
+            # Plot 3: Quantile
+            if 'quantile' in all_scores_data and var in all_scores_data['quantile']:
+                scores = all_scores_data['quantile'][var]
+                axes[3].hist(scores, bins=50, alpha=0.7, color='red', edgecolor='black')
+                axes[3].set_title('Quantile')
+                axes[3].set_xlabel('Normalized Score')
+                axes[3].set_xlim(0, 1)
+            
+            plt.suptitle(f'{self.FACTOR_NAMES[var]} - Scoring Method Comparison', fontsize=16)
+            plt.tight_layout()
+            
+            # Save individual variable comparison
+            output_path = f'{var}_scoring_comparison.png'
+            fig.savefig(output_path, dpi=300, bbox_inches='tight')
+            print(f"  Saved {var} comparison to: {output_path}")
+            plt.close(fig)
     
     # def create_choropleth_maps(self):
     #     """Create white-to-red choropleth maps for each score variable"""
@@ -1471,19 +1602,38 @@ def main():
         # Show raw variable distributions before normalization
         analyzer.show_raw_variable_distributions()
         
-        # Calculate scores from raw data (for current subset or full dataset)
-        # Calculate fire risk scores from raw data subset
-        # Use 'true_normal' for bell curve distributions, 'robust' for original method
-        scoring_method = 'true_normal'  # Change this to 'robust' for original scoring
-        print(f"Using scoring method: {scoring_method}")
-        analyzer.calculate_scores_from_raw(method=scoring_method)
+        # Generate distributions for all three scoring methods used in web app
+        scoring_methods = ['raw', 'robust', 'quantile']
+        all_scores_data = {}
+        
+        for scoring_method in scoring_methods:
+            print(f"\n{'='*60}")
+            print(f"GENERATING DISTRIBUTIONS FOR {scoring_method.upper()} SCORING METHOD")
+            print(f"{'='*60}")
+            
+            # Add raw min-max scoring method
+            if scoring_method == 'raw':
+                # Implement raw min-max scoring
+                analyzer.calculate_raw_minmax_scores()
+            elif scoring_method == 'quantile':
+                # Implement quantile scoring  
+                analyzer.calculate_quantile_scores()
+            else:
+                # Use existing robust method
+                analyzer.calculate_scores_from_raw(method='robust')
+            
+            # Store scores for comparison
+            all_scores_data[scoring_method] = analyzer.score_data.to_dict()
+            
+            # Show normalized distributions for this method
+            analyzer.show_variable_distributions(method_name=scoring_method)
+        
+        # Create comparison plots
+        analyzer.create_scoring_comparison_plot(all_scores_data)
 
         # ===== ORIGINAL ANALYSIS =====
         # 1. Analyze all variable interactions (complete correlation matrix)
         analyzer.analyze_variable_interactions()
-        
-        # 2. Show normalized variable distributions
-        analyzer.show_variable_distributions()
         
         # 3. Create choropleth maps for each score variable (DISABLED)
         # analyzer.create_choropleth_maps()
@@ -1511,19 +1661,25 @@ def main():
         print("COMPLETE FIRE RISK ANALYSIS FINISHED!")
         print("="*50)
         print("\nAnalysis Included:")
-        print("✓ Raw variable distributions (8 variables)")
-        print("✓ Robust score calculation and quantile normalization (P2-P98 scaling)")
+        print("✓ Raw variable distributions (9 variables)")
+        print("✓ THREE scoring methods matching web app:")
+        print("  - Raw Min-Max (simple normalization)")
+        print("  - Robust Min-Max (log transform + P2-P98 clipping)")
+        print("  - Quantile (percentile ranking)")
+        print("✓ Distribution PNG files for each scoring method")
+        print("✓ Individual comparison plots for each variable")
         print("✓ Complete variable interaction matrix") 
-        print("✓ Normalized variable distributions")
-        print("• Individual choropleth maps for all variables (DISABLED)")
-        print("✓ Original composite risk overlay analysis (0-8 scale)")
-        print("✓ Deep correlation analysis focusing on Agri/Fuel vs Hazards")
-        print("✓ Detailed Agriculture/Fuel Composite vs Fire Hazard plot")
-        print("✓ Agriculture/Fuel Break composite variable (hlfmi_agfb)")
-        print("✓ Spatial correlation pattern mapping")
-        print("✓ Impact assessment of composite vs individual variables")
-        print("✓ SciPy-free implementation - works with your NumPy/SciPy versions!")
-        print("\nNote: Using composite Agri/Fuel variable instead of individual Agriculture and Fuel Break layers")
+        print("✓ Composite risk overlay analysis")
+        print("✓ Correlation analysis")
+        print("\nGenerated PNG Files:")
+        print("- raw_variable_distributions.png")
+        print("- normalized_variable_distributions_raw.png")
+        print("- normalized_variable_distributions_robust.png")
+        print("- normalized_variable_distributions_quantile.png")
+        print("- [variable]_scoring_comparison.png (for each variable)")
+        print("\nVariables analyzed (matching web app):")
+        print("qtrmi, hwui, hagri, hvhsz, hfb, neigh1d, hbrn, par_buf_sl, hlfmi_agfb")
+        print("(Excluded: avg_slope, individual hlfmi_agri/hlfmi_fb)")
 
     except Exception as e:
         print(f"\nError: {e}")

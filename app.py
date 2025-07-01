@@ -1568,7 +1568,7 @@ def generate_solution_files(include_vars, best_weights, weights_pct, total_score
     
     return lp_content, txt_content
 
-def generate_enhanced_solution_html(txt_content, lp_content, parcel_data, weights):
+def generate_enhanced_solution_html(txt_content, lp_content, parcel_data, weights, session_id='unknown'):
     """Generate enhanced HTML solution report with LP file and parcel table"""
     
     # Factor names for display
@@ -1676,9 +1676,9 @@ def generate_enhanced_solution_html(txt_content, lp_content, parcel_data, weight
         html_parts.append('<div class="section">')
         html_parts.append('<h2>Parcel Scores Analysis</h2>')
         html_parts.append(f'<p>Showing top {len(display_parcels)} parcels by composite score (out of {len(parcel_data)} total parcels)</p>')
-        html_parts.append('<button id="download-table">Download Table (Top 50)</button>')
+        html_parts.append('<button id="download-table">Download Selection Table</button>')
         html_parts.append(' ')
-        html_parts.append('<button id="download-all">Download Full Dataset</button>')
+        html_parts.append('<button id="download-all-dataset">Download All Parcels Dataset</button>')
         
         # Build table
         html_parts.append('<table>')
@@ -1718,9 +1718,12 @@ def generate_enhanced_solution_html(txt_content, lp_content, parcel_data, weight
         html_parts.append('</table>')
         html_parts.append('</div>')
         
-        # Add hidden data for full dataset download
+        # Add hidden data for selection dataset download and session ID
         import json
-        html_parts.append(f'<script>var fullParcelData = {json.dumps(parcels_with_composite_scores)};</script>')
+        html_parts.append(f'<script>var selectionParcelData = {json.dumps(parcels_with_composite_scores)};</script>')
+        
+        # Use the session_id passed to the function
+        html_parts.append(f'<script>var sessionId = "{session_id}";</script>')
         
         html_parts.append("""<script>
 // Download table as CSV
@@ -1751,7 +1754,7 @@ document.getElementById('download-table').addEventListener('click', function() {
         var blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
         var link = document.createElement('a');
         link.href = URL.createObjectURL(blob);
-        link.download = 'parcel_scores.csv';
+        link.download = 'top_parcels_table.csv';
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
@@ -1784,17 +1787,48 @@ document.getElementById('download-lp').addEventListener('click', function() {
     }
 });
 
-// Download full dataset
-document.getElementById('download-all').addEventListener('click', function() {
+// Download selection dataset (parcels used in optimization)
+document.getElementById('download-all-dataset').addEventListener('click', function() {
     try {
-        if (!fullParcelData || fullParcelData.length === 0) {
+        // Fetch complete dataset from server
+        fetch('/api/download-all-parcels/' + sessionId)
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Failed to download dataset');
+                }
+                return response.blob();
+            })
+            .then(blob => {
+                var link = document.createElement('a');
+                link.href = URL.createObjectURL(blob);
+                link.download = 'all_parcels_dataset.csv';
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                URL.revokeObjectURL(link.href);
+                console.log('Full dataset download completed');
+            })
+            .catch(error => {
+                console.error('Error downloading full dataset:', error);
+                alert('Error downloading full dataset. Please try again.');
+            });
+    } catch (error) {
+        console.error('Error:', error);
+        alert('Error downloading full dataset.');
+    }
+});
+
+// Keep the old function for backward compatibility but rename it
+function downloadSelectionData() {
+    try {
+        if (!selectionParcelData || selectionParcelData.length === 0) {
             alert('No data available for download');
             return;
         }
         
         // Build CSV header
         var headers = ['Parcel ID'];
-        var firstParcel = fullParcelData[0];
+        var firstParcel = selectionParcelData[0];
         var sortedVars = Object.keys(firstParcel.scores).sort();
         
         // Add headers for raw values and scores
@@ -1820,7 +1854,7 @@ document.getElementById('download-all').addEventListener('click', function() {
         // Build CSV rows
         var csv = [headers.map(function(h) { return '"' + h + '"'; }).join(',')];
         
-        fullParcelData.forEach(function(parcel) {
+        selectionParcelData.forEach(function(parcel) {
             var row = [parcel.parcel_id];
             
             sortedVars.forEach(function(varName) {
@@ -2126,7 +2160,7 @@ def view_solution(session_id):
                 weights = metadata.get('weights', {})
         
         # Generate enhanced HTML report
-        html_content = generate_enhanced_solution_html(txt_content, lp_content, parcel_data, weights)
+        html_content = generate_enhanced_solution_html(txt_content, lp_content, parcel_data, weights, session_id)
         
         response = make_response(html_content)
         response.headers['Content-Type'] = 'text/html'
@@ -2137,6 +2171,146 @@ def view_solution(session_id):
     except Exception as e:
         logger.error(f"Error viewing solution: {e}")
         return f"Error: {str(e)}", 500
+
+@app.route('/api/download-all-parcels/<session_id>')
+def download_all_parcels(session_id):
+    """Download complete dataset with scores for all parcels (not just selection)"""
+    try:
+        # Get session metadata to retrieve weights and scoring method
+        session_dir = os.path.join(tempfile.gettempdir(), 'fire_risk_sessions', session_id)
+        metadata_path = os.path.join(session_dir, 'metadata.json')
+        
+        if not os.path.exists(metadata_path):
+            return jsonify({"error": "Session not found"}), 404
+            
+        with open(metadata_path, 'r') as f:
+            metadata = json.load(f)
+            weights = metadata.get('weights', {})
+        
+        # Get scoring method from session (stored during optimization)
+        # For now, default to robust if not specified
+        use_quantile = metadata.get('use_quantile', False)
+        use_raw_scoring = metadata.get('use_raw_scoring', False)
+        
+        logger.info(f"Downloading all parcels with weights: {weights}")
+        
+        # Connect to database and get ALL parcels
+        conn = get_db_connection()
+        cur = conn.cursor()
+        
+        # Get all parcels with scores
+        query = """
+            SELECT parcel_id, apn, yearbuilt, strcnt,
+                   qtrmi_cnt, hlfmi_wui, hlfmi_agri, hlfmi_vhsz, hlfmi_fb,
+                   avg_slope, neigh1_d, hlfmi_brn, par_buf_sl, hlfmi_agfb,
+                   qtrmi_s, hwui_s, hagri_s, hvhsz_s, hfb_s, 
+                   slope_s, neigh1d_s, hbrn_s, par_buf_sl_s, hlfmi_agfb_s,
+                   qtrmi_q, hwui_q, hagri_q, hvhsz_q, hfb_q,
+                   slope_q, neigh1d_q, hbrn_q, par_buf_sl_q, hlfmi_agfb_q
+            FROM parcels_withscores
+            ORDER BY parcel_id
+        """
+        
+        cur.execute(query)
+        parcels = cur.fetchall()
+        cur.close()
+        conn.close()
+        
+        # Prepare CSV data
+        csv_lines = []
+        
+        # Header
+        headers = ['Parcel ID', 'APN', 'Year Built', 'Structure Count']
+        
+        # Add headers for each variable (raw and score)
+        var_names = ['qtrmi', 'hwui', 'hagri', 'hvhsz', 'hfb', 'slope', 'neigh1d', 'hbrn', 'par_buf_sl', 'hlfmi_agfb']
+        factor_names = {
+            'qtrmi': 'Structures (1/4 mile)',
+            'hwui': 'WUI Coverage (1/2 mile)',
+            'hagri': 'Agriculture (1/2 mile)',
+            'hvhsz': 'Fire Hazard (1/2 mile)',
+            'hfb': 'Fuel Breaks (1/2 mile)',
+            'slope': 'Slope',
+            'neigh1d': 'Neighbor Distance',
+            'hbrn': 'Burn Scars (1/2 mile)',
+            'par_buf_sl': 'Slope within 100 ft',
+            'hlfmi_agfb': 'Agriculture & Fuelbreaks'
+        }
+        
+        for var in var_names:
+            if var in weights:
+                display_name = factor_names.get(var, var)
+                headers.append(f'{display_name} Raw')
+                headers.append(f'{display_name} Score')
+                headers.append(f'{display_name} Weight (%)')
+        
+        headers.append('Composite Score')
+        csv_lines.append(','.join([f'"{h}"' for h in headers]))
+        
+        # Process each parcel
+        raw_var_map = {
+            'qtrmi': 'qtrmi_cnt',
+            'hwui': 'hlfmi_wui',
+            'hagri': 'hlfmi_agri',
+            'hvhsz': 'hlfmi_vhsz',
+            'hfb': 'hlfmi_fb',
+            'slope': 'avg_slope',
+            'neigh1d': 'neigh1_d',
+            'hbrn': 'hlfmi_brn',
+            'par_buf_sl': 'par_buf_sl',
+            'hlfmi_agfb': 'hlfmi_agfb'
+        }
+        
+        for parcel in parcels:
+            row = [
+                str(parcel['parcel_id']),
+                str(parcel.get('apn', '')),
+                str(parcel.get('yearbuilt', '')),
+                str(parcel.get('strcnt', ''))
+            ]
+            
+            composite_score = 0
+            
+            for var in var_names:
+                if var in weights:
+                    # Get raw value
+                    raw_col = raw_var_map.get(var, var)
+                    raw_value = parcel.get(raw_col, 0)
+                    
+                    # Get appropriate score based on scoring method
+                    if use_quantile:
+                        score_col = f'{var}_q'
+                    else:
+                        score_col = f'{var}_s'
+                    
+                    score = parcel.get(score_col, 0)
+                    weight = weights.get(var, 0)
+                    
+                    # Calculate weighted score
+                    composite_score += (weight / 100.0) * score
+                    
+                    # Add to row
+                    row.append(f'{raw_value:.3f}' if isinstance(raw_value, (int, float)) else str(raw_value))
+                    row.append(f'{score:.3f}')
+                    row.append(f'{weight:.1f}')
+            
+            row.append(f'{composite_score:.3f}')
+            csv_lines.append(','.join([f'"{v}"' for v in row]))
+        
+        # Create CSV response
+        csv_content = '\n'.join(csv_lines)
+        response = make_response(csv_content)
+        response.headers['Content-Type'] = 'text/csv'
+        response.headers['Content-Disposition'] = f'attachment; filename=all_parcels_scores_{session_id}.csv'
+        
+        logger.info(f"Downloaded all parcels CSV ({len(parcels)} parcels) for session {session_id}")
+        return response
+        
+    except Exception as e:
+        logger.error(f"Error downloading all parcels: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/api/cleanup-expired-sessions', methods=['POST'])
 def cleanup_expired_sessions():
