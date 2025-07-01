@@ -2452,7 +2452,9 @@
                 
                 const htmlContent = await response.text();
                 const newWindow = window.open();
+                newWindow.document.open();
                 newWindow.document.write(htmlContent);
+                newWindow.document.close();
                 newWindow.document.title = 'Fire Risk Optimization Solution';
                 
                 console.log('Solution viewed successfully - no client storage used');

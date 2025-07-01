@@ -1652,8 +1652,6 @@ def generate_enhanced_solution_html(txt_content, lp_content, parcel_data, weight
             .score { text-align: right; }
             .raw { text-align: right; color: #666; }
             .composite-score { font-weight: bold; background-color: #e8f4f8; }
-            button { padding: 8px 16px; margin-right: 10px; cursor: pointer; background-color: #4CAF50; color: white; border: none; border-radius: 4px; }
-            button:hover { background-color: #45a049; }
         </style>
     </head>
     <body>
@@ -1669,7 +1667,7 @@ def generate_enhanced_solution_html(txt_content, lp_content, parcel_data, weight
     # LP file section
     html_parts.append('<div class="section">')
     html_parts.append('<h2>Linear Programming Formulation</h2>')
-    html_parts.append('<button id="download-lp">Download LP File</button>')
+    html_parts.append('<button id="download-lp" onclick="downloadLPFile()">Download LP File</button>')
     html_parts.append(f'<pre id="lp-content">{lp_content}</pre>')
     html_parts.append('</div>')
     
@@ -1678,9 +1676,9 @@ def generate_enhanced_solution_html(txt_content, lp_content, parcel_data, weight
         html_parts.append('<div class="section">')
         html_parts.append('<h2>Parcel Scores Analysis</h2>')
         html_parts.append(f'<p>Showing top {len(display_parcels)} parcels by composite score (out of {len(parcel_data)} total parcels)</p>')
-        html_parts.append('<button id="download-table">Download Selection Table</button>')
+        html_parts.append('<button id="download-table" onclick="downloadTableCSV()">Download Selection Table</button>')
         html_parts.append(' ')
-        html_parts.append('<button id="download-all-dataset">Download All Parcels Dataset</button>')
+        html_parts.append('<button id="download-all-dataset" onclick="downloadAllParcels()">Download All Parcels Dataset</button>')
         
         # Build table
         html_parts.append('<table>')
@@ -1728,32 +1726,10 @@ def generate_enhanced_solution_html(txt_content, lp_content, parcel_data, weight
         html_parts.append(f'<script>var sessionId = "{session_id}";</script>')
         
         html_parts.append("""<script>
-// Initialize download handlers
-function initializeDownloadHandlers() {
-    // Prevent multiple initializations
-    if (window.downloadHandlersInitialized) {
-        console.log('Download handlers already initialized, skipping...');
-        return;
-    }
-    
-    // Log for debugging
-    console.log('Initializing download handlers...');
-    console.log('Session ID:', sessionId);
-    console.log('Selection parcel data available:', typeof selectionParcelData !== 'undefined' ? selectionParcelData.length + ' parcels' : 'Not found');
-    
-    // Check if elements exist
-    console.log('Download buttons found:', {
-        'download-table': !!document.getElementById('download-table'),
-        'download-lp': !!document.getElementById('download-lp'),
-        'download-all-dataset': !!document.getElementById('download-all-dataset')
-    });
+// Simple download functions directly callable from onclick
 
-    // Download table as CSV
-    var downloadTableBtn = document.getElementById('download-table');
-    if (downloadTableBtn) {
-        console.log('Adding click handler to download-table button');
-        downloadTableBtn.addEventListener('click', function() {
-    console.log('Download table button clicked');
+function downloadTableCSV() {
+    console.log('downloadTableCSV called');
     try {
         var table = document.querySelector('table');
         if (!table) {
@@ -1768,7 +1744,6 @@ function initializeDownloadHandlers() {
             var cols = rows[i].querySelectorAll('th, td');
             var row = [];
             for (var j = 0; j < cols.length; j++) {
-                // Clean the text content and handle special characters
                 var text = cols[j].innerText || cols[j].textContent || '';
                 text = text.replace(/"/g, '""').trim();
                 row.push('"' + text + '"');
@@ -1786,24 +1761,16 @@ function initializeDownloadHandlers() {
         document.body.removeChild(link);
         URL.revokeObjectURL(link.href);
         
-        console.log('CSV download completed successfully');
+        console.log('CSV download completed');
     } catch (error) {
         console.error('Error downloading CSV:', error);
-        alert('Error downloading table. Please try again.');
+        alert('Error downloading table: ' + error.message);
     }
-        });
-    } else {
-        console.error('Download table button not found');
-    }
+}
 
-    // Download LP file
-    var downloadLpBtn = document.getElementById('download-lp');
-    if (downloadLpBtn) {
-        console.log('Adding click handler to download-lp button');
-        downloadLpBtn.addEventListener('click', function() {
-    console.log('Download LP button clicked');
+function downloadLPFile() {
+    console.log('downloadLPFile called');
     try {
-        // Try to get LP content from the page first
         var lpContentElement = document.getElementById('lp-content');
         if (lpContentElement && lpContentElement.textContent) {
             var lpContent = lpContentElement.textContent;
@@ -1815,17 +1782,17 @@ function initializeDownloadHandlers() {
             link.click();
             document.body.removeChild(link);
             URL.revokeObjectURL(link.href);
-            console.log('LP file download completed successfully');
+            console.log('LP file download completed');
         } else {
-            // Fallback: fetch from server
+            console.log('LP content not found on page, fetching from server...');
             fetch('/api/download-lp/' + sessionId)
-                .then(response => {
+                .then(function(response) {
                     if (!response.ok) {
                         throw new Error('Failed to download LP file');
                     }
                     return response.blob();
                 })
-                .then(blob => {
+                .then(function(blob) {
                     var link = document.createElement('a');
                     link.href = URL.createObjectURL(blob);
                     link.download = 'optimization.lp';
@@ -1835,36 +1802,28 @@ function initializeDownloadHandlers() {
                     URL.revokeObjectURL(link.href);
                     console.log('LP file download completed from server');
                 })
-                .catch(error => {
+                .catch(function(error) {
                     console.error('Error downloading LP file:', error);
-                    alert('Error downloading LP file. Please try again.');
+                    alert('Error downloading LP file: ' + error.message);
                 });
         }
     } catch (error) {
         console.error('Error downloading LP file:', error);
-        alert('Error downloading LP file. Please try again.');
+        alert('Error downloading LP file: ' + error.message);
     }
-        });
-    } else {
-        console.error('Download LP button not found');
-    }
+}
 
-    // Download selection dataset (parcels used in optimization)
-    var downloadDatasetBtn = document.getElementById('download-all-dataset');
-    if (downloadDatasetBtn) {
-        console.log('Adding click handler to download-all-dataset button');
-        downloadDatasetBtn.addEventListener('click', function() {
-    console.log('Download all dataset button clicked');
+function downloadAllParcels() {
+    console.log('downloadAllParcels called');
     try {
-        // Fetch complete dataset from server
         fetch('/api/download-all-parcels/' + sessionId)
-            .then(response => {
+            .then(function(response) {
                 if (!response.ok) {
                     throw new Error('Failed to download dataset');
                 }
                 return response.blob();
             })
-            .then(blob => {
+            .then(function(blob) {
                 var link = document.createElement('a');
                 link.href = URL.createObjectURL(blob);
                 link.download = 'all_parcels_dataset.csv';
@@ -1874,54 +1833,18 @@ function initializeDownloadHandlers() {
                 URL.revokeObjectURL(link.href);
                 console.log('Full dataset download completed');
             })
-            .catch(error => {
+            .catch(function(error) {
                 console.error('Error downloading full dataset:', error);
-                alert('Error downloading full dataset. Please try again.');
+                alert('Error downloading full dataset: ' + error.message);
             });
     } catch (error) {
         console.error('Error:', error);
-        alert('Error downloading full dataset.');
+        alert('Error downloading full dataset: ' + error.message);
     }
-        });
-    } else {
-        console.error('Download dataset button not found');
-    }
-    
-    // Mark handlers as initialized
-    window.downloadHandlersInitialized = true;
-    console.log('Download handlers initialization complete');
 }
 
-// Initialize handlers multiple ways to ensure they attach
-function ensureHandlersAttached() {
-    initializeDownloadHandlers();
-    
-    // Also try attaching handlers directly after a small delay as fallback
-    setTimeout(function() {
-        console.log('Running fallback handler attachment...');
-        if (!window.handlersAttached) {
-            initializeDownloadHandlers();
-            window.handlersAttached = true;
-        }
-    }, 100);
-}
-
-// Check if DOM is already loaded, otherwise wait for it
-if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', ensureHandlersAttached);
-} else {
-    // DOM is already loaded, initialize immediately
-    ensureHandlersAttached();
-}
-
-// Also attach on window load as extra fallback
-window.addEventListener('load', function() {
-    if (!window.handlersAttached) {
-        console.log('Window load fallback handler attachment...');
-        initializeDownloadHandlers();
-        window.handlersAttached = true;
-    }
-});
+// Log that script loaded
+console.log('Download functions loaded. Session ID:', sessionId);
 
 // Keep the old function for backward compatibility but rename it
 function downloadSelectionData() {
