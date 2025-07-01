@@ -416,15 +416,54 @@ class EnhancedFireRiskAnalyzer:
         
         print(f"Quantile calculation complete for {len(self.score_data)} parcels\n")
     
+    def export_shapefile_and_csv(self, all_scores_data):
+        """Export shapefile and CSV with raw variables and scores"""
+        print("\nExporting shapefile and CSV...")
+        
+        # Create output dataframe
+        output_gdf = self.gdf.copy()
+        
+        # Add raw columns
+        for var in self.WEIGHT_VARS:
+            if var in self.raw_data.columns:
+                raw_col = self.RAW_COLS[var]
+                output_gdf[raw_col] = self.raw_data.loc[self.gdf.index, var]
+        
+        # Add basic min-max scores (_s)
+        if 'basic' in all_scores_data:
+            for var, scores in all_scores_data['basic'].items():
+                output_gdf[f"{var}_s"] = scores
+        
+        # Add quantile scores (_q)
+        if 'quantile' in all_scores_data:
+            for var, scores in all_scores_data['quantile'].items():
+                output_gdf[f"{var}_q"] = scores
+        
+        # Save shapefile
+        shp_path = 'fire_risk_scores_output.shp'
+        output_gdf.to_file(shp_path)
+        print(f"Saved shapefile: {shp_path}")
+        
+        # Save CSV (without geometry)
+        csv_df = output_gdf.drop(columns=['geometry'])
+        csv_path = 'fire_risk_scores_output.csv'
+        csv_df.to_csv(csv_path, index=False)
+        print(f"Saved CSV: {csv_path}")
+        
+        # Print summary of columns exported
+        print("\nExported columns:")
+        print("- Raw variables:", [self.RAW_COLS[var] for var in self.WEIGHT_VARS if var in self.raw_data.columns])
+        print("- Basic min-max scores (_s):", [f"{var}_s" for var in self.WEIGHT_VARS if var in all_scores_data.get('basic', {})])
+        print("- Quantile scores (_q):", [f"{var}_q" for var in self.WEIGHT_VARS if var in all_scores_data.get('quantile', {})])
+    
     def create_all_distributions_single_plot(self, all_scores_data):
         """Create a single PNG showing all raw and score distributions"""
-        print("\nCreating comprehensive distribution plot...")
+        print("\nCreating distribution plot (Raw, Basic Min-Max, Quantile)...")
         
         # Create a large figure with subplots
-        # 7 variables x 4 plots (raw + 3 scoring methods) = 28 subplots
-        # Arrange as 7 rows x 4 columns
-        # Reduced figure size for better terminal display
-        fig, axes = plt.subplots(7, 4, figsize=(16, 20))
+        # 7 variables x 3 plots (raw + 2 scoring methods) = 21 subplots
+        # Arrange as 7 rows x 3 columns
+        fig, axes = plt.subplots(7, 3, figsize=(12, 20))
         
         for i, var in enumerate(self.WEIGHT_VARS):
             if var not in self.raw_data.columns:
@@ -449,42 +488,25 @@ class EnhancedFireRiskAnalyzer:
                 ax_raw.set_title('Raw Data', fontsize=10, fontweight='bold')
             ax_raw.grid(True, alpha=0.3)
             
-            # Row i, Column 1: Raw Min-Max
-            ax_raw_mm = axes[i, 1]
-            if 'raw' in all_scores_data and var in all_scores_data['raw']:
-                scores = pd.Series(all_scores_data['raw'][var])
-                ax_raw_mm.hist(scores, bins=50, alpha=0.7, color='green', edgecolor='black', density=True)
-                ax_raw_mm.axvline(scores.mean(), color='darkgreen', linestyle='--', linewidth=2, alpha=0.8)
-                ax_raw_mm.set_xlim(0, 1)
+            # Row i, Column 1: Basic Min-Max
+            ax_basic = axes[i, 1]
+            if 'basic' in all_scores_data and var in all_scores_data['basic']:
+                scores = pd.Series(all_scores_data['basic'][var])
+                ax_basic.hist(scores, bins=50, alpha=0.7, color='green', edgecolor='black', density=True)
+                ax_basic.axvline(scores.mean(), color='darkgreen', linestyle='--', linewidth=2, alpha=0.8)
+                ax_basic.set_xlim(0, 1)
                 
                 # Add statistics with smaller font
                 stats_text = f'μ={scores.mean():.3f}\nσ={scores.std():.3f}'
-                ax_raw_mm.text(0.7, 0.9, stats_text, transform=ax_raw_mm.transAxes,
+                ax_basic.text(0.7, 0.9, stats_text, transform=ax_basic.transAxes,
                              bbox=dict(boxstyle='round', facecolor='white', alpha=0.8), fontsize=7)
             
             if i == 0:
-                ax_raw_mm.set_title('Raw Min-Max', fontsize=10, fontweight='bold')
-            ax_raw_mm.grid(True, alpha=0.3)
+                ax_basic.set_title('Basic Min-Max', fontsize=10, fontweight='bold')
+            ax_basic.grid(True, alpha=0.3)
             
-            # Row i, Column 2: Robust Min-Max
-            ax_robust = axes[i, 2]
-            if 'robust' in all_scores_data and var in all_scores_data['robust']:
-                scores = pd.Series(all_scores_data['robust'][var])
-                ax_robust.hist(scores, bins=50, alpha=0.7, color='orange', edgecolor='black', density=True)
-                ax_robust.axvline(scores.mean(), color='darkorange', linestyle='--', linewidth=2, alpha=0.8)
-                ax_robust.set_xlim(0, 1)
-                
-                # Add statistics with smaller font
-                stats_text = f'μ={scores.mean():.3f}\nσ={scores.std():.3f}'
-                ax_robust.text(0.7, 0.9, stats_text, transform=ax_robust.transAxes,
-                             bbox=dict(boxstyle='round', facecolor='white', alpha=0.8), fontsize=7)
-            
-            if i == 0:
-                ax_robust.set_title('Robust Min-Max', fontsize=10, fontweight='bold')
-            ax_robust.grid(True, alpha=0.3)
-            
-            # Row i, Column 3: Quantile
-            ax_quantile = axes[i, 3]
+            # Row i, Column 2: Quantile
+            ax_quantile = axes[i, 2]
             if 'quantile' in all_scores_data and var in all_scores_data['quantile']:
                 scores = pd.Series(all_scores_data['quantile'][var])
                 ax_quantile.hist(scores, bins=50, alpha=0.7, color='red', edgecolor='black', density=True)
@@ -501,20 +523,19 @@ class EnhancedFireRiskAnalyzer:
             ax_quantile.grid(True, alpha=0.3)
         
         # Add overall title and labels with smaller fonts
-        plt.suptitle('Fire Risk Variables: Raw Data and All Scoring Methods', fontsize=14, fontweight='bold', y=0.995)
+        plt.suptitle('Fire Risk Variables: Raw Data, Basic Min-Max, and Quantile', fontsize=14, fontweight='bold', y=0.995)
         
         # Add x-axis labels to bottom row with smaller font
         axes[-1, 0].set_xlabel('Raw Value', fontsize=8)
-        axes[-1, 1].set_xlabel('Normalized Score', fontsize=8)
-        axes[-1, 2].set_xlabel('Normalized Score', fontsize=8)
-        axes[-1, 3].set_xlabel('Normalized Score', fontsize=8)
+        axes[-1, 1].set_xlabel('Normalized Score (Min-Max)', fontsize=8)
+        axes[-1, 2].set_xlabel('Normalized Score (Quantile)', fontsize=8)
         
         plt.tight_layout()
         
         # Save the comprehensive plot
-        output_path = 'all_distributions_comprehensive.png'
+        output_path = 'fire_risk_distributions.png'
         fig.savefig(output_path, dpi=300, bbox_inches='tight')
-        print(f"Saved comprehensive distribution plot to: {output_path}")
+        print(f"Saved distribution plot to: {output_path}")
         
         # Display in terminal
         display_fig(fig)
@@ -595,46 +616,41 @@ def main():
                 print("Set SUBSET_ANALYSIS = False to run without subset filter.")
                 return
 
-        # Generate distributions for all three scoring methods used in web app
-        scoring_methods = ['raw', 'robust', 'quantile']
+        # Generate distributions for basic min-max and quantile scoring
+        scoring_methods = ['basic', 'quantile']
         all_scores_data = {}
         
-        print("Calculating scores for all methods...")
+        print("Calculating scores for basic min-max and quantile methods...")
         for scoring_method in scoring_methods:
-            # Add raw min-max scoring method
-            if scoring_method == 'raw':
-                # Implement raw min-max scoring
+            if scoring_method == 'basic':
+                # Basic min-max scoring (no log transform)
                 analyzer.calculate_raw_minmax_scores()
             elif scoring_method == 'quantile':
-                # Implement quantile scoring  
+                # Quantile scoring  
                 analyzer.calculate_quantile_scores()
-            else:
-                # Use existing robust method
-                analyzer.calculate_scores_from_raw(method='robust')
             
             # Store scores for comparison
             all_scores_data[scoring_method] = analyzer.score_data.to_dict()
         
+        # Export shapefile and CSV
+        analyzer.export_shapefile_and_csv(all_scores_data)
+        
         # Create comprehensive single plot showing all distributions
         analyzer.create_all_distributions_single_plot(all_scores_data)
         
-        # Skip all other analysis - only generate the comprehensive plot
-        
         print("\n" + "="*50)
-        print("COMPREHENSIVE DISTRIBUTION PLOT GENERATED!")
+        print("ANALYSIS COMPLETE!")
         print("="*50)
-        print("\nAnalysis Included:")
-        print("✓ Raw variable distributions (7 variables)")
-        print("✓ THREE scoring methods matching web app:")
-        print("  - Raw Min-Max (simple normalization)")
-        print("  - Robust Min-Max (log transform + P2-P98 clipping)")
-        print("  - Quantile (percentile ranking)")
-        print("✓ All distributions in one comprehensive plot")
-        print("\nGenerated PNG Files:")
-        print("- all_distributions_comprehensive.png (ALL distributions in one figure)")
-        print("\nVariables analyzed (matching web app):")
+        print("\nGenerated Files:")
+        print("1. fire_risk_scores_output.shp - Shapefile with raw variables and scores")
+        print("2. fire_risk_scores_output.csv - CSV with raw variables and scores")
+        print("3. fire_risk_distributions.png - Distribution plot")
+        print("\nData Included:")
+        print("- Raw variable values (original database columns)")
+        print("- Basic min-max scores (_s suffix)")
+        print("- Quantile scores (_q suffix)")
+        print("\nVariables analyzed:")
         print("qtrmi, hwui, hvhsz, neigh1d, hbrn, par_buf_sl, hlfmi_agfb")
-        print("(Excluded: avg_slope, hagri, hfb)")
 
     except Exception as e:
         print(f"\nError: {e}")

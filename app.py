@@ -1968,7 +1968,7 @@ function downloadSelectionData() {
         console.error('Error downloading full dataset:', error);
         alert('Error downloading full dataset. Please try again.');
     }
-});
+}
 </script>""")
     
     # Close HTML
