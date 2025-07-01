@@ -1726,12 +1726,24 @@ def generate_enhanced_solution_html(txt_content, lp_content, parcel_data, weight
         html_parts.append(f'<script>var sessionId = "{session_id}";</script>')
         
         html_parts.append("""<script>
-// Log for debugging
-console.log('Session ID:', sessionId);
-console.log('Selection parcel data available:', typeof selectionParcelData !== 'undefined' ? selectionParcelData.length + ' parcels' : 'Not found');
+// Initialize download handlers
+function initializeDownloadHandlers() {
+    // Log for debugging
+    console.log('Initializing download handlers...');
+    console.log('Session ID:', sessionId);
+    console.log('Selection parcel data available:', typeof selectionParcelData !== 'undefined' ? selectionParcelData.length + ' parcels' : 'Not found');
+    
+    // Check if elements exist
+    console.log('Download buttons found:', {
+        'download-table': !!document.getElementById('download-table'),
+        'download-lp': !!document.getElementById('download-lp'),
+        'download-all-dataset': !!document.getElementById('download-all-dataset')
+    });
 
-// Download table as CSV
-document.getElementById('download-table').addEventListener('click', function() {
+    // Download table as CSV
+    var downloadTableBtn = document.getElementById('download-table');
+    if (downloadTableBtn) {
+        downloadTableBtn.addEventListener('click', function() {
     try {
         var table = document.querySelector('table');
         if (!table) {
@@ -1769,10 +1781,15 @@ document.getElementById('download-table').addEventListener('click', function() {
         console.error('Error downloading CSV:', error);
         alert('Error downloading table. Please try again.');
     }
-});
+        });
+    } else {
+        console.error('Download table button not found');
+    }
 
-// Download LP file
-document.getElementById('download-lp').addEventListener('click', function() {
+    // Download LP file
+    var downloadLpBtn = document.getElementById('download-lp');
+    if (downloadLpBtn) {
+        downloadLpBtn.addEventListener('click', function() {
     try {
         // Try to get LP content from the page first
         var lpContentElement = document.getElementById('lp-content');
@@ -1815,10 +1832,15 @@ document.getElementById('download-lp').addEventListener('click', function() {
         console.error('Error downloading LP file:', error);
         alert('Error downloading LP file. Please try again.');
     }
-});
+        });
+    } else {
+        console.error('Download LP button not found');
+    }
 
-// Download selection dataset (parcels used in optimization)
-document.getElementById('download-all-dataset').addEventListener('click', function() {
+    // Download selection dataset (parcels used in optimization)
+    var downloadDatasetBtn = document.getElementById('download-all-dataset');
+    if (downloadDatasetBtn) {
+        downloadDatasetBtn.addEventListener('click', function() {
     try {
         // Fetch complete dataset from server
         fetch('/api/download-all-parcels/' + sessionId)
@@ -1846,7 +1868,19 @@ document.getElementById('download-all-dataset').addEventListener('click', functi
         console.error('Error:', error);
         alert('Error downloading full dataset.');
     }
-});
+        });
+    } else {
+        console.error('Download dataset button not found');
+    }
+}
+
+// Check if DOM is already loaded, otherwise wait for it
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initializeDownloadHandlers);
+} else {
+    // DOM is already loaded, initialize immediately
+    initializeDownloadHandlers();
+}
 
 // Keep the old function for backward compatibility but rename it
 function downloadSelectionData() {
