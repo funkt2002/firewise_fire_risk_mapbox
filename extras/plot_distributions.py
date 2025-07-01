@@ -475,7 +475,7 @@ class EnhancedFireRiskAnalyzer:
             valid_raw = raw_values[raw_values > 0] if var not in ['hwui', 'hvhsz', 'hbrn', 'hlfmi_agfb'] else raw_values[raw_values >= 0]
             
             if len(valid_raw) > 0:
-                ax_raw.hist(valid_raw, bins=50, alpha=0.7, color='blue', edgecolor='black', density=True)
+                ax_raw.hist(valid_raw, bins=50, alpha=0.7, color='blue', edgecolor='black')
                 ax_raw.axvline(valid_raw.mean(), color='darkblue', linestyle='--', linewidth=2, alpha=0.8)
                 
                 # Add statistics with smaller font
@@ -486,13 +486,15 @@ class EnhancedFireRiskAnalyzer:
             ax_raw.set_ylabel(f'{self.FACTOR_NAMES[var]}', fontsize=8, fontweight='bold')
             if i == 0:
                 ax_raw.set_title('Raw Data', fontsize=10, fontweight='bold')
+            if i == 6:  # Last row
+                ax_raw.set_xlabel('Raw Value', fontsize=8)
             ax_raw.grid(True, alpha=0.3)
             
             # Row i, Column 1: Basic Min-Max
             ax_basic = axes[i, 1]
             if 'basic' in all_scores_data and var in all_scores_data['basic']:
                 scores = pd.Series(all_scores_data['basic'][var])
-                ax_basic.hist(scores, bins=50, alpha=0.7, color='green', edgecolor='black', density=True)
+                ax_basic.hist(scores, bins=50, alpha=0.7, color='green', edgecolor='black')
                 ax_basic.axvline(scores.mean(), color='darkgreen', linestyle='--', linewidth=2, alpha=0.8)
                 ax_basic.set_xlim(0, 1)
                 
@@ -503,13 +505,15 @@ class EnhancedFireRiskAnalyzer:
             
             if i == 0:
                 ax_basic.set_title('Basic Min-Max', fontsize=10, fontweight='bold')
+            if i == 6:  # Last row
+                ax_basic.set_xlabel('Normalized Score', fontsize=8)
             ax_basic.grid(True, alpha=0.3)
             
             # Row i, Column 2: Quantile
             ax_quantile = axes[i, 2]
             if 'quantile' in all_scores_data and var in all_scores_data['quantile']:
                 scores = pd.Series(all_scores_data['quantile'][var])
-                ax_quantile.hist(scores, bins=50, alpha=0.7, color='red', edgecolor='black', density=True)
+                ax_quantile.hist(scores, bins=50, alpha=0.7, color='red', edgecolor='black')
                 ax_quantile.axvline(scores.mean(), color='darkred', linestyle='--', linewidth=2, alpha=0.8)
                 ax_quantile.set_xlim(0, 1)
                 
@@ -520,15 +524,15 @@ class EnhancedFireRiskAnalyzer:
             
             if i == 0:
                 ax_quantile.set_title('Quantile', fontsize=10, fontweight='bold')
+            if i == 6:  # Last row
+                ax_quantile.set_xlabel('Normalized Score', fontsize=8)
             ax_quantile.grid(True, alpha=0.3)
         
         # Add overall title and labels with smaller fonts
         plt.suptitle('Fire Risk Variables: Raw Data, Basic Min-Max, and Quantile', fontsize=14, fontweight='bold', y=0.995)
         
-        # Add x-axis labels to bottom row with smaller font
-        axes[-1, 0].set_xlabel('Raw Value', fontsize=8)
-        axes[-1, 1].set_xlabel('Normalized Score (Min-Max)', fontsize=8)
-        axes[-1, 2].set_xlabel('Normalized Score (Quantile)', fontsize=8)
+        # Add a common y-axis label
+        fig.text(0.001, 0.5, 'Count', va='center', rotation='vertical', fontsize=12, fontweight='bold')
         
         plt.tight_layout()
         
