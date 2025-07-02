@@ -2724,9 +2724,9 @@
                 document.getElementById('download-txt-btn').disabled = false;
                 document.getElementById('view-solution-btn').disabled = false;
 
-                // Handle feasibility check for relative optimization
-                if (isRelative && data.error && data.error.includes('not feasible')) {
-                    alert(`Relative optimization failed: Selected area cannot be ranked in top ${maxParcels} parcels. Try increasing Max Parcels or selecting a different area.`);
+                // Handle error responses from optimization
+                if (data.error) {
+                    alert(`${optimizationType} optimization failed: ${data.error}`);
                     return;
                 }
 
@@ -2757,11 +2757,7 @@
                 
             } catch (error) {
                 console.error(`Error in ${optimizationType} optimization:`, error);
-                if (isRelative && error.message && error.message.includes('not feasible')) {
-                    alert(`Relative optimization failed: Selected area cannot be ranked in top ${maxParcels} parcels. Try increasing Max Parcels or selecting a different area.`);
-                } else {
-                    alert(`${optimizationType} optimization failed: ` + error.message);
-                }
+                alert(`${optimizationType} optimization failed: ` + error.message);
             } finally {
                 document.getElementById('spinner').style.display = 'none';
             }
