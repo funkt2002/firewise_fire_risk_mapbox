@@ -1404,6 +1404,115 @@ def solve_relative_optimization_heuristic(parcel_data, include_vars, top_n, requ
     
     gc.collect()
     return best_weights, weights_pct, total_score, True
+
+def solve_separation_optimization(parcel_data, include_vars, all_parcels_data):
+    """
+    Separation-based LP optimization that maximizes the gap between 
+    minimum selected parcel score and maximum non-selected parcel score
+    """
+    import gc
+    
+    # Process variable names efficiently
+    include_vars_base = [var[:-2] if var.endswith(('_s', '_q')) else var for var in include_vars]
+    
+    logger.info(f"SEPARATION OPTIMIZATION (LP): {len(parcel_data):,} selected parcels, {len(all_parcels_data):,} total parcels, {len(include_vars_base)} variables")
+    
+    # Get selected parcel IDs
+    selected_ids = set()
+    for parcel in parcel_data:
+        parcel_id = parcel.get('parcel_id') or parcel.get('id')
+        if parcel_id:
+            selected_ids.add(parcel_id)
+    
+    # Create LP problem
+    prob = LpProblem("Fire_Risk_Separation", LpMaximize)
+    
+    # Decision variables
+    w_vars = LpVariable.dicts('w', include_vars_base, lowBound=0.0)
+    min_selected_score = LpVariable('min_selected', lowBound=0)
+    max_other_score = LpVariable('max_other', upBound=100)
+    
+    # Constraint: weights sum to 1
+    prob += lpSum([w_vars[var_base] for var_base in include_vars_base]) == 1
+    
+    # Constraints for selected parcels (score >= min_selected_score)
+    logger.info(f"Adding constraints for {len(parcel_data)} selected parcels...")
+    for parcel in parcel_data:
+        score = lpSum([w_vars[var_base] * parcel['scores'][var_base] 
+                      for var_base in include_vars_base if var_base in parcel['scores']])
+        prob += score >= min_selected_score
+    
+    # Constraints for non-selected parcels (score <= max_other_score)
+    logger.info(f"Adding constraints for non-selected parcels...")
+    non_selected_count = 0
+    for parcel in all_parcels_data:
+        parcel_id = parcel.get('parcel_id') or parcel.get('id')
+        if parcel_id and parcel_id not in selected_ids:
+            score = lpSum([w_vars[var_base] * parcel['scores'][var_base] 
+                          for var_base in include_vars_base if var_base in parcel['scores']])
+            prob += score <= max_other_score
+            non_selected_count += 1
+    
+    logger.info(f"Added constraints for {non_selected_count} non-selected parcels")
+    
+    # Objective: maximize the separation gap
+    separation_gap = min_selected_score - max_other_score
+    prob += separation_gap
+    
+    # Solve the problem
+    logger.info(f"Solving separation LP with {len(parcel_data) + non_selected_count + 1} constraints...")
+    solver = COIN_CMD(msg=0, timeLimit=120)  # 2 minute timeout
+    solver_result = prob.solve(solver)
+    logger.info(f"Solver finished with status: {LpStatus[prob.status]}")
+    
+    # Extract results
+    if solver_result == 1:  # Optimal solution found
+        optimal_weights = {}
+        for var_base in include_vars_base:
+            optimal_weights[var_base] = value(w_vars[var_base]) if var_base in w_vars else 0
+        
+        weights_pct = {var: weight * 100 for var, weight in optimal_weights.items()}
+        separation_gap_value = value(separation_gap)
+        min_selected_value = value(min_selected_score)
+        max_other_value = value(max_other_score)
+        
+        # Count non-zero weights and find dominant variable
+        nonzero_weights = sum(1 for w in optimal_weights.values() if w > 0.01)
+        dominant_var = max(optimal_weights, key=optimal_weights.get)
+        max_weight = optimal_weights[dominant_var]
+        
+        logger.info(f"Separation optimization completed successfully")
+        logger.info(f"Separation gap: {separation_gap_value:.3f}")
+        logger.info(f"Min selected score: {min_selected_value:.3f}, Max other score: {max_other_value:.3f}")
+        logger.info(f"VARIABLE WEIGHTS: {[(var, f'{weight:.1%}') for var, weight in optimal_weights.items() if weight > 0.001]}")
+        
+        # Calculate total score using the optimal weights (for consistency with other methods)
+        total_score = 0
+        for parcel in parcel_data:
+            for var_base in include_vars_base:
+                if var_base in parcel['scores']:
+                    score = parcel['scores'][var_base]
+                    weight = optimal_weights[var_base]
+                    total_score += weight * score
+        
+        # Store separation-specific metrics for the report
+        separation_metrics = {
+            'separation_gap': separation_gap_value,
+            'min_selected_score': min_selected_value,
+            'max_other_score': max_other_value,
+            'nonzero_weights': nonzero_weights,
+            'dominant_var': dominant_var,
+            'is_mixed': nonzero_weights > 1
+        }
+        
+        gc.collect()
+        return optimal_weights, weights_pct, total_score, True, separation_metrics
+        
+    else:
+        logger.error(f"Separation optimization failed with status: {LpStatus[prob.status]} - Selection may be infeasible")
+        gc.collect()
+        return None, None, None, False, None
+
 def generate_solution_files(include_vars, best_weights, weights_pct, total_score, 
                            parcel_data, request_data):
     """Generate LP and TXT solution files"""
@@ -1568,7 +1677,7 @@ def generate_solution_files(include_vars, best_weights, weights_pct, total_score
     
     return lp_content, txt_content
 
-def generate_enhanced_solution_html(txt_content, lp_content, parcel_data, weights, session_id='unknown'):
+def generate_enhanced_solution_html(txt_content, lp_content, parcel_data, weights, session_id='unknown', separation_metrics=None, optimization_type='absolute'):
     """Generate enhanced HTML solution report with LP file and parcel table"""
     
     # Factor names for display
@@ -1663,6 +1772,26 @@ def generate_enhanced_solution_html(txt_content, lp_content, parcel_data, weight
     html_parts.append('<h2>Solution Summary</h2>')
     html_parts.append(f'<pre>{txt_content}</pre>')
     html_parts.append('</div>')
+    
+    # Separation metrics section (if applicable)
+    if optimization_type == 'separation' and separation_metrics:
+        html_parts.append('<div class="section">')
+        html_parts.append('<h2>Separation Analysis</h2>')
+        html_parts.append('<table style="border-collapse: collapse; margin: 10px 0;">')
+        html_parts.append('<tr><td style="padding: 5px; border: 1px solid #ddd;"><strong>Separation Gap:</strong></td>')
+        html_parts.append(f'<td style="padding: 5px; border: 1px solid #ddd;">{separation_metrics["separation_gap"]:.3f}</td></tr>')
+        html_parts.append('<tr><td style="padding: 5px; border: 1px solid #ddd;"><strong>Min Selected Score:</strong></td>')
+        html_parts.append(f'<td style="padding: 5px; border: 1px solid #ddd;">{separation_metrics["min_selected_score"]:.3f}</td></tr>')
+        html_parts.append('<tr><td style="padding: 5px; border: 1px solid #ddd;"><strong>Max Non-Selected Score:</strong></td>')
+        html_parts.append(f'<td style="padding: 5px; border: 1px solid #ddd;">{separation_metrics["max_other_score"]:.3f}</td></tr>')
+        html_parts.append('<tr><td style="padding: 5px; border: 1px solid #ddd;"><strong>Weight Distribution:</strong></td>')
+        if separation_metrics["is_mixed"]:
+            html_parts.append(f'<td style="padding: 5px; border: 1px solid #ddd;">Mixed ({separation_metrics["nonzero_weights"]} variables)</td></tr>')
+        else:
+            html_parts.append(f'<td style="padding: 5px; border: 1px solid #ddd;">Single variable ({separation_metrics["dominant_var"]})</td></tr>')
+        html_parts.append('</table>')
+        html_parts.append('<p><em>Note: A positive separation gap indicates the selected parcels can be ranked higher than all non-selected parcels.</em></p>')
+        html_parts.append('</div>')
     
     # LP file section
     html_parts.append('<div class="section">')
@@ -1969,8 +2098,26 @@ def infer_weights():
         
         # Check optimization type
         optimization_type = data.get('optimization_type', 'absolute')
+        separation_metrics = None
         
-        if optimization_type == 'relative':
+        if optimization_type == 'separation':
+            # Separation optimization: maximize gap between selected and non-selected
+            logger.info(f"SEPARATION OPTIMIZATION: selected parcels={len(parcel_data)}")
+            
+            # Get all parcels currently in memory/view for constraints
+            all_parcels_data = data.get('parcel_scores', [])
+            if not all_parcels_data:
+                return jsonify({"error": "No parcel scores provided for separation optimization"}), 400
+            
+            logger.info(f"SEPARATION OPTIMIZATION: total parcels in view={len(all_parcels_data)}")
+            
+            result = solve_separation_optimization(parcel_data, include_vars, all_parcels_data)
+            if len(result) == 5:  # New format with separation metrics
+                best_weights, weights_pct, total_score, success, separation_metrics = result
+            else:  # Fallback for compatibility
+                best_weights, weights_pct, total_score, success = result
+                
+        elif optimization_type == 'relative':
             # Relative optimization: balanced QP approach
             top_n = data.get('top_n', 100)
             logger.info(f"RELATIVE OPTIMIZATION: top_n={top_n}, parcel_data count={len(parcel_data)}")
@@ -1988,7 +2135,9 @@ def infer_weights():
             )
         
         if not success:
-            if optimization_type == 'relative':
+            if optimization_type == 'separation':
+                return jsonify({"error": "Selection area infeasible, please select another"}), 400
+            elif optimization_type == 'relative':
                 return jsonify({"error": "Relative optimization failed. Check console logs for details."}), 500
             else:
                 return jsonify({"error": "Absolute optimization failed"}), 500
@@ -2040,6 +2189,8 @@ def infer_weights():
             }
             if optimization_type == 'relative':
                 metadata['top_n'] = data.get('top_n', 100)
+            elif optimization_type == 'separation' and separation_metrics:
+                metadata['separation_metrics'] = separation_metrics
             json.dump(metadata, f)
         
         logger.info(f"Saved optimization files to: {session_dir}")
@@ -2050,6 +2201,8 @@ def infer_weights():
         timing_log = f"{optimization_type.title()} optimization completed in {total_time:.2f}s for {num_parcels} parcels."
         if optimization_type == 'relative':
             timing_log += f" Target: top {data.get('top_n', 100)} parcels."
+        elif optimization_type == 'separation' and separation_metrics:
+            timing_log += f" Gap: {separation_metrics['separation_gap']:.3f}"
         
         response_data = {
             "weights": weights_pct,           # ~200 bytes
@@ -2061,6 +2214,9 @@ def infer_weights():
             "timing_log": timing_log,
             "files_available": True           # Files stored on disk, not in memory
         }
+        
+        if optimization_type == 'separation' and separation_metrics:
+            response_data['separation_gap'] = separation_metrics['separation_gap']
         
         logger.info(f"Sending response: {len(str(response_data))} characters")
         return jsonify(response_data)
@@ -2180,15 +2336,19 @@ def view_solution(session_id):
             with open(parcel_data_path, 'r') as f:
                 parcel_data = json.load(f)
         
-        # Read metadata for weights
+        # Read metadata for weights and separation metrics
         weights = {}
+        separation_metrics = None
+        optimization_type = 'absolute'
         if os.path.exists(metadata_path):
             with open(metadata_path, 'r') as f:
                 metadata = json.load(f)
                 weights = metadata.get('weights', {})
+                separation_metrics = metadata.get('separation_metrics', None)
+                optimization_type = metadata.get('optimization_type', 'absolute')
         
         # Generate enhanced HTML report
-        html_content = generate_enhanced_solution_html(txt_content, lp_content, parcel_data, weights, session_id)
+        html_content = generate_enhanced_solution_html(txt_content, lp_content, parcel_data, weights, session_id, separation_metrics, optimization_type)
         
         response = make_response(html_content)
         response.headers['Content-Type'] = 'text/html'

@@ -1203,15 +1203,12 @@
                         Absolute: Linear Program (Maximize total risk score)
                     </label>
                 </div>
-                <!-- Relative optimization temporarily disabled -->
-                <!--
                 <div class="toggle-container">
                     <label class="toggle-label">
-                        <input type="radio" name="optimization-type" id="optimization-relative" value="relative">
-                        Relative: Quadratic Program (Balanced weights across factors)
+                        <input type="radio" name="optimization-type" id="optimization-separation" value="separation">
+                        Rank Based: Separation Linear Program (Maximize gap between selected/non-selected)
                     </label>
                 </div>
-                -->
             </div>
             
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 5px;">
@@ -2668,9 +2665,8 @@
                 });
 
             // Check optimization type from radio buttons
-            // Relative optimization temporarily disabled - always use absolute
-            const optimizationType = 'absolute';
-            const isRelative = false;
+            const optimizationType = document.querySelector('input[name="optimization-type"]:checked').value;
+            const isSeparation = optimizationType === 'separation';
 
             document.getElementById('spinner').style.display = 'block';
 
@@ -2692,8 +2688,8 @@
                     ...getCurrentFilters()
                 };
 
-                // For relative optimization, add all parcel scores and use max_parcels as top_n
-                if (isRelative) {
+                // For separation optimization, we need all parcel scores for constraints
+                if (isSeparation) {
                     const allParcelScores = [];
                     if (currentData && currentData.features) {
                         currentData.features.forEach(feature => {
@@ -2711,8 +2707,7 @@
                         });
                     }
                     requestData.parcel_scores = allParcelScores;
-                    requestData.top_n = maxParcels; // Use max_parcels as top_n for relative optimization
-                    console.log(`Collected ${allParcelScores.length} total parcel scores for relative ranking with top ${maxParcels}`);
+                    console.log(`Collected ${allParcelScores.length} total parcel scores for separation constraints`);
                 }
 
                 const data = await window.apiClient.inferWeights(requestData);
