@@ -97,6 +97,20 @@ class Config:
         'hlfmi_agfb': 'Ag/Fuel Break Score'
     }
     
+    # Factor names for reports and detailed descriptions
+    FACTOR_NAMES = {
+        'qtrmi': 'Structures (1/4 mile)',
+        'hwui': 'WUI Coverage (1/2 mile)',
+        'hagri': 'Agriculture (1/2 mile)',
+        'hvhsz': 'Fire Hazard (1/2 mile)',
+        'hfb': 'Fuel Breaks (1/2 mile)',
+        'slope': 'Slope',
+        'neigh1d': 'Neighbor Distance',
+        'hbrn': 'Burn Scars (1/2 mile)',
+        'par_buf_sl': 'Slope within 100 ft of structure',
+        'hlfmi_agfb': 'Agriculture & Fuelbreaks (1/2 mile)'
+    }
+    
     # Scoring method configurations
     SCORING_METHODS = {
         'raw': {

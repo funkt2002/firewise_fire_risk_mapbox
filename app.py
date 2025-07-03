@@ -1235,18 +1235,7 @@ def generate_solution_files(include_vars, best_weights, weights_pct, total_score
     lp_content = "\n".join(lp_lines)
     
     # Generate TXT file
-    factor_names = {
-        'qtrmi': 'Structures (1/4 mile)',
-        'hwui': 'WUI Coverage (1/2 mile)',
-        'hagri': 'Agriculture (1/2 mile)',
-        'hvhsz': 'Fire Hazard (1/2 mile)',
-        'hfb': 'Fuel Breaks (1/2 mile)',
-        'slope': 'Slope',
-        'neigh1d': 'Neighbor Distance',
-        'hbrn': 'Burn Scars (1/2 mile)',
-        'par_buf_sl': 'Slope within 100 ft of structure',
-        'hlfmi_agfb': 'Agriculture & Fuelbreaks (1/2 mile)'
-    }
+    factor_names = Config.FACTOR_NAMES
     
     txt_lines = []
     # Get selection area info for reporting
@@ -1346,32 +1335,10 @@ def generate_enhanced_solution_html(txt_content, lp_content, parcel_data, weight
     """Generate enhanced HTML solution report with LP file and parcel table"""
     
     # Factor names for display
-    factor_names = {
-        'qtrmi': 'Structures (1/4 mile)',
-        'hwui': 'WUI Coverage (1/2 mile)',
-        'hagri': 'Agriculture (1/2 mile)',
-        'hvhsz': 'Fire Hazard (1/2 mile)',
-        'hfb': 'Fuel Breaks (1/2 mile)',
-        'slope': 'Slope',
-        'neigh1d': 'Neighbor Distance',
-        'hbrn': 'Burn Scars (1/2 mile)',
-        'par_buf_sl': 'Slope within 100 ft of structure',
-        'hlfmi_agfb': 'Agriculture & Fuelbreaks (1/2 mile)'
-    }
+    factor_names = Config.FACTOR_NAMES
     
     # Mapping from base variable to raw property name
-    raw_var_map = {
-        'qtrmi': 'qtrmi_cnt',
-        'hwui': 'hlfmi_wui',
-        'hagri': 'hlfmi_agri',
-        'hvhsz': 'hlfmi_vhsz',
-        'hfb': 'hlfmi_fb',
-        'slope': 'avg_slope',  # Fixed: should be avg_slope, not slope_s
-        'neigh1d': 'neigh1_d',
-        'hbrn': 'hlfmi_brn',
-        'par_buf_sl': 'par_buf_sl',
-        'hlfmi_agfb': 'hlfmi_agfb'
-    }
+    raw_var_map = Config.RAW_VAR_MAP
     
     # Calculate composite scores for each parcel
     parcels_with_composite_scores = []
@@ -1655,18 +1622,7 @@ function downloadSelectionData() {
         
         // Add headers for raw values and scores
         sortedVars.forEach(function(varName) {
-            var factorNames = {
-                'qtrmi': 'Structures (1/4 mile)',
-                'hwui': 'WUI Coverage (1/2 mile)',
-                'hagri': 'Agriculture (1/2 mile)',
-                'hvhsz': 'Fire Hazard (1/2 mile)',
-                'hfb': 'Fuel Breaks (1/2 mile)',
-                'slope': 'Slope',
-                'neigh1d': 'Neighbor Distance',
-                'hbrn': 'Burn Scars (1/2 mile)',
-                'par_buf_sl': 'Slope within 100 ft',
-                'hlfmi_agfb': 'Agriculture & Fuelbreaks (1/2 mile)'
-            };
+            var factorNames = {json.dumps(Config.FACTOR_NAMES)};
             var displayName = factorNames[varName] || varName;
             headers.push(displayName + ' Raw');
             headers.push(displayName + ' Score');
@@ -1681,18 +1637,7 @@ function downloadSelectionData() {
             
             sortedVars.forEach(function(varName) {
                 // Map variable names to raw property names
-                var rawVarMap = {
-                    'qtrmi': 'qtrmi_cnt',
-                    'hwui': 'hlfmi_wui',
-                    'hagri': 'hlfmi_agri',
-                    'hvhsz': 'hlfmi_vhsz',
-                    'hfb': 'hlfmi_fb',
-                    'slope': 'avg_slope',
-                    'neigh1d': 'neigh1_d',
-                    'hbrn': 'hlfmi_brn',
-                    'par_buf_sl': 'par_buf_sl',
-                    'hlfmi_agfb': 'hlfmi_agfb'
-                };
+                var rawVarMap = {json.dumps(Config.RAW_VAR_MAP)};
                 
                 var rawProp = rawVarMap[varName] || varName;
                 var rawValue = parcel.raw[rawProp] !== undefined ? parcel.raw[rawProp] : 'N/A';
@@ -2036,32 +1981,10 @@ def download_all_parcels(session_id):
         headers = ['Parcel ID']
         
         # Add headers for each variable (raw and score)
-        var_names = ['qtrmi', 'hwui', 'hagri', 'hvhsz', 'hfb', 'slope', 'neigh1d', 'hbrn', 'par_buf_sl', 'hlfmi_agfb']
-        factor_names = {
-            'qtrmi': 'Structures (1/4 mile)',
-            'hwui': 'WUI Coverage (1/2 mile)',
-            'hagri': 'Agriculture (1/2 mile)',
-            'hvhsz': 'Fire Hazard (1/2 mile)',
-            'hfb': 'Fuel Breaks (1/2 mile)',
-            'slope': 'Slope',
-            'neigh1d': 'Neighbor Distance',
-            'hbrn': 'Burn Scars (1/2 mile)',
-            'par_buf_sl': 'Slope within 100 ft',
-            'hlfmi_agfb': 'Agriculture & Fuelbreaks'
-        }
+        var_names = Config.WEIGHT_VARS_BASE
+        factor_names = Config.FACTOR_NAMES
         
-        raw_var_map = {
-            'qtrmi': 'qtrmi_cnt',
-            'hwui': 'hlfmi_wui',
-            'hagri': 'hlfmi_agri',
-            'hvhsz': 'hlfmi_vhsz',
-            'hfb': 'hlfmi_fb',
-            'slope': 'avg_slope',
-            'neigh1d': 'neigh1_d',
-            'hbrn': 'hlfmi_brn',
-            'par_buf_sl': 'par_buf_sl',
-            'hlfmi_agfb': 'hlfmi_agfb'
-        }
+        raw_var_map = Config.RAW_VAR_MAP
         
         # Determine which variables are present
         included_vars = []
