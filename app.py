@@ -204,7 +204,94 @@ def get_score_vars(use_quantile=False):
 @app.route('/')
 def index():
     try:
-        return render_template('index.html', mapbox_token=app.config.get('MAPBOX_TOKEN', ''))
+        # Define weight slider variables for template components
+        weight_variables = [
+            {
+                'id': 'qtrmi_s',
+                'name': 'Number of Structures Within Window (1/4 mile)',
+                'value': 30,
+                'enabled': True,
+                'raw_key': 'qtrmi_cnt',
+                'correlation_key': 'qtrmi',
+                'subtitle': None
+            },
+            {
+                'id': 'neigh1d_s',
+                'name': 'Distance to Nearest Neighbor',
+                'value': 0,
+                'enabled': True,
+                'raw_key': 'neigh1_d',
+                'correlation_key': 'neigh1d',
+                'subtitle': 'Only Includes Parcels with Structure Data'
+            },
+            {
+                'id': 'hwui_s',
+                'name': 'Wildland Urban Interface (WUI) coverage percentage (1/2 mile)',
+                'value': 20,
+                'enabled': True,
+                'raw_key': 'hwui',
+                'correlation_key': 'hwui',
+                'subtitle': None
+            },
+            {
+                'id': 'hvhsz_s',
+                'name': 'Fire Hazard Severity Zone (1/2 mile)',
+                'value': 20,
+                'enabled': True,
+                'raw_key': 'hvhsz',
+                'correlation_key': 'hvhsz',
+                'subtitle': None
+            },
+            {
+                'id': 'hbrn_s',
+                'name': 'Burn Scar Exposure (1/2 mile)',
+                'value': 10,
+                'enabled': True,
+                'raw_key': 'hbrn',
+                'correlation_key': 'hbrn',
+                'subtitle': None
+            },
+            {
+                'id': 'hagri_s',
+                'name': 'Agricultural Coverage (1/2 mile)',
+                'value': 10,
+                'enabled': True,
+                'raw_key': 'hagri',
+                'correlation_key': 'hagri',
+                'subtitle': None
+            },
+            {
+                'id': 'hfb_s',
+                'name': 'Fuel Break Coverage (1/2 mile)',
+                'value': 10,
+                'enabled': True,
+                'raw_key': 'hfb',
+                'correlation_key': 'hfb',
+                'subtitle': None
+            },
+            {
+                'id': 'par_buf_sl',
+                'name': 'Parcel Buffer Slope',
+                'value': 0,
+                'enabled': True,
+                'raw_key': 'par_buf_sl',
+                'correlation_key': 'par_buf_sl',
+                'subtitle': None
+            },
+            {
+                'id': 'slope_s',
+                'name': 'Slope (degrees)',
+                'value': 0,
+                'enabled': True,
+                'raw_key': 'slope',
+                'correlation_key': 'slope',
+                'subtitle': None
+            }
+        ]
+        
+        return render_template('index.html', 
+                             mapbox_token=app.config.get('MAPBOX_TOKEN', ''),
+                             weight_variables=weight_variables)
     except Exception as e:
         return f"""
         <html>

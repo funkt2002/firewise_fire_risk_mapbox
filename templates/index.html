@@ -701,236 +701,23 @@
     <button class="panel-toggle" id="panel-toggle" onclick="togglePanel()">☰</button>
     
     <div class="control-panel" id="control-panel">
-        <!-- WRI Logo Header -->
-        <div class="wri-header">
-            <a href="https://wri.ucsb.edu/" target="_blank" class="wri-logo-link">
-                <img src="https://webapp.wri.ucsb.edu/wrilogo_1.png" alt="WRI Logo" class="wri-logo">
-            </a>
-            <button class="hamburger-menu" onclick="togglePanel()" title="Collapse Panel">☰</button>
-        </div>
-        
-        <!-- Panel Content -->
-        <div class="panel-content">
-            <h1>Fire Risk Calculator <button class="help-btn" onclick="WelcomePopup.showWelcome()" title="Show Tutorial">?</button></h1>
+        {% include 'components/control_panel_header.html' %}
         
         <div class="control-section">
             <h2>Risk Factor Weights</h2>
             <div style="font-size: 10px; color: #888; margin-bottom: 8px;">check variables on or off with boxes to left</div>
             <div id="weight-sliders">
-                <!-- Structure Density Group -->
-                <div class="variable-container" data-variable="qtrmi_s">
-                    <div class="variable-header">
-                        <input type="checkbox" class="variable-enable-checkbox" id="enable-qtrmi_s" checked>
-                        <span class="variable-name">Number of Structures Within Window (1/4 mile)</span>
-                    </div>
-                    <div class="variable-controls expanded">
-                        <div class="slider-container">
-                            <div class="slider-label">
-                                <span class="slider-value" id="qtrmi_s-value">30%</span>
-                            </div>
-                            <input type="range" class="slider weight-slider" id="qtrmi_s" min="0" max="100" value="30">
-                            <div class="dist-buttons">
-                                <button class="dist-button" onclick="window.plottingManager.showDistribution('qtrmi_cnt')">Raw</button>
-                                <button class="dist-button" onclick="window.plottingManager.showDistribution('qtrmi_s')">Score</button>
-                                <button class="dist-button" onclick="window.plottingManager.showVariableCorrelation('qtrmi')">Correlation</button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="variable-container" data-variable="neigh1d_s">
-                    <div class="variable-header">
-                        <input type="checkbox" class="variable-enable-checkbox" id="enable-neigh1d_s" checked>
-                        <span class="variable-name">Distance to Nearest Neighbor</span>
-                    </div>
-                    <div class="variable-controls expanded">
-                        <div style="font-size: 10px; color: #888; margin-bottom: 3px;">Only Includes Parcels with Structure Data</div>
-                        <div class="slider-container">
-                            <div class="slider-label">
-                                <span class="slider-value" id="neigh1d_s-value">0%</span>
-                            </div>
-                            <input type="range" class="slider weight-slider" id="neigh1d_s" min="0" max="100" value="0">
-                            <div class="dist-buttons">
-                                <button class="dist-button" onclick="window.plottingManager.showDistribution('neigh1_d')">Raw</button>
-                                <button class="dist-button" onclick="window.plottingManager.showDistribution('neigh1d_s')">Score</button>
-                                <button class="dist-button" onclick="window.plottingManager.showVariableCorrelation('neigh1d')">Correlation</button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- WUI & Hazards Group -->
-                <div class="variable-container" data-variable="hwui_s">
-                    <div class="variable-header">
-                        <input type="checkbox" class="variable-enable-checkbox" id="enable-hwui_s" checked>
-                        <span class="variable-name">Wildland Urban Interface (WUI) coverage percentage (1/2 mile)</span>
-                    </div>
-                    <div class="variable-controls expanded">
-                        <div class="slider-container">
-                            <div class="slider-label">
-                                <span class="slider-value" id="hwui_s-value">34%</span>
-                            </div>
-                            <input type="range" class="slider weight-slider" id="hwui_s" min="0" max="100" value="34">
-                            <div class="dist-buttons">
-                                <button class="dist-button" onclick="window.plottingManager.showDistribution('hlfmi_wui')">Raw</button>
-                                <button class="dist-button" onclick="window.plottingManager.showDistribution('hwui_s')">Score</button>
-                                <button class="dist-button" onclick="window.plottingManager.showVariableCorrelation('hwui')">Correlation</button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="variable-container" data-variable="hvhsz_s">
-                    <div class="variable-header">
-                        <input type="checkbox" class="variable-enable-checkbox" id="enable-hvhsz_s" checked>
-                        <span class="variable-name">Very High Fire Hazard Zone coverage (1/2 mile)</span>
-                    </div>
-                    <div class="variable-controls expanded">
-                        <div class="slider-container">
-                            <div class="slider-label">
-                                <span class="slider-value" id="hvhsz_s-value">26%</span>
-                            </div>
-                            <input type="range" class="slider weight-slider" id="hvhsz_s" min="0" max="100" value="26">
-                            <div class="dist-buttons">
-                                <button class="dist-button" onclick="window.plottingManager.showDistribution('hlfmi_vhsz')">Raw</button>
-                                <button class="dist-button" onclick="window.plottingManager.showDistribution('hvhsz_s')">Score</button>
-                                <button class="dist-button" onclick="window.plottingManager.showVariableCorrelation('hvhsz')">Correlation</button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Agriculture & Fuelbreaks Group -->
-                <div class="variable-container" data-variable="hlfmi_agfb_s">
-                    <div class="variable-header">
-                        <input type="checkbox" class="variable-enable-checkbox" id="enable-hlfmi_agfb_s" checked>
-                        <span class="variable-name">Agriculture & Fuelbreaks (1/2 mile)</span>
-                    </div>
-                    <div class="variable-controls expanded">
-                        <div class="slider-container">
-                            <div class="slider-label">
-                                <span class="slider-value" id="hlfmi_agfb_s-value">0%</span>
-                            </div>
-                            <input type="range" class="slider weight-slider" id="hlfmi_agfb_s" min="0" max="100" value="0">
-                            <div class="dist-buttons">
-                                <button class="dist-button" onclick="window.plottingManager.showDistribution('hlfmi_agfb')">Raw</button>
-                                <button class="dist-button" onclick="window.plottingManager.showDistribution('hlfmi_agfb_s')">Score</button>
-                                <button class="dist-button" onclick="window.plottingManager.showVariableCorrelation('hlfmi_agfb')">Correlation</button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Slope Group -->
-                <div class="variable-container" data-variable="par_buf_sl_s">
-                    <div class="variable-header">
-                        <input type="checkbox" class="variable-enable-checkbox" id="enable-par_buf_sl_s" checked>
-                        <span class="variable-name">Structure Surrounding Slope (100 foot buffer)</span>
-                    </div>
-                    <div class="variable-controls expanded">
-                        <div class="slider-container">
-                            <div class="slider-label">
-                                <span class="slider-value" id="par_buf_sl_s-value">11%</span>
-                            </div>
-                            <input type="range" class="slider weight-slider" id="par_buf_sl_s" min="0" max="100" value="11">
-                            <div class="dist-buttons">
-                                <button class="dist-button" onclick="window.plottingManager.showDistribution('par_buf_sl')">Raw</button>
-                                <button class="dist-button" onclick="window.plottingManager.showDistribution('par_buf_sl_s')">Score</button>
-                                <button class="dist-button" onclick="window.plottingManager.showVariableCorrelation('par_buf_sl')">Correlation</button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Variables Turned Off (at bottom) -->
-                <div class="variable-container" data-variable="hagri_s">
-                    <div class="variable-header">
-                        <input type="checkbox" class="variable-enable-checkbox" id="enable-hagri_s">
-                        <span class="variable-name">Agricultural Coverage (1/2 Mile)</span>
-                    </div>
-                    <div class="variable-controls collapsed">
-                        <div class="slider-container">
-                            <div class="slider-label">
-                                <span class="slider-value" id="hagri_s-value">0%</span>
-                            </div>
-                            <input type="range" class="slider weight-slider" id="hagri_s" min="0" max="100" value="0">
-                            <div class="dist-buttons">
-                                <button class="dist-button" onclick="window.plottingManager.showDistribution('hlfmi_agri')">Raw</button>
-                                <button class="dist-button" onclick="window.plottingManager.showDistribution('hagri_s')">Score</button>
-                                <button class="dist-button" onclick="window.plottingManager.showVariableCorrelation('hagri')">Correlation</button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="variable-container" data-variable="hfb_s">
-                    <div class="variable-header">
-                        <input type="checkbox" class="variable-enable-checkbox" id="enable-hfb_s">
-                        <span class="variable-name">Fuel Break coverage (1/2 mile)</span>
-                    </div>
-                    <div class="variable-controls collapsed">
-                        <div class="slider-container">
-                            <div class="slider-label">
-                                <span class="slider-value" id="hfb_s-value">0%</span>
-                            </div>
-                            <input type="range" class="slider weight-slider" id="hfb_s" min="0" max="100" value="0">
-                            <div class="dist-buttons">
-                                <button class="dist-button" onclick="window.plottingManager.showDistribution('hlfmi_fb')">Raw</button>
-                                <button class="dist-button" onclick="window.plottingManager.showDistribution('hfb_s')">Score</button>
-                                <button class="dist-button" onclick="window.plottingManager.showVariableCorrelation('hfb')">Correlation</button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="variable-container" data-variable="hbrn_s">
-                    <div class="variable-header">
-                        <input type="checkbox" class="variable-enable-checkbox" id="enable-hbrn_s">
-                        <span class="variable-name">Burn Scar Coverage (1/2 mile)</span>
-                    </div>
-                    <div class="variable-controls collapsed">
-                        <div class="slider-container">
-                            <div class="slider-label">
-                                <span class="slider-value" id="hbrn_s-value">0%</span>
-                            </div>
-                            <input type="range" class="slider weight-slider" id="hbrn_s" min="0" max="100" value="0">
-                            <div class="dist-buttons">
-                                <button class="dist-button" onclick="window.plottingManager.showDistribution('hlfmi_brn')">Raw</button>
-                                <button class="dist-button" onclick="window.plottingManager.showDistribution('hbrn_s')">Score</button>
-                                <button class="dist-button" onclick="window.plottingManager.showVariableCorrelation('hbrn')">Correlation</button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="variable-container" data-variable="slope_s">
-                    <div class="variable-header">
-                        <input type="checkbox" class="variable-enable-checkbox" id="enable-slope_s">
-                        <span class="variable-name">Mean Parcel Slope</span>
-                    </div>
-                    <div class="variable-controls collapsed">
-                        <div class="slider-container">
-                            <div class="slider-label">
-                                <span class="slider-value" id="slope_s-value">0%</span>
-                            </div>
-                            <input type="range" class="slider weight-slider" id="slope_s" min="0" max="100" value="0">
-                            <div class="dist-buttons">
-                                <button class="dist-button" onclick="window.plottingManager.showDistribution('slope_s')">Raw</button>
-                                <button class="dist-button" onclick="window.plottingManager.showDistribution('slope_s')">Score</button>
-                                <button class="dist-button" onclick="window.plottingManager.showVariableCorrelation('slope')">Correlation</button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <div style="text-align: right; margin-top: 15px;">
+                {% for variable in weight_variables %}
+                    {% include 'components/weight_slider.html' %}
+                {% endfor %}
+                
+                <div class="section-spacer"></div>
+                
+                <!-- Max Parcels -->
+                <div class="max-parcels-container">
                     <span style="font-size: 11px; color: #888;">Max Parcels: <span id="max-parcels-value">500</span></span>
                 </div>
             </div>
-        </div>
-        
-        <div class="control-section">
-            <h2>Calculations</h2>
             <div class="input-group">
                 <label>Parcels for Selection</label>
                 <input type="number" class="number-input" id="max-parcels" value="500" min="1" max="5000">
@@ -993,75 +780,8 @@
                 <h2 style="margin: 0;">Data Filters</h2>
                 <span style="margin-left: 8px; font-size: 12px; color: #888;" id="filters-toggle">▶</span>
             </div>
-            <div id="filters-content" style="display: none; margin-left: 12px; padding-left: 8px; border-left: 2px solid rgba(255,255,255,0.1);">
-            
-            <!-- Property Characteristics -->
-            <div style="margin-bottom: 20px;">
-                <h3 style="font-size: 13px; margin-bottom: 10px; font-weight: bold;">Parcel Characteristics</h3>
+            {% include 'components/data_filters.html' %}
                 
-                <div class="input-group" style="display: flex; align-items: center; margin-bottom: 10px; font-size: 12px; background: rgba(255,255,255,0.03); padding: 8px; border-radius: 4px;">
-                    <input type="checkbox" id="filter-yearbuilt-enabled" style="margin-right: 8px; vertical-align: middle;">
-                    <span style="white-space: nowrap; vertical-align: middle; font-weight: 500;">Built after year:</span>
-                    <input type="number" class="number-input" id="filter-yearbuilt" min="1800" max="2024" value="1996" style="margin-left: 8px; width: 80px; vertical-align: middle;">
-                </div>
-                <div class="toggle-container" style="margin-left: 24px; margin-bottom: 12px;">
-                    <label class="toggle-label" style="font-size: 11px; color: #ccc;">
-                        <input type="checkbox" id="filter-yearbuilt-exclude-unknown">
-                        Exclude parcels with unknown construction year
-                    </label>
-                </div>
-                
-                <div class="input-group" style="display: flex; align-items: center; margin-bottom: 8px; font-size: 12px; background: rgba(255,255,255,0.03); padding: 8px; border-radius: 4px;">
-                    <input type="checkbox" id="filter-strcnt-enabled" style="margin-right: 8px; vertical-align: middle;">
-                    <span style="white-space: nowrap; vertical-align: middle; font-weight: 500;">Minimum structures:</span>
-                    <input type="number" class="number-input" id="filter-strcnt" value="1" min="0" style="margin-left: 8px; width: 80px; vertical-align: middle;">
-                </div>
-            </div>
-
-            <!-- Neighborhood Context -->
-            <div style="margin-bottom: 20px;">
-                <h3 style="font-size: 13px; margin-bottom: 10px; font-weight: bold;">Neighborhood Context</h3>
-                
-                <div class="input-group" style="display: flex; align-items: center; margin-bottom: 8px; font-size: 12px; background: rgba(255,255,255,0.03); padding: 8px; border-radius: 4px;">
-                    <input type="checkbox" id="filter-neigh1d-enabled" style="margin-right: 8px; vertical-align: middle;">
-                    <span style="white-space: nowrap; vertical-align: middle; font-weight: 500;">Max distance to nearest structure:</span>
-                    <input type="number" class="number-input" id="filter-neigh1d" min="0" max="1000" value="50" style="margin-left: 8px; width: 80px; vertical-align: middle;">
-                    <span style="font-size: 10px; color: #888; margin-left: 8px;">feet</span>
-                </div>
-            </div>
-
-            <!-- Risk Factor Coverage -->
-            <div style="margin-bottom: 15px;">
-                <h3 style="font-size: 13px; margin-bottom: 10px; font-weight: bold;">Risk Factor Coverage</h3>
-                <div style="font-size: 11px; color: #aaa; margin-bottom: 8px;">Only include parcels with:</div>
-                
-                <div class="toggle-container" style="background: rgba(255,255,255,0.03); padding: 6px; border-radius: 4px; margin-bottom: 6px;">
-                    <label class="toggle-label">
-                        <input type="checkbox" id="filter-wui-zero-enabled">
-                        <span style="font-weight: 500;">WUI coverage</span>
-                    </label>
-                </div>
-                <div class="toggle-container" style="background: rgba(255,255,255,0.03); padding: 6px; border-radius: 4px; margin-bottom: 6px;">
-                    <label class="toggle-label">
-                        <input type="checkbox" id="filter-vhsz-zero-enabled">
-                        <span style="font-weight: 500;">Fire hazard zone coverage</span>
-                    </label>
-                </div>
-                <div class="toggle-container" style="background: rgba(255,255,255,0.03); padding: 6px; border-radius: 4px; margin-bottom: 6px;">
-                    <label class="toggle-label">
-                        <input type="checkbox" id="filter-brns-enabled">
-                        <span style="font-weight: 500;">Burn scar exposure</span>
-                    </label>
-                </div>
-                <div class="toggle-container" style="background: rgba(255,255,255,0.03); padding: 6px; border-radius: 4px; margin-bottom: 6px;">
-                    <label class="toggle-label">
-                        <input type="checkbox" id="filter-agri-protection-enabled">
-                        <span style="font-weight: 500;">Agricultural coverage</span>
-                    </label>
-                </div>
-            </div>
-            
-            </div>
         </div>
         
         <div class="control-section">
@@ -1260,13 +980,8 @@
         </div>
     </div>
 
-    <!-- Add modal for distribution plots -->
-    <div id="dist-modal" class="modal">
-        <div class="modal-content">
-            <span class="close-modal">&times;</span>
-            <div id="dist-plot"></div>
-        </div>
-    </div>
+    <!-- Distribution Modal -->
+    {% include 'components/modal.html' with modal_id='dist-modal', content_id='dist-plot' %}
 
     <!-- Solution Report Modal -->
     <div id="solution-modal" class="modal">
