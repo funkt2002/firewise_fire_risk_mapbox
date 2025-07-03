@@ -33,7 +33,7 @@ print("Available solvers:", pulp.listSolvers(onlyAvailable=True))
 EOF
 
 # Copy application code
-COPY app.py railway_debug.py ./
+COPY app.py railway_debug.py config.py exceptions.py utils.py ./
 COPY templates/ templates/
 COPY static/ static/
 COPY scripts/ scripts/
