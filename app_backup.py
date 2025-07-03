@@ -1010,6 +1010,135 @@ def get_parcel_scores_for_optimization(data, include_vars):
     
     return selected_parcels, include_vars
 
+def solve_relative_optimization(parcel_data, include_vars, top_n, request_data):
+    """Heuristic optimization to rank selected parcels in top N"""
+    import random
+    import numpy as np
+    
+    # Process variable names efficiently
+    include_vars_base = [var[:-2] if var.endswith(('_s', '_q')) else var for var in include_vars]
+    
+    logger.info(f"RELATIVE OPTIMIZATION: {len(parcel_data):,} selected parcels, target top {top_n}, {len(include_vars_base)} variables")
+    
+    # Get all parcel data for ranking (from client-side scores)
+    all_parcel_scores = request_data.get('parcel_scores', [])
+    if not all_parcel_scores:
+        logger.error("No full dataset provided for relative optimization")
+        return None, None, None, False
+    
+    logger.info(f"Ranking against {len(all_parcel_scores):,} total parcels")
+    
+    # Extract selected parcel IDs
+    selected_ids = set(p['id'] for p in parcel_data)
+    
+    def evaluate_weights(weights):
+        """Calculate how many selected parcels rank in top N with given weights"""
+        # Calculate composite scores for all parcels
+        all_scores = []
+        for parcel in all_parcel_scores:
+            composite_score = 0
+            for var_base in include_vars_base:
+                if var_base in parcel.get('scores', {}):
+                    composite_score += weights[var_base] * parcel['scores'][var_base]
+            # Handle both 'parcel_id' and 'id' field names
+            parcel_id = parcel.get('parcel_id') or parcel.get('id')
+            all_scores.append((parcel_id, composite_score))
+        
+        # Sort by score (highest first)
+        all_scores.sort(key=lambda x: x[1], reverse=True)
+        
+        # Count selected parcels in top N
+        top_n_ids = set(parcel_id for parcel_id, _ in all_scores[:top_n])
+        selected_in_top_n = len(selected_ids.intersection(top_n_ids))
+        
+        return selected_in_top_n, all_scores
+    
+    # Simulated annealing for optimization
+    random.seed(42)  # For reproducibility
+    np.random.seed(42)
+    
+    # Initialize with equal weights
+    current_weights = {var: 1.0 / len(include_vars_base) for var in include_vars_base}
+    current_score, _ = evaluate_weights(current_weights)
+    
+    best_weights = current_weights.copy()
+    best_score = current_score
+    
+    # Annealing parameters
+    initial_temp = 1.0
+    final_temp = 0.01
+    cooling_rate = 0.95
+    max_iterations = 500
+    
+    temperature = initial_temp
+    
+    for iteration in range(max_iterations):
+        # Generate neighbor solution by perturbing weights
+        new_weights = current_weights.copy()
+        
+        # Randomly adjust two variables
+        vars_list = list(include_vars_base)
+        var1, var2 = random.sample(vars_list, 2)
+        
+        # Random adjustment amount
+        adjustment = random.uniform(-0.1, 0.1)
+        new_weights[var1] = max(0, new_weights[var1] + adjustment)
+        new_weights[var2] = max(0, new_weights[var2] - adjustment)
+        
+        # Normalize weights to sum to 1
+        total = sum(new_weights.values())
+        if total > 0:
+            new_weights = {var: weight / total for var, weight in new_weights.items()}
+        else:
+            continue
+        
+        # Evaluate new solution
+        new_score, _ = evaluate_weights(new_weights)
+        
+        # Accept or reject based on simulated annealing
+        score_diff = new_score - current_score
+        if score_diff > 0 or random.random() < np.exp(score_diff / temperature):
+            current_weights = new_weights
+            current_score = new_score
+            
+            if new_score > best_score:
+                best_weights = new_weights.copy()
+                best_score = new_score
+        
+        # Cool down
+        temperature *= cooling_rate
+        
+        # Early termination if we get all selected parcels in top N
+        if best_score >= len(selected_ids):
+            logger.info(f"Optimal solution found at iteration {iteration}: {best_score}/{len(selected_ids)} selected parcels in top {top_n}")
+            break
+    
+    # Final evaluation
+    final_count, final_rankings = evaluate_weights(best_weights)
+    
+    logger.info(f"RELATIVE OPTIMIZATION RESULT: {final_count}/{len(selected_ids)} selected parcels in top {top_n}")
+    logger.info(f"Success rate: {final_count/len(selected_ids)*100:.1f}%")
+    
+    # Check feasibility - if we can't get at least 10% or minimum 2 parcels in top N, it's not feasible
+    min_required = max(2, len(selected_ids) * 0.1)  # At least 10% or 2 parcels, whichever is higher
+    if final_count < min_required:
+        logger.error(f"Relative optimization not feasible: only {final_count}/{len(selected_ids)} parcels achievable in top {top_n} (minimum required: {min_required})")
+        return None, None, None, False
+    
+    logger.info(f"Relative optimization successful: {final_count}/{len(selected_ids)} parcels in top {top_n} (success rate: {final_count/len(selected_ids)*100:.1f}%)")
+    
+    # Convert to percentage weights
+    weights_pct = {var: weight * 100 for var, weight in best_weights.items()}
+    
+    # Calculate representative total score (average of selected parcels)
+    selected_parcel_scores = []
+    for parcel_id, score in final_rankings:
+        if parcel_id in selected_ids:
+            selected_parcel_scores.append(score)
+    
+    avg_score = np.mean(selected_parcel_scores) if selected_parcel_scores else 0
+    
+    return best_weights, weights_pct, avg_score, True
 
 def solve_weight_optimization(parcel_data, include_vars):
     """Memory-efficient LP solver for absolute optimization (maximum score)"""
@@ -1072,6 +1201,164 @@ def solve_weight_optimization(parcel_data, include_vars):
         return None, None, None, False
 
 
+def solve_relative_optimization_heuristic(parcel_data, include_vars, top_n, request_data):
+    """Heuristic search to maximize selected parcels in top N"""
+    import gc
+    import random
+    import time
+    
+    start_time = time.time()
+    
+    # Process variable names efficiently
+    include_vars_base = [var[:-2] if var.endswith(('_s', '_q')) else var for var in include_vars]
+    
+    logger.info(f"RELATIVE OPTIMIZATION (HEURISTIC): {len(parcel_data):,} selected parcels, target top {top_n}")
+    logger.info(f"Variables: {include_vars_base}")
+    
+    # Get current filtered dataset for ranking (not global dataset)
+    filtered_parcel_scores = request_data.get('selected_parcel_scores', [])
+    if not filtered_parcel_scores:
+        # Fallback to full dataset if no filtered scores provided
+        filtered_parcel_scores = request_data.get('parcel_scores', [])
+    
+    if not filtered_parcel_scores:
+        logger.error("No dataset provided for relative optimization")
+        return None, None, None, False
+    
+    logger.info(f"Working with current filtered dataset: {len(filtered_parcel_scores)} parcels")
+    
+    # Extract selected parcel IDs for tracking
+    selected_parcel_ids = set(parcel['parcel_id'] for parcel in parcel_data)
+    
+    def calculate_selected_in_top_n(weights):
+        """Calculate how many selected parcels end up in top N with given weights"""
+        # Calculate composite scores for current filtered dataset
+        scored_parcels = []
+        for parcel in filtered_parcel_scores:
+            composite_score = 0
+            for var_base in include_vars_base:
+                if var_base in parcel['scores']:
+                    composite_score += weights.get(var_base, 0) * parcel['scores'][var_base]
+            
+            scored_parcels.append({
+                'parcel_id': parcel['parcel_id'],
+                'score': composite_score,
+                'is_selected': parcel['parcel_id'] in selected_parcel_ids
+            })
+        
+        # Sort by score and find top N from current filtered dataset
+        scored_parcels.sort(key=lambda x: x['score'], reverse=True)
+        top_n_parcels = scored_parcels[:top_n]
+        
+        # Count how many selected parcels are in top N
+        selected_in_top_n = sum(1 for p in top_n_parcels if p['is_selected'])
+        
+        return selected_in_top_n, scored_parcels
+    
+    # Start with equal weights
+    best_weights = {var: 1.0 / len(include_vars_base) for var in include_vars_base}
+    best_count, _ = calculate_selected_in_top_n(best_weights)
+    
+    logger.info(f"Starting with equal weights: {best_count}/{len(selected_parcel_ids)} selected parcels in top {top_n} of current dataset")
+    
+    # If no selected parcels can make it to top N with any reasonable weights, fail early
+    if best_count == 0:
+        # Try some extreme single-variable weights to test feasibility
+        for var in include_vars_base:
+            test_weights = {v: 0.0 for v in include_vars_base}
+            test_weights[var] = 1.0
+            test_count, _ = calculate_selected_in_top_n(test_weights)
+            if test_count > best_count:
+                best_count = test_count
+                best_weights = test_weights.copy()
+        
+        if best_count == 0:
+            logger.error(f"RELATIVE OPTIMIZATION FAILED: No weighting scheme can get any selected parcels into top {top_n} of current dataset")
+            raise ValueError(f"Selected area contains parcels that cannot reach top {top_n} of the current filtered dataset with any weighting")
+    
+    # Heuristic search strategies
+    max_iterations = 200
+    patience = 50  # Stop if no improvement for this many iterations
+    no_improvement_count = 0
+    
+    logger.info(f"Starting heuristic search with {max_iterations} iterations...")
+    
+    for iteration in range(max_iterations):
+        # Strategy 1: Random perturbation of current best
+        if iteration < max_iterations // 2:
+            # Small random adjustments
+            new_weights = best_weights.copy()
+            
+            # Pick 2-3 variables to adjust
+            vars_to_adjust = random.sample(include_vars_base, min(3, len(include_vars_base)))
+            
+            # Transfer small amount between variables
+            transfer_amount = random.uniform(0.05, 0.15)
+            donor_var = random.choice(vars_to_adjust)
+            recipient_var = random.choice([v for v in vars_to_adjust if v != donor_var])
+            
+            if new_weights[donor_var] >= transfer_amount:
+                new_weights[donor_var] -= transfer_amount
+                new_weights[recipient_var] += transfer_amount
+        
+        # Strategy 2: More aggressive random sampling
+        else:
+            # Generate random weights that sum to 1
+            random_vals = [random.random() for _ in include_vars_base]
+            total = sum(random_vals)
+            new_weights = {var: val/total for var, val in zip(include_vars_base, random_vals)}
+        
+        # Evaluate new weights
+        new_count, _ = calculate_selected_in_top_n(new_weights)
+        
+        # Accept if better, or occasionally if equal (to explore)
+        accept_prob = 1.0 if new_count > best_count else (0.1 if new_count == best_count else 0.0)
+        
+        if random.random() < accept_prob:
+            if new_count > best_count:
+                logger.info(f"Iteration {iteration}: Improved from {best_count} to {new_count} selected parcels in top {top_n} of current dataset")
+                no_improvement_count = 0
+            else:
+                no_improvement_count += 1
+                
+            best_count = new_count
+            best_weights = new_weights.copy()
+        else:
+            no_improvement_count += 1
+        
+        # Early stopping if no improvement
+        if no_improvement_count >= patience:
+            logger.info(f"Stopping early at iteration {iteration}: no improvement for {patience} iterations")
+            break
+    
+    # Final evaluation
+    final_count, final_ranking = calculate_selected_in_top_n(best_weights)
+    
+    # Convert to percentage weights
+    weights_pct = {var: weight * 100 for var, weight in best_weights.items()}
+    
+    # Calculate total score for selected parcels
+    total_score = 0
+    for parcel in parcel_data:
+        for var_base in include_vars_base:
+            if var_base in parcel['scores']:
+                score = parcel['scores'][var_base]
+                weight = best_weights[var_base]
+                total_score += weight * score
+    
+    # Log results
+    significant_weights = [(var, weight) for var, weight in best_weights.items() if weight > 0.01]
+    significant_weights.sort(key=lambda x: x[1], reverse=True)
+    
+    elapsed_time = time.time() - start_time
+    success_rate = (final_count / len(selected_parcel_ids)) * 100
+    
+    logger.info(f"HEURISTIC OPTIMIZATION COMPLETED in {elapsed_time:.2f}s")
+    logger.info(f"RESULT: {final_count}/{len(selected_parcel_ids)} selected parcels in top {top_n} of current dataset ({success_rate:.1f}% success rate)")
+    logger.info(f"WEIGHTS: {[(var, f'{weight:.1%}') for var, weight in significant_weights]}")
+    
+    gc.collect()
+    return best_weights, weights_pct, total_score, True
 
 def solve_separation_optimization(parcel_data, include_vars, all_parcels_data):
     """
@@ -1262,9 +1549,10 @@ def generate_solution_files(include_vars, best_weights, weights_pct, total_score
     
     # Detect optimization type from request data
     optimization_type = request_data.get('optimization_type', 'absolute')
+    top_n = request_data.get('top_n', 100)
     
-    if optimization_type == 'separation':
-        optimization_title = "SEPARATION OPTIMIZATION RESULTS (Gap Maximization)"
+    if optimization_type == 'relative':
+        optimization_title = "RELATIVE OPTIMIZATION RESULTS (QP Balanced)"
     else:
         optimization_title = "ABSOLUTE OPTIMIZATION RESULTS (LP Maximum Score)"
     
@@ -1280,20 +1568,22 @@ def generate_solution_files(include_vars, best_weights, weights_pct, total_score
         f"Scoring Method: {scoring_method}",
     ])
     
-    if optimization_type == 'separation':
+    if optimization_type == 'relative':
         txt_lines.extend([
             "",
-            "OPTIMIZATION TYPE: Separation Gap Maximization (LP)",
-            "OBJECTIVE: Maximize gap between selected and non-selected parcels",
+            "OPTIMIZATION TYPE: Relative Heuristic Search", 
+            f"OBJECTIVE: Maximize selected parcels ranking in top {top_n} of current dataset",
             "",
-            f"Total parcels analyzed: {parcel_count:,}",
-            f"Total optimized score: {total_score:.2f}",
-            f"Average score: {avg_score:.3f}",
+            f"Selected parcels analyzed: {parcel_count:,}",
+            f"Target ranking: Top {top_n} parcels",
+            f"Average score of selected parcels: {avg_score:.3f}",
             "",
-            "MATHEMATICAL APPROACH:",
-            "  maximize: min(selected_scores) - max(non_selected_scores)",
-            "  subject to: weights_sum = 1, weights >= 0",
-            "  This creates the largest possible gap between groups."
+            "HEURISTIC APPROACH:",
+            "  1. Test multiple weight combinations using random search",
+            "  2. Evaluate how many selected parcels rank in current dataset top N",
+            "  3. Iteratively improve to maximize selected parcels in top N",
+            "  4. Balance exploration vs exploitation with acceptance probability",
+            "  This optimizes for getting your selected area into the top rankings of your current view.",
         ])
     else:
         txt_lines.extend([
@@ -1782,6 +2072,17 @@ def infer_weights():
             else:  # Fallback for compatibility
                 best_weights, weights_pct, total_score, success = result
                 
+        elif optimization_type == 'relative':
+            # Relative optimization: balanced QP approach
+            top_n = data.get('top_n', 100)
+            logger.info(f"RELATIVE OPTIMIZATION: top_n={top_n}, parcel_data count={len(parcel_data)}")
+            logger.info(f"RELATIVE OPTIMIZATION: Has parcel_scores key: {'parcel_scores' in data}")
+            if 'parcel_scores' in data:
+                logger.info(f"RELATIVE OPTIMIZATION: parcel_scores count={len(data['parcel_scores'])}")
+            
+            best_weights, weights_pct, total_score, success = solve_relative_optimization_heuristic(
+                parcel_data, include_vars, top_n, data
+            )
         else:
             # Absolute optimization: original LP approach for maximum score
             best_weights, weights_pct, total_score, success = solve_weight_optimization(
@@ -1791,6 +2092,8 @@ def infer_weights():
         if not success:
             if optimization_type == 'separation':
                 return jsonify({"error": "Selection area infeasible, please select another"}), 400
+            elif optimization_type == 'relative':
+                return jsonify({"error": "Relative optimization failed. Check console logs for details."}), 500
             else:
                 return jsonify({"error": "Absolute optimization failed"}), 500
         
@@ -1839,7 +2142,9 @@ def infer_weights():
                 'timestamp': time.time(),
                 'ttl': time.time() + 3600  # 1 hour expiry
             }
-            if optimization_type == 'separation' and separation_metrics:
+            if optimization_type == 'relative':
+                metadata['top_n'] = data.get('top_n', 100)
+            elif optimization_type == 'separation' and separation_metrics:
                 metadata['separation_metrics'] = separation_metrics
             json.dump(metadata, f)
         
@@ -1849,7 +2154,9 @@ def infer_weights():
         
         # Return minimal response - NO BULK DATA (memory optimized!)
         timing_log = f"{optimization_type.title()} optimization completed in {total_time:.2f}s for {num_parcels} parcels."
-        if optimization_type == 'separation' and separation_metrics:
+        if optimization_type == 'relative':
+            timing_log += f" Target: top {data.get('top_n', 100)} parcels."
+        elif optimization_type == 'separation' and separation_metrics:
             timing_log += f" Gap: {separation_metrics['separation_gap']:.3f}"
         
         response_data = {
