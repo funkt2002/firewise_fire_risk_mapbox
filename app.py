@@ -569,91 +569,84 @@ def get_columns():
 # ROUTES - DATA PREPARATION & SCORING
 # ====================
 
-@app.route('/api/prepare', methods=['POST'])
-def prepare_data():
-    """VECTOR TILES: Modified /api/prepare endpoint to return AttributeCollection format without geometry"""
-    start_time = time.time()
-    timings = {}
+def check_cache_for_base_dataset(data, start_time):
+    """Check Redis cache for unfiltered base dataset"""
+    cache_key = "fire_risk:base_dataset:v1"
     
-    log_memory_usage("Start of prepare_data")
+    # Determine if filters are being used
+    use_filters = any([
+        data.get('yearbuilt_max') is not None,
+        data.get('exclude_yearbuilt_unknown'),
+        data.get('neigh1d_max') is not None,
+        data.get('strcnt_min') is not None,
+        data.get('exclude_wui_zero'),
+        data.get('exclude_vhsz_zero'),
+        data.get('exclude_no_brns'),
+        data.get('exclude_agri_protection'),
+        data.get('subset_area')
+    ])
+    
+    # If filters are applied, skip cache
+    if use_filters:
+        logger.info("Filters detected - bypassing cache, querying database directly")
+        return None, 0, use_filters
+    
+    # Try cache lookup
+    cache_start = time.time()
+    redis_client = get_redis_client()
+    if not redis_client:
+        return None, 0, use_filters
     
     try:
-        # Parse request
-        request_start = time.time()
-        data = request.get_json() or {}
-        timings['request_parsing'] = (time.time() - request_start) * 1000
-        logger.info(f"Prepare data called - request parsed in {timings['request_parsing']:.3f}ms")
+        cached_data = redis_client.get(cache_key)
+        cache_time = time.time() - cache_start
         
-        # Check Redis cache first (only for unfiltered base dataset)
-        cache_key = "fire_risk:base_dataset:v1"
-        use_filters = any([
-            data.get('yearbuilt_max') is not None,
-            data.get('exclude_yearbuilt_unknown'),
-            data.get('neigh1d_max') is not None,
-            data.get('strcnt_min') is not None,
-            data.get('exclude_wui_zero'),
-            data.get('exclude_vhsz_zero'),
-            data.get('exclude_no_brns'),
-            data.get('exclude_agri_protection'),
-            data.get('subset_area')
-        ])
-        
-        # If no filters are applied, try cache first
-        cached_result = None
-        cache_time = 0
-        if not use_filters:
-            cache_start = time.time()
-            redis_client = get_redis_client()
-            if redis_client:
-                try:
-                    cached_data = redis_client.get(cache_key)
-                    cache_time = time.time() - cache_start
-                    if cached_data:
-                        # Decompress and deserialize cached data
-                        try:
-                            # Decompress the gzipped data
-                            decompressed_data = gzip.decompress(cached_data)
-                            cached_result = json.loads(decompressed_data.decode('utf-8'))
-                            
-                            data_size_mb = len(cached_data) / 1024 / 1024
-                            decompressed_size_mb = len(decompressed_data) / 1024 / 1024
-                            compression_ratio = (1 - data_size_mb / decompressed_size_mb) * 100
-                            
-                            logger.info(f"CACHE HIT: Retrieved base dataset in {cache_time*1000:.1f}ms")
-                            logger.info(f"Decompressed {data_size_mb:.1f}MB → {decompressed_size_mb:.1f}MB ({compression_ratio:.1f}% compression)")
-                            
-                            # Update response with cache timing
-                            cached_result['cache_used'] = True
-                            cached_result['cache_time'] = cache_time
-                            cached_result['total_time'] = time.time() - start_time
-                            
-                            return jsonify(cached_result)
-                        except Exception as decomp_error:
-                            logger.error(f"CACHE DECOMPRESSION ERROR: {decomp_error}")
-                            # Fall through to database query
-                    else:
-                        logger.info(f"CACHE MISS: Base dataset not cached")
-                except Exception as e:
-                    logger.error(f"CACHE ERROR: {e}")
-            
-            timings['cache_check'] = cache_time
+        if cached_data:
+            try:
+                # Decompress and deserialize cached data
+                decompressed_data = gzip.decompress(cached_data)
+                cached_result = json.loads(decompressed_data.decode('utf-8'))
+                
+                data_size_mb = len(cached_data) / 1024 / 1024
+                decompressed_size_mb = len(decompressed_data) / 1024 / 1024
+                compression_ratio = (1 - data_size_mb / decompressed_size_mb) * 100
+                
+                logger.info(f"CACHE HIT: Retrieved base dataset in {cache_time*1000:.1f}ms")
+                logger.info(f"Decompressed {data_size_mb:.1f}MB → {decompressed_size_mb:.1f}MB ({compression_ratio:.1f}% compression)")
+                
+                # Update response with cache timing
+                cached_result['cache_used'] = True
+                cached_result['cache_time'] = cache_time
+                cached_result['total_time'] = time.time() - start_time
+                
+                return cached_result, cache_time, use_filters
+            except Exception as decomp_error:
+                logger.error(f"CACHE DECOMPRESSION ERROR: {decomp_error}")
+                # Fall through to database query
         else:
-            logger.info(f"Filters detected - bypassing cache, querying database directly")
-        
-        # Build filters
-        filter_start = time.time()
-        conditions, params = build_filter_conditions(data)
-        where_clause = "WHERE " + " AND ".join(conditions) if conditions else ""
-        timings['filter_building'] = time.time() - filter_start
-        logger.info(f"Filter building completed in {timings['filter_building']:.3f}s")
-        
-        # Database connection
-        db_connect_start = time.time()
-        conn = get_db()
-        cur = conn.cursor()
-        timings['database_connection'] = time.time() - db_connect_start
-        logger.info(f"Database connection established in {timings['database_connection']:.3f}s")
-        
+            logger.info("CACHE MISS: Base dataset not cached")
+    except Exception as e:
+        logger.error(f"CACHE ERROR: {e}")
+    
+    return None, cache_time, use_filters
+
+def execute_database_query(data, timings):
+    """Execute database query and return results with parcels count"""
+    # Build filters
+    filter_start = time.time()
+    conditions, params = build_filter_conditions(data)
+    where_clause = "WHERE " + " AND ".join(conditions) if conditions else ""
+    timings['filter_building'] = time.time() - filter_start
+    logger.info(f"Filter building completed in {timings['filter_building']:.3f}s")
+    
+    # Database connection
+    db_connect_start = time.time()
+    conn = get_db()
+    cur = conn.cursor()
+    timings['database_connection'] = time.time() - db_connect_start
+    logger.info(f"Database connection established in {timings['database_connection']:.3f}s")
+    
+    try:
         # Get total count
         count_start = time.time()
         cur.execute("SELECT COUNT(*) as total_count FROM parcels")
@@ -662,11 +655,10 @@ def prepare_data():
         timings['count_query'] = time.time() - count_start
         logger.info(f"Count query completed in {timings['count_query']:.3f}s - total parcels: {total_parcels_before_filter:,}")
         
-        # Prepare columns - get all score variables and raw variables
+        # Prepare columns
         col_prep_start = time.time()
         all_score_vars = []
         for var_base in Config.WEIGHT_VARS_BASE:
-            # Only include _s columns (quantile vs min-max determined by calculation logic)
             all_score_vars.extend([var_base + '_s', var_base + '_q'])
         
         other_columns = ['yearbuilt', 'qtrmi_cnt', 'hlfmi_agri', 'hlfmi_wui', 'hlfmi_vhsz', 
@@ -676,7 +668,7 @@ def prepare_data():
         
         raw_var_columns = [Config.RAW_VAR_MAP[var_base] for var_base in Config.WEIGHT_VARS_BASE]
         
-        # Apply neigh1_d capping and substitution at SQL level for raw variables
+        # Apply neigh1_d capping and substitution at SQL level
         capped_raw_columns = []
         for raw_var in raw_var_columns:
             if raw_var == 'neigh1_d':
@@ -691,7 +683,7 @@ def prepare_data():
         timings['column_preparation'] = time.time() - col_prep_start
         logger.info(f"Column preparation completed in {timings['column_preparation']:.3f}s - prepared {len(all_columns)} columns")
         
-        # Query data from database
+        # Build and execute query
         query_start = time.time()
         query_build_start = time.time()
         query = f"""
@@ -718,133 +710,182 @@ def prepare_data():
         logger.info(f"Data fetched in {timings['data_fetching']:.3f}s - returned {len(raw_results):,} rows")
         logger.info(f"Total database query completed in {timings['raw_data_query']:.3f}s")
         
+        return raw_results, total_parcels_before_filter
+        
+    finally:
         # Close database connection
         db_close_start = time.time()
         cur.close()
         conn.close()
         timings['database_cleanup'] = time.time() - db_close_start
         logger.info(f"Database connection closed in {timings['database_cleanup']:.3f}s")
-        
-        if len(raw_results) < 10:
-            return jsonify({"error": "Not enough data for analysis"}), 400
-        
-        # Settings extraction
-        settings_start = time.time()
-        use_local_normalization = data.get('use_local_normalization', True)  # Default to local for missing scores
-        use_quantile = data.get('use_quantile', False)
 
-        max_parcels = data.get('max_parcels', 500)
-        timings['settings_extraction'] = time.time() - settings_start
-        logger.info(f"Settings extracted in {timings['settings_extraction']:.3f}s")
+def process_query_results(raw_results, data, timings):
+    """Process raw database results into attribute format"""
+    if len(raw_results) < 10:
+        raise ValueError("Not enough data for analysis")
+    
+    # Settings extraction
+    settings_start = time.time()
+    use_local_normalization = data.get('use_local_normalization', True)
+    use_quantile = data.get('use_quantile', False)
+    max_parcels = data.get('max_parcels', 500)
+    timings['settings_extraction'] = time.time() - settings_start
+    logger.info(f"Settings extracted in {timings['settings_extraction']:.3f}s")
+    
+    # Data preparation - convert raw results to dictionaries
+    prep_start = time.time()
+    scored_results = []
+    for i, row in enumerate(raw_results):
+        row_dict = dict(row)
+        scored_results.append(row_dict)
         
-        # Data preparation - convert raw results to dictionaries
-        prep_start = time.time()
-        scored_results = []
-        for i, row in enumerate(raw_results):
-            row_dict = dict(row)
-            # No scoring on server - client will handle everything
-            scored_results.append(row_dict)
-            
-            # Log progress for large datasets
-            if i > 0 and i % 10000 == 0:
-                logger.info(f"Processed {i:,}/{len(raw_results):,} rows ({i/len(raw_results)*100:.1f}%)")
-            
-        timings['data_preparation'] = time.time() - prep_start
-        logger.info(f"Data preparation completed in {timings['data_preparation']:.3f}s - processed {len(scored_results):,} rows")
+        # Log progress for large datasets
+        if i > 0 and i % 10000 == 0:
+            logger.info(f"Processed {i:,}/{len(raw_results):,} rows ({i/len(raw_results)*100:.1f}%)")
+    
+    timings['data_preparation'] = time.time() - prep_start
+    logger.info(f"Data preparation completed in {timings['data_preparation']:.3f}s - processed {len(scored_results):,} rows")
+    
+    # Create attribute records (no geometry for vector tiles)
+    attribute_creation_start = time.time()
+    attributes = []
+    properties_processing_time = 0
+    
+    for i, row in enumerate(scored_results):
+        row_dict = dict(row)
         
-        # Create attribute records (no geometry for vector tiles)
-        attribute_creation_start = time.time()
-        attributes = []
-        
-        properties_processing_time = 0
-        
-        for i, row in enumerate(scored_results):
-            row_dict = dict(row)
-            
-            # Build attribute record (no geometry)
-            props_start = time.time()
-            attribute_record = {
-                "id": row_dict['id'],
-                **{k: row_dict[k] for k in row_dict.keys() if k not in ['id']}
-            }
-            properties_processing_time += time.time() - props_start
-            
-            attributes.append(attribute_record)
-            
-            # Log progress for large datasets
-            if i > 0 and i % 10000 == 0:
-                logger.info(f"VECTOR TILES: Built {i:,}/{len(scored_results):,} attribute records ({i/len(scored_results)*100:.1f}%)")
-        
-        timings['attribute_creation'] = time.time() - attribute_creation_start
-        timings['properties_processing'] = properties_processing_time
-        
-        logger.info(f"VECTOR TILES: Attribute creation completed in {timings['attribute_creation']:.3f}s:")
-        logger.info(f"  - Properties processing: {timings['properties_processing']:.3f}s") 
-        logger.info(f"  - Created {len(attributes):,} attribute records (no geometry)")
-        
-        # Build response
-        response_start = time.time()
-        response_data = {
-            "type": "AttributeCollection",
-            "attributes": attributes,
-            "status": "prepared",
-            "total_parcels_before_filter": total_parcels_before_filter,
-            "total_parcels_after_filter": len(raw_results),
-            "use_local_normalization": use_local_normalization,
-            "use_quantile": use_quantile,
-            "max_parcels": max_parcels,
-            "timings": timings,
-            "total_time": time.time() - start_time,
-            "cache_used": False
+        # Build attribute record (no geometry)
+        props_start = time.time()
+        attribute_record = {
+            "id": row_dict['id'],
+            **{k: row_dict[k] for k in row_dict.keys() if k not in ['id']}
         }
-        timings['response_building'] = time.time() - response_start
+        properties_processing_time += time.time() - props_start
         
-        # Cache the result if no filters were applied (clean base dataset)
-        if not use_filters:
-            cache_save_start = time.time()
-            redis_client = get_redis_client()
-            if redis_client:
-                try:
-                    # Compress the JSON data before storing
-                    json_data = json.dumps(response_data)
-                    compressed_data = gzip.compress(json_data.encode('utf-8'))
-                    
-                    redis_client.setex(cache_key, 86400, compressed_data)  # 24 hour TTL
-                    cache_save_time = time.time() - cache_save_start
-                    
-                    original_size_mb = len(json_data) / 1024 / 1024
-                    compressed_size_mb = len(compressed_data) / 1024 / 1024
-                    compression_ratio = (1 - compressed_size_mb / original_size_mb) * 100
-                    
-                    logger.info(f"CACHE SET: Compressed {original_size_mb:.1f}MB → {compressed_size_mb:.1f}MB ({compression_ratio:.1f}% reduction)")
-                    logger.info(f"CACHE SET: Stored compressed dataset in {cache_save_time*1000:.1f}ms")
-                    timings['cache_save'] = cache_save_time
-                except Exception as e:
-                    logger.error(f"CACHE ERROR: Failed to save base dataset: {e}")
-            else:
-                logger.warning(f"CACHE SKIP: Redis not available for saving")
+        attributes.append(attribute_record)
         
-        total_time = time.time() - start_time
+        # Log progress for large datasets
+        if i > 0 and i % 10000 == 0:
+            logger.info(f"VECTOR TILES: Built {i:,}/{len(scored_results):,} attribute records ({i/len(scored_results)*100:.1f}%)")
+    
+    timings['attribute_creation'] = time.time() - attribute_creation_start
+    timings['properties_processing'] = properties_processing_time
+    
+    logger.info(f"VECTOR TILES: Attribute creation completed in {timings['attribute_creation']:.3f}s:")
+    logger.info(f"  - Properties processing: {timings['properties_processing']:.3f}s") 
+    logger.info(f"  - Created {len(attributes):,} attribute records (no geometry)")
+    
+    return attributes, use_local_normalization, use_quantile, max_parcels
+
+def build_response_and_cache(attributes, total_parcels_before_filter, total_parcels_after_filter, 
+                           use_local_normalization, use_quantile, max_parcels, timings, 
+                           start_time, use_filters):
+    """Build response and cache if applicable"""
+    # Build response
+    response_start = time.time()
+    response_data = {
+        "type": "AttributeCollection",
+        "attributes": attributes,
+        "status": "prepared",
+        "total_parcels_before_filter": total_parcels_before_filter,
+        "total_parcels_after_filter": total_parcels_after_filter,
+        "use_local_normalization": use_local_normalization,
+        "use_quantile": use_quantile,
+        "max_parcels": max_parcels,
+        "timings": timings,
+        "total_time": time.time() - start_time,
+        "cache_used": False
+    }
+    timings['response_building'] = time.time() - response_start
+    
+    # Cache the result if no filters were applied (clean base dataset)
+    if not use_filters:
+        cache_key = "fire_risk:base_dataset:v1"
+        cache_save_start = time.time()
+        redis_client = get_redis_client()
+        if redis_client:
+            try:
+                # Compress the JSON data before storing
+                json_data = json.dumps(response_data)
+                compressed_data = gzip.compress(json_data.encode('utf-8'))
+                
+                redis_client.setex(cache_key, 86400, compressed_data)  # 24 hour TTL
+                cache_save_time = time.time() - cache_save_start
+                
+                original_size_mb = len(json_data) / 1024 / 1024
+                compressed_size_mb = len(compressed_data) / 1024 / 1024
+                compression_ratio = (1 - compressed_size_mb / original_size_mb) * 100
+                
+                logger.info(f"CACHE SET: Compressed {original_size_mb:.1f}MB → {compressed_size_mb:.1f}MB ({compression_ratio:.1f}% reduction)")
+                logger.info(f"CACHE SET: Stored compressed dataset in {cache_save_time*1000:.1f}ms")
+                timings['cache_save'] = cache_save_time
+            except Exception as e:
+                logger.error(f"CACHE ERROR: Failed to save base dataset: {e}")
+        else:
+            logger.warning("CACHE SKIP: Redis not available for saving")
+    
+    # Final logging
+    total_time = time.time() - start_time
+    import sys
+    payload_size_mb = sys.getsizeof(str(response_data)) / 1024 / 1024
+    
+    logger.info(f"Response built in {timings['response_building']:.3f}s")
+    logger.info(f"Estimated payload size: {payload_size_mb:.1f} MB")
+    logger.info(f"Gzip compression: ENABLED (Flask-Compress auto-configured)")
+    logger.info(f"Expected compressed size: ~{payload_size_mb * 0.3:.1f}-{payload_size_mb * 0.4:.1f} MB (60-70% reduction)")
+    logger.info(f"=== PREPARE COMPLETED ===")
+    logger.info(f"Total server time: {total_time:.3f}s")
+    logger.info(f"VECTOR TILES: Sent {len(attributes):,} parcels attributes for client-side calculation")
+    logger.info(f"Server processing breakdown:")
+    for operation, timing in timings.items():
+        percentage = (timing / total_time) * 100
+        logger.info(f"  - {operation}: {timing:.3f}s ({percentage:.1f}%)")
+    
+    return response_data
+
+@app.route('/api/prepare', methods=['POST'])
+def prepare_data():
+    """VECTOR TILES: Modified /api/prepare endpoint to return AttributeCollection format without geometry"""
+    start_time = time.time()
+    timings = {}
+    
+    log_memory_usage("Start of prepare_data")
+    
+    try:
+        # Parse request
+        request_start = time.time()
+        data = request.get_json() or {}
+        timings['request_parsing'] = (time.time() - request_start) * 1000
+        logger.info(f"Prepare data called - request parsed in {timings['request_parsing']:.3f}ms")
         
-        # Calculate payload size estimate
-        import sys
-        payload_size_mb = sys.getsizeof(str(response_data)) / 1024 / 1024
+        # Check cache first
+        cached_result, cache_time, use_filters = check_cache_for_base_dataset(data, start_time)
+        if cached_result:
+            return jsonify(cached_result)
         
-        logger.info(f"Response built in {timings['response_building']:.3f}s")
-        logger.info(f"Estimated payload size: {payload_size_mb:.1f} MB")
-        logger.info(f"Gzip compression: ENABLED (Flask-Compress auto-configured)")
-        logger.info(f"Expected compressed size: ~{payload_size_mb * 0.3:.1f}-{payload_size_mb * 0.4:.1f} MB (60-70% reduction)")
-        logger.info(f"=== PREPARE COMPLETED ===")
-        logger.info(f"Total server time: {total_time:.3f}s")
-        logger.info(f"VECTOR TILES: Sent {len(attributes):,} parcels attributes for client-side calculation")
-        logger.info(f"Server processing breakdown:")
-        for operation, timing in timings.items():
-            percentage = (timing / total_time) * 100
-            logger.info(f"  - {operation}: {timing:.3f}s ({percentage:.1f}%)")
+        timings['cache_check'] = cache_time
+        
+        # Execute database query
+        raw_results, total_parcels_before_filter = execute_database_query(data, timings)
+        
+        # Process results
+        attributes, use_local_normalization, use_quantile, max_parcels = process_query_results(
+            raw_results, data, timings
+        )
+        
+        # Build response and cache
+        response_data = build_response_and_cache(
+            attributes, total_parcels_before_filter, len(raw_results),
+            use_local_normalization, use_quantile, max_parcels, 
+            timings, start_time, use_filters
+        )
         
         log_memory_usage("End of prepare_data")
         return jsonify(response_data)
         
+    except ValueError as ve:
+        return jsonify({"error": str(ve)}), 400
     except Exception as e:
         logger.error(f"Error in /api/prepare: {str(e)}")
         return jsonify({"error": str(e), "traceback": traceback.format_exc()}), 500
