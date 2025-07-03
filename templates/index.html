@@ -981,7 +981,12 @@
     </div>
 
     <!-- Distribution Modal -->
-    {% include 'components/modal.html' with modal_id='dist-modal', content_id='dist-plot' %}
+    <div id="dist-modal" class="modal">
+        <div class="modal-content">
+            <span class="close-modal">&times;</span>
+            <div id="dist-plot"></div>
+        </div>
+    </div>
 
     <!-- Solution Report Modal -->
     <div id="solution-modal" class="modal">
