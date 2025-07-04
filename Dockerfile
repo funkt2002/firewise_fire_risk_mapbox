@@ -33,13 +33,9 @@ print("Available solvers:", pulp.listSolvers(onlyAvailable=True))
 EOF
 
 # Copy application code
-COPY app.py railway_debug.py config.py exceptions.py utils.py ./
+COPY app.py config.py exceptions.py utils.py ./
 COPY templates/ templates/
 COPY static/ static/
-COPY scripts/ scripts/
-
-# Make scripts executable
-RUN chmod +x railway_debug.py && chmod +x scripts/*.py
 
 # Create a non-root user and set ownership
 RUN useradd --create-home --shell /bin/bash app \
