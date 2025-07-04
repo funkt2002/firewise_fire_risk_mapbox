@@ -219,7 +219,7 @@ def index():
                 'id': 'neigh1d_s',
                 'name': 'Distance to Nearest Neighbor',
                 'value': 0,
-                'enabled': True,
+                'enabled': False,
                 'raw_key': 'neigh1_d',
                 'correlation_key': 'neigh1d',
                 'subtitle': 'Only Includes Parcels with Structure Data'
@@ -246,7 +246,7 @@ def index():
                 'id': 'hbrn_s',
                 'name': 'Burn Scar Exposure (1/2 mile)',
                 'value': 10,
-                'enabled': True,
+                'enabled': False,
                 'raw_key': 'hbrn',
                 'correlation_key': 'hbrn',
                 'subtitle': None
@@ -255,7 +255,7 @@ def index():
                 'id': 'hagri_s',
                 'name': 'Agricultural Coverage (1/2 mile)',
                 'value': 10,
-                'enabled': True,
+                'enabled': False,
                 'raw_key': 'hagri',
                 'correlation_key': 'hagri',
                 'subtitle': None
@@ -264,7 +264,7 @@ def index():
                 'id': 'hfb_s',
                 'name': 'Fuel Break Coverage (1/2 mile)',
                 'value': 10,
-                'enabled': True,
+                'enabled': False,
                 'raw_key': 'hfb',
                 'correlation_key': 'hfb',
                 'subtitle': None
@@ -273,7 +273,7 @@ def index():
                 'id': 'par_buf_sl',
                 'name': 'Parcel Buffer Slope',
                 'value': 0,
-                'enabled': True,
+                'enabled': False,
                 'raw_key': 'par_buf_sl',
                 'correlation_key': 'par_buf_sl',
                 'subtitle': None
