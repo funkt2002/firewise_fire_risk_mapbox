@@ -349,8 +349,55 @@
     </div>
 
     <script>
+        // Initialize Fire Risk App namespace
+        window.fireRiskApp = {
+            // Map and drawing tools
+            map: null,
+            draw: null,
+            
+            // Application state
+            state: {
+                currentData: null,
+                currentSessionId: null,
+                selectedParcels: [],
+                measureMode: false,
+                measurePoints: [],
+                measureLine: null,
+                subsetArea: null,
+                selectionAreas: [],
+                isAddingSelection: false,
+                currentOptimizationSession: null
+            },
+            
+            // DOM element references
+            elements: {
+                weightSliders: null,
+                modal: null,
+                closeModal: null,
+                measureButton: null,
+                solutionModal: null,
+                correlationModal: null
+            },
+            
+            // Service instances
+            services: {
+                sharedDataStore: null,
+                performanceTracker: null,
+                apiClient: null,
+                clientFilterManager: null,
+                clientNormalizationManager: null,
+                fireRiskScoring: null
+            },
+            
+            // Drawing modes
+            drawModes: {
+                DrawRectangle: null,
+                DrawLasso: null
+            }
+        };
+        
         // Custom rectangle drawing mode
-        const DrawRectangle = {
+        fireRiskApp.drawModes.DrawRectangle = {
             onSetup(opts) {
                 const rectangle = this.newFeature({
                     type: 'Feature',
@@ -416,7 +463,7 @@
         };
 
         // Custom lasso drawing mode with fixed keyboard handling
-        const DrawLasso = {
+        fireRiskApp.drawModes.DrawLasso = {
             onSetup(opts) {
                 const lasso = this.newFeature({
                     type: 'Feature',
@@ -737,7 +784,7 @@
         // Initialize map
         mapboxgl.accessToken = '{{ mapbox_token }}' || 'YOUR_MAPBOX_TOKEN';
         
-        const map = new mapboxgl.Map({
+        fireRiskApp.map = new mapboxgl.Map({
             container: 'map',
             style: 'mapbox://styles/mapbox/satellite-streets-v12',
             center: [-119.758714, 34.44195],
@@ -746,16 +793,16 @@
             bearing: 0
         });
 
-        // Make map accessible globally for spatial filtering
-        window.map = map;
+        // Make map accessible globally for spatial filtering (kept for backward compatibility)
+        window.map = fireRiskApp.map;
 
         // Initialize drawing
-        const draw = new MapboxDraw({
+        fireRiskApp.draw = new MapboxDraw({
             displayControlsDefault: false,
             modes: {
                 ...MapboxDraw.modes,
-                draw_rectangle: DrawRectangle,
-                draw_lasso: DrawLasso
+                draw_rectangle: fireRiskApp.drawModes.DrawRectangle,
+                draw_lasso: fireRiskApp.drawModes.DrawLasso
             },
             controls: {
                 polygon: false,
@@ -802,9 +849,31 @@
                 }
             ]
         });
-        map.addControl(draw, 'top-right');
+        fireRiskApp.map.addControl(fireRiskApp.draw, 'top-right');
 
-        // State variables
+        // Create local references for easier access (these still update the namespace)
+        const map = fireRiskApp.map;
+        const draw = fireRiskApp.draw;
+        
+        // Helper function to get state
+        const getState = (key) => fireRiskApp.state[key];
+        const setState = (key, value) => { fireRiskApp.state[key] = value; };
+        
+        // Sync local variables to namespace (call this at critical points)
+        const syncToNamespace = () => {
+            fireRiskApp.state.currentData = currentData;
+            fireRiskApp.state.currentSessionId = currentSessionId;
+            fireRiskApp.state.selectedParcels = selectedParcels;
+            fireRiskApp.state.measureMode = measureMode;
+            fireRiskApp.state.measurePoints = measurePoints;
+            fireRiskApp.state.measureLine = measureLine;
+            fireRiskApp.state.subsetArea = subsetArea;
+            fireRiskApp.state.selectionAreas = selectionAreas;
+            fireRiskApp.state.isAddingSelection = isAddingSelection;
+            fireRiskApp.state.currentOptimizationSession = currentOptimizationSession;
+        };
+        
+        // For now, keep using local variables but sync them with namespace
         let currentData = null;
         let currentSessionId = null;
         let selectedParcels = [];
@@ -812,23 +881,25 @@
         let measurePoints = [];
         let measureLine = null;
         let subsetArea = null;
-        
-        // Multi-area selection for weight inference
         let selectionAreas = [];
         let isAddingSelection = false;
-        
-        // Variables for optimization session (memory optimized)
         let currentOptimizationSession = null;
 
-        // Get DOM elements
-        const weightSliders = document.querySelectorAll('.weight-slider');
-        const modal = document.getElementById('dist-modal');
-        const closeModal = document.getElementsByClassName('close-modal')[0];
-        const measureButton = document.createElement('button');
-        measureButton.className = 'button';
-        measureButton.textContent = 'Measure Distance';
-        measureButton.style.marginBottom = '10px';
-        document.getElementById('measure-container').insertBefore(measureButton, document.getElementById('distance'));
+        // Initialize DOM elements
+        fireRiskApp.elements.weightSliders = document.querySelectorAll('.weight-slider');
+        fireRiskApp.elements.modal = document.getElementById('dist-modal');
+        fireRiskApp.elements.closeModal = document.getElementsByClassName('close-modal')[0];
+        fireRiskApp.elements.measureButton = document.createElement('button');
+        fireRiskApp.elements.measureButton.className = 'button';
+        fireRiskApp.elements.measureButton.textContent = 'Measure Distance';
+        fireRiskApp.elements.measureButton.style.marginBottom = '10px';
+        document.getElementById('measure-container').insertBefore(fireRiskApp.elements.measureButton, document.getElementById('distance'));
+        
+        // Create local references for DOM elements
+        const weightSliders = fireRiskApp.elements.weightSliders;
+        const modal = fireRiskApp.elements.modal;
+        const closeModal = fireRiskApp.elements.closeModal;
+        const measureButton = fireRiskApp.elements.measureButton;
 
         // Raw variable mapping for distribution plots
         const rawVarMap = {
@@ -2423,26 +2494,34 @@
         }
 
         // Map load
-        map.on('load', () => {
+        fireRiskApp.map.on('load', () => {
             console.log('Map loaded - starting application initialization...');
             
             // Initialize shared data store first
             console.log('🏗️ MEMORY OPTIMIZATION: Initializing shared data store...');
-            window.sharedDataStore = new SharedDataStore();
+            fireRiskApp.services.sharedDataStore = new SharedDataStore();
             console.log('✅ SharedDataStore created - will eliminate duplicate data copies');
             
             // Initialize utility instances
-            window.performanceTracker = new PerformanceTracker();
-            window.apiClient = new TimedAPIClient();
+            fireRiskApp.services.performanceTracker = new PerformanceTracker();
+            fireRiskApp.services.apiClient = new TimedAPIClient();
             console.log('📈 Utility instances created');
             
             // Initialize all managers with shared data store
             console.log('🔧 Initializing managers with shared data store...');
-            window.clientFilterManager = new ClientFilterManager(window.sharedDataStore);
-            window.clientNormalizationManager = new ClientNormalizationManager(window.sharedDataStore);
-            window.fireRiskScoring = new FireRiskScoring(window.sharedDataStore);
+            fireRiskApp.services.clientFilterManager = new ClientFilterManager(fireRiskApp.services.sharedDataStore);
+            fireRiskApp.services.clientNormalizationManager = new ClientNormalizationManager(fireRiskApp.services.sharedDataStore);
+            fireRiskApp.services.fireRiskScoring = new FireRiskScoring(fireRiskApp.services.sharedDataStore);
             console.log('✅ MEMORY OPTIMIZATION: All managers using single shared dataset (no duplicates)');
             console.log('💾 EXPECTED BENEFIT: ~66% reduction in client memory usage for large datasets');
+            
+            // Keep backward compatibility
+            window.sharedDataStore = fireRiskApp.services.sharedDataStore;
+            window.performanceTracker = fireRiskApp.services.performanceTracker;
+            window.apiClient = fireRiskApp.services.apiClient;
+            window.clientFilterManager = fireRiskApp.services.clientFilterManager;
+            window.clientNormalizationManager = fireRiskApp.services.clientNormalizationManager;
+            window.fireRiskScoring = fireRiskApp.services.fireRiskScoring;
             
             initializeLayers();
             normalizeWeights();
