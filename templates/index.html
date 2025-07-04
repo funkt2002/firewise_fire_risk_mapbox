@@ -977,6 +977,32 @@
         });
         fireRiskApp.map.addControl(fireRiskApp.draw, 'top-right');
 
+        // Initialize services before map loads (fixes timing issue with score calculations)
+        console.log('🏗️ MEMORY OPTIMIZATION: Initializing shared data store...');
+        fireRiskApp.services.sharedDataStore = new SharedDataStore();
+        console.log('✅ SharedDataStore created - will eliminate duplicate data copies');
+        
+        // Initialize utility instances
+        fireRiskApp.services.performanceTracker = new PerformanceTracker();
+        fireRiskApp.services.apiClient = new TimedAPIClient();
+        console.log('📈 Utility instances created');
+        
+        // Initialize all managers with shared data store
+        console.log('🔧 Initializing managers with shared data store...');
+        fireRiskApp.services.clientFilterManager = new ClientFilterManager(fireRiskApp.services.sharedDataStore);
+        fireRiskApp.services.clientNormalizationManager = new ClientNormalizationManager(fireRiskApp.services.sharedDataStore);
+        fireRiskApp.services.fireRiskScoring = new FireRiskScoring(fireRiskApp.services.sharedDataStore);
+        console.log('✅ MEMORY OPTIMIZATION: All managers using single shared dataset (no duplicates)');
+        console.log('💾 EXPECTED BENEFIT: ~66% reduction in client memory usage for large datasets');
+        
+        // Keep backward compatibility
+        window.sharedDataStore = fireRiskApp.services.sharedDataStore;
+        window.performanceTracker = fireRiskApp.services.performanceTracker;
+        window.apiClient = fireRiskApp.services.apiClient;
+        window.clientFilterManager = fireRiskApp.services.clientFilterManager;
+        window.clientNormalizationManager = fireRiskApp.services.clientNormalizationManager;
+        window.fireRiskScoring = fireRiskApp.services.fireRiskScoring;
+
         // Create local references for easier access (these still update the namespace)
         const map = fireRiskApp.map;
         const draw = fireRiskApp.draw;
@@ -2600,31 +2626,7 @@
         fireRiskApp.map.on('load', () => {
             console.log('Map loaded - starting application initialization...');
             
-            // Initialize shared data store first
-            console.log('🏗️ MEMORY OPTIMIZATION: Initializing shared data store...');
-            fireRiskApp.services.sharedDataStore = new SharedDataStore();
-            console.log('✅ SharedDataStore created - will eliminate duplicate data copies');
-            
-            // Initialize utility instances
-            fireRiskApp.services.performanceTracker = new PerformanceTracker();
-            fireRiskApp.services.apiClient = new TimedAPIClient();
-            console.log('📈 Utility instances created');
-            
-            // Initialize all managers with shared data store
-            console.log('🔧 Initializing managers with shared data store...');
-            fireRiskApp.services.clientFilterManager = new ClientFilterManager(fireRiskApp.services.sharedDataStore);
-            fireRiskApp.services.clientNormalizationManager = new ClientNormalizationManager(fireRiskApp.services.sharedDataStore);
-            fireRiskApp.services.fireRiskScoring = new FireRiskScoring(fireRiskApp.services.sharedDataStore);
-            console.log('✅ MEMORY OPTIMIZATION: All managers using single shared dataset (no duplicates)');
-            console.log('💾 EXPECTED BENEFIT: ~66% reduction in client memory usage for large datasets');
-            
-            // Keep backward compatibility
-            window.sharedDataStore = fireRiskApp.services.sharedDataStore;
-            window.performanceTracker = fireRiskApp.services.performanceTracker;
-            window.apiClient = fireRiskApp.services.apiClient;
-            window.clientFilterManager = fireRiskApp.services.clientFilterManager;
-            window.clientNormalizationManager = fireRiskApp.services.clientNormalizationManager;
-            window.fireRiskScoring = fireRiskApp.services.fireRiskScoring;
+            // Services already initialized before map load
             
             initializeLayers();
             normalizeWeights();
