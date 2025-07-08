@@ -54,8 +54,6 @@ class Config:
     VARIABLE_NAME_CORRECTIONS = {
         'par_bufl': 'par_buf_sl',
         'par_bufl_s': 'par_buf_sl_s',
-        'par_bufl_q': 'par_buf_sl_q',
-        'par_bufl_z': 'par_buf_sl_z',
     }
     
     # Raw variable mappings

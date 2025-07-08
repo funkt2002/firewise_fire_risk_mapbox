@@ -640,8 +640,6 @@ def get_columns():
         
         score_columns = {
             '_s_columns': [col for col in column_info.keys() if col.endswith('_s')],
-            '_q_columns': [col for col in column_info.keys() if col.endswith('_q')],
-            '_z_columns': [col for col in column_info.keys() if col.endswith('_z')],
             'raw_columns': [col for col in column_info.keys() if col in Config.RAW_VAR_MAP.values()]
         }
         
@@ -651,8 +649,6 @@ def get_columns():
             "weight_vars_base": Config.WEIGHT_VARS_BASE,
             "raw_var_map": Config.RAW_VAR_MAP,
             "expected_s_columns": [var + '_s' for var in Config.WEIGHT_VARS_BASE],
-            "expected_q_columns": [var + '_q' for var in Config.WEIGHT_VARS_BASE],
-            "expected_z_columns": [var + '_z' for var in Config.WEIGHT_VARS_BASE],
             "column_tests": column_tests,
             "query_test": query_test,
             "database_url_hint": app.config.get('DATABASE_URL', 'Not set')[:50] + "..." if app.config.get('DATABASE_URL') else "Not set"
@@ -755,7 +751,7 @@ def execute_database_query(data, timings):
         col_prep_start = time.time()
         all_score_vars = []
         for var_base in Config.WEIGHT_VARS_BASE:
-            all_score_vars.extend([var_base + '_s', var_base + '_q'])
+            all_score_vars.append(var_base + '_s')
         
         other_columns = ['yearbuilt', 'qtrmi_cnt', 'hlfmi_agri', 'hlfmi_wui', 'hlfmi_vhsz', 
                         'hlfmi_fb', 'hlfmi_brn', 'num_neighb', 'parcel_id', 'strcnt', 
@@ -1049,9 +1045,6 @@ def get_parcel_scores_for_optimization(data, include_vars):
         first_var = include_vars[0]
         if first_var.endswith('_s'):
             score_suffix = '_s'
-        elif first_var.endswith('_q'):
-            score_suffix = '_q'
-        # _z suffix no longer used - always use _s
         else:
             score_suffix = ''
     
@@ -1153,7 +1146,7 @@ def solve_weight_optimization(parcel_data, include_vars):
     import gc
     
     # Process variable names efficiently
-    include_vars_base = [var[:-2] if var.endswith(('_s', '_q')) else var for var in include_vars]
+    include_vars_base = [var[:-2] if var.endswith('_s') else var for var in include_vars]
     
     # Allow unrestricted weights - dominant solutions are acceptable
     min_weight = 0.0
@@ -1218,7 +1211,7 @@ def solve_separation_optimization(parcel_data, include_vars, all_parcels_data):
     import gc
     
     # Process variable names efficiently
-    include_vars_base = [var[:-2] if var.endswith(('_s', '_q')) else var for var in include_vars]
+    include_vars_base = [var[:-2] if var.endswith('_s') else var for var in include_vars]
     
     logger.info(f"SEPARATION OPTIMIZATION (LP): {len(parcel_data):,} selected parcels, {len(all_parcels_data):,} total parcels, {len(include_vars_base)} variables")
     
@@ -1335,9 +1328,6 @@ def generate_solution_files(include_vars, best_weights, weights_pct, total_score
     for var in include_vars:
         if var.endswith('_s'):
             base_var = var[:-2]  # Remove last 2 characters (_s)
-        elif var.endswith('_q'):
-            base_var = var[:-2]  # Remove last 2 characters (_q)
-        # _z suffix no longer used
         else:
             base_var = var  # No suffix to remove
         include_vars_base.append(base_var)
@@ -1450,9 +1440,6 @@ def generate_solution_files(include_vars, best_weights, weights_pct, total_score
         # Properly remove only the suffix, not all occurrences
         if var_name.endswith('_s'):
             var_base = var_name[:-2]  # Remove last 2 characters (_s)
-        elif var_name.endswith('_q'):
-            var_base = var_name[:-2]  # Remove last 2 characters (_q)
-        # _z suffix no longer used
         else:
             var_base = var_name  # No suffix to remove
             
@@ -1486,8 +1473,6 @@ def generate_enhanced_solution_html(txt_content, lp_content, parcel_data, weight
         for var_name, score in parcel.get('scores', {}).items():
             # Remove suffix to get base variable name
             if var_name.endswith('_s'):
-                var_base = var_name[:-2]
-            elif var_name.endswith('_q'):
                 var_base = var_name[:-2]
             else:
                 var_base = var_name
