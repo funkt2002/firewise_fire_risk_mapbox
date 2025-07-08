@@ -216,6 +216,12 @@
                         Burn Scars
                     </label>
                 </div>
+                <div class="toggle-container">
+                    <label class="toggle-label">
+                        <input type="checkbox" class="layer-toggle" data-layer="fire-stations">
+                        Fire Stations
+                    </label>
+                </div>
                 <h3 style="font-size: 12px; color: #aaa; margin: 15px 0 5px 0;">Base Layers</h3>
                 <div class="toggle-container">
                     <label class="toggle-label">
@@ -2096,6 +2102,13 @@
                                 if (map.getLayer('burnscars-outline')) {
                                     map.setLayoutProperty('burnscars-outline', 'visibility', visibility);
                                 }
+                            } else if (layerId === 'fire-stations') {
+                                if (map.getLayer('fire-stations')) {
+                                    map.setLayoutProperty('fire-stations', 'visibility', visibility);
+                                }
+                                if (map.getLayer('fire-stations-symbols')) {
+                                    map.setLayoutProperty('fire-stations-symbols', 'visibility', visibility);
+                                }
                             } else if (map.getLayer(layerId)) {
                                 map.setLayoutProperty(layerId, 'visibility', visibility);
                             }
@@ -2123,6 +2136,13 @@
                     }
                     if (map.getLayer('burnscars-outline')) {
                         map.setLayoutProperty('burnscars-outline', 'visibility', visibility);
+                    }
+                } else if (layerId === 'fire-stations') {
+                    if (map.getLayer('fire-stations')) {
+                        map.setLayoutProperty('fire-stations', 'visibility', visibility);
+                    }
+                    if (map.getLayer('fire-stations-symbols')) {
+                        map.setLayoutProperty('fire-stations-symbols', 'visibility', visibility);
                     }
                 } else if (map.getLayer(layerId)) {
                     map.setLayoutProperty(layerId, 'visibility', visibility);
@@ -2580,6 +2600,19 @@
                         'fill-opacity': 0.3,
                         'fill-outline-color': '#cc7722'
                     }
+                },
+                {
+                    id: 'fire-stations',
+                    url: 'mapbox://theo1158.4y59rrjq',
+                    sourceLayer: 'fire-stations',
+                    type: 'circle',
+                    paint: {
+                        'circle-color': '#ff0000',
+                        'circle-radius': 8,
+                        'circle-stroke-color': '#ffffff',
+                        'circle-stroke-width': 2,
+                        'circle-opacity': 0.9
+                    }
                 }
             ];
 
@@ -2614,6 +2647,41 @@
                         }
                     });
                 }
+                
+                // Add symbol layer for fire stations
+                if (layer.id === 'fire-stations') {
+                    map.addLayer({
+                        id: 'fire-stations-symbols',
+                        type: 'symbol',
+                        source: layer.id,
+                        'source-layer': layer.sourceLayer,
+                        layout: { 
+                            'visibility': 'none',
+                            'text-field': '🚒',
+                            'text-size': 20,
+                            'text-anchor': 'center',
+                            'text-allow-overlap': true,
+                            'text-ignore-placement': true
+                        },
+                        paint: {
+                            'text-color': '#ffffff'
+                        }
+                    });
+                }
+            });
+
+            // Add interactivity for fire stations
+            addLayerInteraction('fire-stations', {
+                popupContent: (properties) => `
+                    <div style="font-family: Arial, sans-serif; font-size: 12px;">
+                        <strong>🚒 Fire Station</strong><br>
+                        ${properties.name ? `<strong>Name:</strong> ${properties.name}<br>` : ''}
+                        ${properties.address ? `<strong>Address:</strong> ${properties.address}<br>` : ''}
+                        ${properties.station_id ? `<strong>Station ID:</strong> ${properties.station_id}<br>` : ''}
+                        ${properties.department ? `<strong>Department:</strong> ${properties.department}` : ''}
+                    </div>
+                `,
+                cursor: 'pointer'
             });
 
             if (currentData) {

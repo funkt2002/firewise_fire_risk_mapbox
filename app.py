@@ -286,6 +286,15 @@ def index():
                 'raw_key': 'slope',
                 'correlation_key': 'slope',
                 'subtitle': None
+            },
+            {
+                'id': 'travel_tim_s',
+                'name': 'Travel Time to Fire Station (minutes)',
+                'value': 0,
+                'enabled': True,
+                'raw_key': 'travel_tim',
+                'correlation_key': 'travel_tim',
+                'subtitle': None
             }
         ]
         

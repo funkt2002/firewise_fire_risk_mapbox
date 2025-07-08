@@ -44,11 +44,11 @@ class Config:
     # Fire Risk Variables
     WEIGHT_VARS_BASE = [
         'qtrmi', 'hwui', 'hagri', 'hvhsz', 'hfb', 
-        'slope', 'neigh1d', 'hbrn', 'par_buf_sl', 'hlfmi_agfb'
+        'slope', 'neigh1d', 'hbrn', 'par_buf_sl', 'hlfmi_agfb', 'travel_tim'
     ]
     
     # Variables that should be inverted (lower is better)
-    INVERT_VARS = {'hagri', 'neigh1d', 'hfb', 'hlfmi_agfb'}
+    INVERT_VARS = {'hagri', 'neigh1d', 'hfb', 'hlfmi_agfb', 'travel_tim'}
     
     # Variable name corrections for corrupted/truncated names
     VARIABLE_NAME_CORRECTIONS = {
@@ -69,7 +69,8 @@ class Config:
         'neigh1d': 'neigh1_d',
         'hbrn': 'hlfmi_brn',
         'par_buf_sl': 'par_buf_sl',
-        'hlfmi_agfb': 'hlfmi_agfb'
+        'hlfmi_agfb': 'hlfmi_agfb',
+        'travel_tim': 'travel_tim'
     }
     
     # Layer table mappings
@@ -94,7 +95,8 @@ class Config:
         'neigh1d': 'Neighbor Distance Score',
         'hbrn': 'Burn Score',
         'par_buf_sl': 'Parcel Buffer Slope Score',
-        'hlfmi_agfb': 'Ag/Fuel Break Score'
+        'hlfmi_agfb': 'Ag/Fuel Break Score',
+        'travel_tim': 'Travel Time to Fire Station'
     }
     
     # Factor names for reports and detailed descriptions
@@ -108,7 +110,8 @@ class Config:
         'neigh1d': 'Neighbor Distance',
         'hbrn': 'Burn Scars (1/2 mile)',
         'par_buf_sl': 'Slope within 100 ft of structure',
-        'hlfmi_agfb': 'Agriculture & Fuelbreaks (1/2 mile)'
+        'hlfmi_agfb': 'Agriculture & Fuelbreaks (1/2 mile)',
+        'travel_tim': 'Travel Time to Fire Station (minutes)'
     }
     
     # Scoring method configurations

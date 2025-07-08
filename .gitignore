@@ -4,7 +4,7 @@ data/
 # Development/analysis files (non-essential for production)
 extras/
 archive/
-
+tasks/
 # Documentation files (non-essential for production)
 CLAUDE.md
 README_mbtiles.md
