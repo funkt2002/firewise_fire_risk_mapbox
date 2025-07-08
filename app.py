@@ -288,7 +288,7 @@ def index():
                 'subtitle': None
             },
             {
-                'id': 'travel_tim_s',
+                'id': 'travel_s',
                 'name': 'Travel Time to Fire Station (minutes)',
                 'value': 0,
                 'enabled': True,

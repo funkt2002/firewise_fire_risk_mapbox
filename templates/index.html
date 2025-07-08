@@ -186,7 +186,7 @@
                         Fuel Breaks
                     </label>
                 </div>
-                <div class="toggle-container">
+                                <div class="toggle-container">
                     <label class="toggle-label">
                         <input type="checkbox" class="layer-toggle" data-layer="wui">
                         WUI Zone
@@ -891,8 +891,8 @@
                         <p><strong>Slope Score:</strong> ${factorScores.slope_s?.toFixed(3) || 'N/A'}</p>
                         <p><strong>Neighbor Distance Score:</strong> ${factorScores.neigh1d_s?.toFixed(3) || 'N/A'}</p>
                         <p><strong>Burn Scar Coverage (1/2 mi):</strong> ${factorScores.hbrn_s?.toFixed(3) || 'N/A'}</p>
-                        <p><strong>Slope within 100 ft Score:</strong> ${factorScores.par_buf_sl_s?.toFixed(3) || 'N/A'}</p>
-                        <p><strong>Agriculture & Fuelbreaks Score:</strong> ${factorScores.hlfmi_agfb_s?.toFixed(3) || 'N/A'}</p>
+                        <p><strong>Slope within 100 ft Score:</strong> ${factorScores.par_sl_s?.toFixed(3) || 'N/A'}</p>
+                        <p><strong>Agriculture & Fuelbreaks Score:</strong> ${factorScores.agfb_s?.toFixed(3) || 'N/A'}</p>
                     </div>
                 </div>
             `;
@@ -1100,10 +1100,10 @@
             'hbrn_s': 'Burn Score',
             'hbrn_z': 'Burn Score (Quantile)',
             'par_buf_sl': 'Slope within 100 ft',
-            'par_buf_sl_s': 'Slope within 100 ft Score',
+            'par_sl_s': 'Slope within 100 ft Score',
             'par_buf_sl_z': 'Slope within 100 ft Score (Quantile)',
             'hlfmi_agfb': 'Agriculture & Fuelbreaks',
-            'hlfmi_agfb_s': 'Agriculture & Fuelbreaks Score',
+            'agfb_s': 'Agriculture & Fuelbreaks Score',
             'hlfmi_agfb_z': 'Agriculture & Fuelbreaks Score (Quantile)'
         };
 
@@ -2550,7 +2550,7 @@
                         'fill-opacity': 0.5
                     }
                 },
-                {
+                                {
                     id: 'wui',
                     url: 'mapbox://theo1158.57b62zhk',
                     sourceLayer: 'wui',
@@ -2562,8 +2562,8 @@
                 },
                 {
                     id: 'hazard',
-                    url: 'mapbox://theo1158.67pq9lmy',
-                    sourceLayer: 'hazard',
+                    url: 'mapbox://theo1158.9lxwlcac',
+                    sourceLayer: 'hazard-6dzxb7',
                     type: 'fill',
                     paint: {
                         'fill-color': '#ff9900',

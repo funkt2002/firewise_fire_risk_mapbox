@@ -38,8 +38,8 @@ class PlottingManager {
             'slope_s': 'Mean Parcel Slope',
             'neigh1d_s': 'Distance to Nearest Neighbor',
             'hbrn_s': 'Burn Scar Coverage (1/2 mile)',
-            'par_buf_sl_s': 'Structure Surrounding Slope (100 foot buffer)',
-            'hlfmi_agfb_s': 'Agriculture & Fuelbreaks (1/2 mile)',
+            'par_sl_s': 'Structure Surrounding Slope (100 foot buffer)',
+            'agfb_s': 'Agriculture & Fuelbreaks (1/2 mile)',
             
             // Note: _z columns no longer used - quantile scoring now uses _s columns with different calculation logic
         };
@@ -97,8 +97,8 @@ class PlottingManager {
             'slope_s': 'Parcel<br>Slope',
             'neigh1d_s': 'Neighbor<br>Distance',
             'hbrn_s': 'Burn Scars<br>(1/2 mi)',
-            'par_buf_sl_s': 'Structure<br>Slope (100ft)',
-            'hlfmi_agfb_s': 'Agri & Fuel<br>(1/2 mi)',
+            'par_sl_s': 'Structure<br>Slope (100ft)',
+            'agfb_s': 'Agri & Fuel<br>(1/2 mi)',
             
             // Note: _z columns no longer used - quantile scoring now uses _s columns
         };

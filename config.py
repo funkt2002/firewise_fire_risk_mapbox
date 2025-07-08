@@ -44,16 +44,22 @@ class Config:
     # Fire Risk Variables
     WEIGHT_VARS_BASE = [
         'qtrmi', 'hwui', 'hagri', 'hvhsz', 'hfb', 
-        'slope', 'neigh1d', 'hbrn', 'par_buf_sl', 'hlfmi_agfb', 'travel_tim'
+        'slope', 'neigh1d', 'hbrn', 'par_sl', 'agfb', 'travel'
     ]
     
     # Variables that should be inverted (lower is better)
-    INVERT_VARS = {'hagri', 'neigh1d', 'hfb', 'hlfmi_agfb', 'travel_tim'}
+    INVERT_VARS = {'hagri', 'neigh1d', 'hfb', 'agfb', 'travel'}
     
     # Variable name corrections for corrupted/truncated names
     VARIABLE_NAME_CORRECTIONS = {
-        'par_bufl': 'par_buf_sl',
-        'par_bufl_s': 'par_buf_sl_s',
+        'par_bufl': 'par_sl',
+        'par_bufl_s': 'par_sl_s',
+        'par_buf_sl': 'par_sl',
+        'par_buf_sl_s': 'par_sl_s',
+        'hlfmi_agfb': 'agfb', 
+        'hlfmi_agfb_s': 'agfb_s',
+        'travel_tim': 'travel',
+        'travel_tim_s': 'travel_s',
     }
     
     # Raw variable mappings
@@ -66,9 +72,9 @@ class Config:
         'slope': 'avg_slope',
         'neigh1d': 'neigh1_d',
         'hbrn': 'hlfmi_brn',
-        'par_buf_sl': 'par_buf_sl',
-        'hlfmi_agfb': 'hlfmi_agfb',
-        'travel_tim': 'travel_tim'
+        'par_sl': 'par_buf_sl',
+        'agfb': 'hlfmi_agfb',
+        'travel': 'travel_tim'
     }
     
     # Layer table mappings
@@ -92,9 +98,9 @@ class Config:
         'slope': 'Slope Score',
         'neigh1d': 'Neighbor Distance Score',
         'hbrn': 'Burn Score',
-        'par_buf_sl': 'Parcel Buffer Slope Score',
-        'hlfmi_agfb': 'Ag/Fuel Break Score',
-        'travel_tim': 'Travel Time to Fire Station'
+        'par_sl': 'Parcel Buffer Slope Score',
+        'agfb': 'Ag/Fuel Break Score',
+        'travel': 'Travel Time to Fire Station'
     }
     
     # Factor names for reports and detailed descriptions
@@ -107,9 +113,9 @@ class Config:
         'slope': 'Slope',
         'neigh1d': 'Neighbor Distance',
         'hbrn': 'Burn Scars (1/2 mile)',
-        'par_buf_sl': 'Slope within 100 ft of structure',
-        'hlfmi_agfb': 'Agriculture & Fuelbreaks (1/2 mile)',
-        'travel_tim': 'Travel Time to Fire Station (minutes)'
+        'par_sl': 'Slope within 100 ft of structure',
+        'agfb': 'Agriculture & Fuelbreaks (1/2 mile)',
+        'travel': 'Travel Time to Fire Station (minutes)'
     }
     
     # Scoring method configurations
