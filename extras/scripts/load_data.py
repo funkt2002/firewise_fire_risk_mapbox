@@ -91,12 +91,18 @@ class ParcelDataLoader:
                     geom GEOMETRY(GEOMETRY, 3857),
                     geom_geojson TEXT,
                     
-                    -- Score-related columns (only those that exist)
+                    -- Score-related columns (all 11 required)
                     qtrmi_s FLOAT,
                     hwui_s FLOAT,
+                    hagri_s FLOAT,
                     hvhsz_s FLOAT,
+                    hfb_s FLOAT,
+                    slope_s FLOAT,
                     neigh1d_s FLOAT,
                     hbrn_s FLOAT,
+                    par_sl_s FLOAT,
+                    agfb_s FLOAT,
+                    travel_s FLOAT,
                     
                     -- Raw data columns
                     yearbuilt INTEGER,
@@ -151,9 +157,15 @@ class ParcelDataLoader:
                 "CREATE INDEX IF NOT EXISTS parcels_travel_tim_idx ON parcels (travel_tim);",
                 "CREATE INDEX IF NOT EXISTS parcels_qtrmi_s_idx ON parcels (qtrmi_s);",
                 "CREATE INDEX IF NOT EXISTS parcels_hwui_s_idx ON parcels (hwui_s);",
+                "CREATE INDEX IF NOT EXISTS parcels_hagri_s_idx ON parcels (hagri_s);",
                 "CREATE INDEX IF NOT EXISTS parcels_hvhsz_s_idx ON parcels (hvhsz_s);",
+                "CREATE INDEX IF NOT EXISTS parcels_hfb_s_idx ON parcels (hfb_s);",
+                "CREATE INDEX IF NOT EXISTS parcels_slope_s_idx ON parcels (slope_s);",
                 "CREATE INDEX IF NOT EXISTS parcels_neigh1d_s_idx ON parcels (neigh1d_s);",
-                "CREATE INDEX IF NOT EXISTS parcels_hbrn_s_idx ON parcels (hbrn_s);"
+                "CREATE INDEX IF NOT EXISTS parcels_hbrn_s_idx ON parcels (hbrn_s);",
+                "CREATE INDEX IF NOT EXISTS parcels_par_sl_s_idx ON parcels (par_sl_s);",
+                "CREATE INDEX IF NOT EXISTS parcels_agfb_s_idx ON parcels (agfb_s);",
+                "CREATE INDEX IF NOT EXISTS parcels_travel_s_idx ON parcels (travel_s);"
             ]
             
             for index in indices:
@@ -282,12 +294,18 @@ class ParcelDataLoader:
                     # Prepare values for insertion (in exact order of table columns)
                     values.append((
                         geom_wkt, geom_wkt, geom_type,
-                        # Score columns
+                        # Score columns (all 11)
                         props.get('qtrmi_s'),
                         props.get('hwui_s'),
+                        props.get('hagri_s'),
                         props.get('hvhsz_s'),
+                        props.get('hfb_s'),
+                        props.get('slope_s'),
                         props.get('neigh1d_s'),
                         props.get('hbrn_s'),
+                        props.get('par_sl_s'),
+                        props.get('agfb_s'),
+                        props.get('travel_s'),
                         # Raw data columns
                         props.get('yearbuilt'),
                         props.get('qtrmi_cnt'),
@@ -339,7 +357,7 @@ class ParcelDataLoader:
             insert_query = """
                 INSERT INTO parcels (
                     geom, geom_geojson, geom_type,
-                    qtrmi_s, hwui_s, hvhsz_s, neigh1d_s, hbrn_s,
+                    qtrmi_s, hwui_s, hagri_s, hvhsz_s, hfb_s, slope_s, neigh1d_s, hbrn_s, par_sl_s, agfb_s, travel_s,
                     yearbuilt, qtrmi_cnt, hlfmi_agri, hlfmi_wui, hlfmi_vhsz, hlfmi_fb, hlfmi_brn,
                     strcnt, neigh1_d, neigh2_d, perimeter, par_elev, avg_slope, max_slope,
                     par_asp_dr, str_slope, par_buf_sl, hlfmi_agfb, travel_tim, num_brns, num_neighb,
@@ -350,7 +368,7 @@ class ParcelDataLoader:
                 VALUES (
                     ST_Transform(ST_GeomFromText(%s, 4326), 3857), 
                     ST_AsGeoJSON(ST_GeomFromText(%s, 4326)), %s,
-                    %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
                     %s, %s, %s, %s, %s, %s, %s,
                     %s, %s, %s, %s, %s, %s, %s,
                     %s, %s, %s, %s, %s, %s, %s,
@@ -393,7 +411,7 @@ class ParcelDataLoader:
             logger.info(f"Travel time range: {min_tt:.3f} - {max_tt:.3f} minutes (avg: {avg_tt:.3f})")
             
             # Check score columns
-            score_columns = ['qtrmi_s', 'hwui_s', 'hvhsz_s', 'neigh1d_s', 'hbrn_s']
+            score_columns = ['qtrmi_s', 'hwui_s', 'hagri_s', 'hvhsz_s', 'hfb_s', 'slope_s', 'neigh1d_s', 'hbrn_s', 'par_sl_s', 'agfb_s', 'travel_s']
             for col in score_columns:
                 self.cur.execute(f"SELECT COUNT(*) FROM parcels WHERE {col} IS NOT NULL;")
                 count = self.cur.fetchone()[0]
