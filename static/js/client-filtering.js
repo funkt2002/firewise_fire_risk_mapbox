@@ -398,11 +398,12 @@ class ClientNormalizationManager {
             'neigh1d': 'neigh1_d',
             'hbrn': 'hlfmi_brn',
             'par_sl': 'par_buf_sl',
-            'agfb': 'hlfmi_agfb'
+            'agfb': 'hlfmi_agfb',
+            'travel': 'travel_tim'
         };
 
-        const weightVarsBase = ['qtrmi', 'hwui', 'hagri', 'hvhsz', 'hfb', 'slope', 'neigh1d', 'hbrn', 'par_sl', 'agfb'];
-        const invertVars = new Set(['hagri', 'neigh1d', 'hfb', 'hlfmi_agfb']);
+        const weightVarsBase = ['qtrmi', 'hwui', 'hagri', 'hvhsz', 'hfb', 'slope', 'neigh1d', 'hbrn', 'par_sl', 'agfb', 'travel'];
+        const invertVars = new Set(['hagri', 'neigh1d', 'hfb', 'hlfmi_agfb', 'travel_tim']);
 
         // First pass: collect values for normalization parameters
         const normData = {};
@@ -679,10 +680,11 @@ class ClientNormalizationManager {
             'neigh1d': 'neigh1_d',
             'hbrn': 'hlfmi_brn',
             'par_sl': 'par_buf_sl',
-            'agfb': 'hlfmi_agfb'
+            'agfb': 'hlfmi_agfb',
+            'travel': 'travel_tim'
         };
 
-        const weightVarsBase = ['qtrmi', 'hwui', 'hagri', 'hvhsz', 'hfb', 'slope', 'neigh1d', 'hbrn', 'par_sl', 'agfb'];
+        const weightVarsBase = ['qtrmi', 'hwui', 'hagri', 'hvhsz', 'hfb', 'slope', 'neigh1d', 'hbrn', 'par_sl', 'agfb', 'travel'];
         const normData = {};
         
         for (const varBase of weightVarsBase) {
@@ -856,10 +858,11 @@ class ClientNormalizationManager {
             'neigh1d': 'neigh1_d',
             'hbrn': 'hlfmi_brn',
             'par_sl': 'par_buf_sl',
-            'agfb': 'hlfmi_agfb'
+            'agfb': 'hlfmi_agfb',
+            'travel': 'travel_tim'
         };
 
-        const invertVars = new Set(['hagri', 'neigh1d', 'hfb', 'hlfmi_agfb']);
+        const invertVars = new Set(['hagri', 'neigh1d', 'hfb', 'hlfmi_agfb', 'travel_tim']);
         const rawVar = rawVarMap[varBase];
         let rawValue = feature.properties[rawVar];
 

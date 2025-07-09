@@ -872,6 +872,7 @@
                         <p><strong>Burn Scar % (1/2 mi):</strong> ${props.hlfmi_brn?.toFixed(2) || 'N/A'}%</p>
                         <p><strong>Slope within 100 ft:</strong> ${props.par_buf_sl?.toFixed(2) || 'N/A'}°</p>
                         <p><strong>Agriculture & Fuelbreaks (1/2 mi):</strong> ${props.hlfmi_agfb?.toFixed(2) || 'N/A'}%</p>
+                        <p><strong>Travel Time to Fire Station:</strong> ${props.travel_tim?.toFixed(2) || 'N/A'} min</p>
                         <p><strong>Number of Neighbors:</strong> ${props.num_neighb || 'N/A'}</p>
                         <p><strong>Parcel Slope:</strong> ${props.avg_slope?.toFixed(2) || 'N/A'}°</p>
                         <p><strong>Max Slope:</strong> ${props.max_slope?.toFixed(2) || 'N/A'}°</p>
@@ -891,6 +892,7 @@
                         <p><strong>Burn Scar Coverage (1/2 mi):</strong> ${factorScores.hbrn_s?.toFixed(3) || 'N/A'}</p>
                         <p><strong>Slope within 100 ft Score:</strong> ${factorScores.par_sl_s?.toFixed(3) || 'N/A'}</p>
                         <p><strong>Agriculture & Fuelbreaks Score:</strong> ${factorScores.agfb_s?.toFixed(3) || 'N/A'}</p>
+                        <p><strong>Travel Time Score:</strong> ${factorScores.travel_s?.toFixed(3) || 'N/A'}</p>
                     </div>
                 </div>
             `;

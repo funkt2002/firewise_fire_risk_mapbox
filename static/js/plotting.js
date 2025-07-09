@@ -13,7 +13,8 @@ class PlottingManager {
             'neigh1d': 'neigh1_d',
             'hbrn': 'hlfmi_brn',
             'par_sl': 'par_buf_sl',
-            'agfb': 'hlfmi_agfb'
+            'agfb': 'hlfmi_agfb',
+            'travel': 'travel_tim'
         };
 
         this.varNameMap = {
@@ -685,7 +686,7 @@ class PlottingManager {
         // Simple chloropleth: white to red based on bin position
         // Exception: for raw hagri, hfb, neigh1d - flip so left side = red
         const baseVarForColor = variable.replace(/_[sq]$/, ''); // Remove score suffixes (_z no longer used)
-        const isRawInverseRisk = !variable.includes('_') && ['hagri', 'hfb', 'neigh1d'].includes(baseVarForColor);
+        const isRawInverseRisk = !variable.includes('_') && ['hagri', 'hfb', 'neigh1d', 'travel'].includes(baseVarForColor);
         
         // Create gradient colors for histogram bins (not individual values)
         const numBins = 30;
