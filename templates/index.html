@@ -892,7 +892,10 @@
                         <p><strong>Burn Scar Coverage (1/2 mi):</strong> ${factorScores.hbrn_s?.toFixed(3) || 'N/A'}</p>
                         <p><strong>Slope within 100 ft Score:</strong> ${factorScores.par_sl_s?.toFixed(3) || 'N/A'}</p>
                         <p><strong>Agriculture & Fuelbreaks Score:</strong> ${factorScores.agfb_s?.toFixed(3) || 'N/A'}</p>
-                        <p><strong>Travel Time Score:</strong> ${factorScores.travel_s?.toFixed(3) || 'N/A'}</p>
+                        <p><strong>Travel Time Score:</strong> ${(() => {
+                            console.log(`🚗 POPUP DEBUG: parcel=${props.parcel_id}, travel_s=${factorScores.travel_s}, type=${typeof factorScores.travel_s}`);
+                            return factorScores.travel_s?.toFixed(3) || 'N/A';
+                        })()}</p>
                     </div>
                 </div>
             `;

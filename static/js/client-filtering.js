@@ -834,6 +834,11 @@ class ClientNormalizationManager {
                 scoreValue = this.calculateGlobalScore(feature, varBase, use_quantile, use_raw_scoring);
                 factorScores[varBase + '_s'] = scoreValue;
             }
+            
+            // Debug logging for travel scores
+            if (varBase === 'travel') {
+                console.log(`🚗 FACTOR DEBUG: parcel=${feature.properties.parcel_id}, varBase=${varBase}, scoreValue=${scoreValue}, factorScores.travel_s=${factorScores.travel_s}`);
+            }
         }
 
         return factorScores;
@@ -927,8 +932,14 @@ class ClientNormalizationManager {
         }
 
         // Apply inversion for certain variables
-        if (invertVars.has(varBase)) {
+        const shouldInvert = invertVars.has(varBase) || invertVars.has(rawVar);
+        if (shouldInvert) {
             normalizedScore = 1.0 - normalizedScore;
+        }
+
+        // Debug logging for travel scores
+        if (varBase === 'travel') {
+            console.log(`🚗 TRAVEL DEBUG: varBase=${varBase}, rawVar=${rawVar}, rawValue=${rawValue}, normalizedScore=${normalizedScore}, shouldInvert=${shouldInvert}`);
         }
 
         return normalizedScore;
