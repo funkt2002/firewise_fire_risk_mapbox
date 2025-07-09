@@ -591,6 +591,51 @@ def clear_cache():
             "timestamp": time.strftime('%Y-%m-%d %H:%M:%S')
         }), 500
 
+@app.route('/api/memory-status', methods=['GET'])
+def memory_status():
+    """Monitor memory usage and system resources"""
+    try:
+        process = psutil.Process()
+        memory_info = process.memory_info()
+        
+        # Get system memory info
+        system_memory = psutil.virtual_memory()
+        
+        # Get process info
+        cpu_percent = process.cpu_percent(interval=0.1)
+        num_threads = process.num_threads()
+        
+        # Try to get open files and connections count
+        try:
+            open_files = len(process.open_files())
+        except:
+            open_files = "N/A"
+            
+        try:
+            connections = len(process.connections())
+        except:
+            connections = "N/A"
+        
+        return jsonify({
+            "process": {
+                "memory_mb": round(memory_info.rss / 1024 / 1024, 1),
+                "memory_percent": round(process.memory_percent(), 1),
+                "cpu_percent": round(cpu_percent, 1),
+                "threads": num_threads,
+                "open_files": open_files,
+                "connections": connections
+            },
+            "system": {
+                "total_memory_mb": round(system_memory.total / 1024 / 1024, 1),
+                "available_memory_mb": round(system_memory.available / 1024 / 1024, 1),
+                "memory_percent_used": round(system_memory.percent, 1)
+            },
+            "timestamp": time.strftime('%Y-%m-%d %H:%M:%S')
+        })
+        
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 @app.route('/api/debug/columns', methods=['GET'])
 def get_columns():
     """Debug endpoint to check columns"""
