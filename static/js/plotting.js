@@ -12,8 +12,8 @@ class PlottingManager {
             'slope': 'slope_s',
             'neigh1d': 'neigh1_d',
             'hbrn': 'hlfmi_brn',
-            'par_buf_sl': 'par_buf_sl',
-            'hlfmi_agfb': 'hlfmi_agfb'
+            'par_sl': 'par_buf_sl',
+            'agfb': 'hlfmi_agfb'
         };
 
         this.varNameMap = {
@@ -26,8 +26,8 @@ class PlottingManager {
             'slope_s': 'Mean Parcel Slope',
             'neigh1_d': 'Distance to Nearest Neighbor',
             'hlfmi_brn': 'Burn Scar Coverage (1/2 mile)',
-            'par_buf_sl': 'Structure Surrounding Slope (100 foot buffer)',
-            'hlfmi_agfb': 'Agriculture & Fuelbreaks (1/2 mile)',
+            'par_sl': 'Structure Surrounding Slope (100 foot buffer)',
+            'agfb': 'Agriculture & Fuelbreaks (1/2 mile)',
             
             // Score variable mappings (_s suffix)
             'qtrmi_s': 'Number of Structures Within Window (1/4 mile)',
@@ -85,8 +85,8 @@ class PlottingManager {
             'slope_s': 'Parcel<br>Slope',
             'neigh1_d': 'Neighbor<br>Distance',
             'hlfmi_brn': 'Burn Scars<br>(1/2 mi)',
-            'par_buf_sl': 'Structure<br>Slope (100ft)',
-            'hlfmi_agfb': 'Agri & Fuel<br>(1/2 mi)',
+            'par_sl': 'Structure<br>Slope (100ft)',
+            'agfb': 'Agri & Fuel<br>(1/2 mi)',
             
             // Score variables
             'qtrmi_s': 'Structures<br>(1/4 mi)',

@@ -397,11 +397,11 @@ class ClientNormalizationManager {
             'slope': 'slope_s',
             'neigh1d': 'neigh1_d',
             'hbrn': 'hlfmi_brn',
-            'par_buf_sl': 'par_buf_sl',
-            'hlfmi_agfb': 'hlfmi_agfb'
+            'par_sl': 'par_buf_sl',
+            'agfb': 'hlfmi_agfb'
         };
 
-        const weightVarsBase = ['qtrmi', 'hwui', 'hagri', 'hvhsz', 'hfb', 'slope', 'neigh1d', 'hbrn', 'par_buf_sl', 'hlfmi_agfb'];
+        const weightVarsBase = ['qtrmi', 'hwui', 'hagri', 'hvhsz', 'hfb', 'slope', 'neigh1d', 'hbrn', 'par_sl', 'agfb'];
         const invertVars = new Set(['hagri', 'neigh1d', 'hfb', 'hlfmi_agfb']);
 
         // First pass: collect values for normalization parameters
@@ -441,7 +441,7 @@ class ClientNormalizationManager {
                             if (values.length < 3) {
                                 console.log(`🔧 NORMALIZATION DEBUG: ${varBase} ROBUST transform: ${originalValue} → ${rawValue.toFixed(3)}`);
                             }
-                        } else if (varBase === 'hagri' || varBase === 'hfb' || varBase === 'hlfmi_agfb') {
+                        } else if (varBase === 'hagri' || varBase === 'hfb' || varBase === 'agfb') {
                             // Apply log transformation to agriculture, fuel breaks, and combined agriculture & fuelbreaks
                             rawValue = Math.log(1 + rawValue);
                             if (values.length < 3) {
@@ -555,7 +555,7 @@ class ClientNormalizationManager {
                             if (featureCounter <= 3 && (varBase === 'neigh1d' || varBase === 'hagri' || varBase === 'hfb')) {
                                 console.log(`🔧 FEATURE ${featureCounter} ROBUST: ${varBase} ${originalValue} → ${rawValue.toFixed(3)}`);
                             }
-                        } else if (varBase === 'hagri' || varBase === 'hfb' || varBase === 'hlfmi_agfb') {
+                        } else if (varBase === 'hagri' || varBase === 'hfb' || varBase === 'agfb') {
                             // Apply log transformation to agriculture, fuel breaks, and combined agriculture & fuelbreaks
                             rawValue = Math.log(1 + rawValue);
                             
@@ -678,11 +678,11 @@ class ClientNormalizationManager {
             'slope': 'slope_s',
             'neigh1d': 'neigh1_d',
             'hbrn': 'hlfmi_brn',
-            'par_buf_sl': 'par_buf_sl',
-            'hlfmi_agfb': 'hlfmi_agfb'
+            'par_sl': 'par_buf_sl',
+            'agfb': 'hlfmi_agfb'
         };
 
-        const weightVarsBase = ['qtrmi', 'hwui', 'hagri', 'hvhsz', 'hfb', 'slope', 'neigh1d', 'hbrn', 'par_buf_sl', 'hlfmi_agfb'];
+        const weightVarsBase = ['qtrmi', 'hwui', 'hagri', 'hvhsz', 'hfb', 'slope', 'neigh1d', 'hbrn', 'par_sl', 'agfb'];
         const normData = {};
         
         for (const varBase of weightVarsBase) {
@@ -711,7 +711,7 @@ class ClientNormalizationManager {
                             }
                             const cappedValue = Math.min(rawValue, 5280);
                             rawValue = Math.log(1 + cappedValue);
-                        } else if (varBase === 'hagri' || varBase === 'hfb' || varBase === 'hlfmi_agfb') {
+                        } else if (varBase === 'hagri' || varBase === 'hfb' || varBase === 'agfb') {
                             rawValue = Math.log(1 + rawValue);
                         }
                     } else if (varBase === 'neigh1d' && rawValue === 0) {
@@ -783,7 +783,7 @@ class ClientNormalizationManager {
     // Get factor scores for a feature based on normalization type
     getFactorScores(feature, use_local_normalization, use_quantile, use_raw_scoring = false) {
         const factorScores = {};
-        const weightVarsBase = ['qtrmi', 'hwui', 'hagri', 'hvhsz', 'hfb', 'slope', 'neigh1d', 'hbrn', 'par_buf_sl', 'hlfmi_agfb'];
+        const weightVarsBase = ['qtrmi', 'hwui', 'hagri', 'hvhsz', 'hfb', 'slope', 'neigh1d', 'hbrn', 'par_sl', 'agfb'];
 
         // Log the active combination (only once per call)
         if (!this.lastLoggedCombination || 
@@ -855,8 +855,8 @@ class ClientNormalizationManager {
             'slope': 'slope_s',
             'neigh1d': 'neigh1_d',
             'hbrn': 'hlfmi_brn',
-            'par_buf_sl': 'par_buf_sl',
-            'hlfmi_agfb': 'hlfmi_agfb'
+            'par_sl': 'par_buf_sl',
+            'agfb': 'hlfmi_agfb'
         };
 
         const invertVars = new Set(['hagri', 'neigh1d', 'hfb', 'hlfmi_agfb']);

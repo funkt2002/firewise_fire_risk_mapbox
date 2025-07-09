@@ -271,12 +271,21 @@ def index():
                 'subtitle': None
             },
             {
-                'id': 'par_buf_sl',
-                'name': 'Parcel Buffer Slope',
+                'id': 'agfb_s',
+                'name': 'Agriculture & Fuelbreaks (1/2 mile)',
+                'value': 10,
+                'enabled': True,
+                'raw_key': 'hlfmi_agfb',
+                'correlation_key': 'agfb',
+                'subtitle': None
+            },
+            {
+                'id': 'par_sl_s',
+                'name': 'Slope within 100 ft',
                 'value': 0,
                 'enabled': False,
                 'raw_key': 'par_buf_sl',
-                'correlation_key': 'par_buf_sl',
+                'correlation_key': 'par_sl',
                 'subtitle': None
             },
             {

@@ -7,7 +7,7 @@ class SharedDataStore {
         this.attributeMap = new Map();
         this.baseVariables = [
             'qtrmi', 'hwui', 'hagri', 'hvhsz', 'hfb', 
-            'slope', 'neigh1d', 'hbrn', 'par_buf_sl', 'hlfmi_agfb'
+            'slope', 'neigh1d', 'hbrn', 'par_sl', 'agfb'
         ];
         
         // Raw variable mapping for actual database column names
@@ -20,8 +20,8 @@ class SharedDataStore {
             'slope': 'avg_slope',
             'neigh1d': 'neigh1_d',
             'hbrn': 'hlfmi_brn',
-            'par_buf_sl': 'par_buf_sl',
-            'hlfmi_agfb': 'hlfmi_agfb'
+            'par_sl': 'par_buf_sl',
+            'agfb': 'hlfmi_agfb'
         };
     }
 
