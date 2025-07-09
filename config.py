@@ -48,7 +48,7 @@ class Config:
     ]
     
     # Variables that should be inverted (lower is better)
-    INVERT_VARS = {'hagri', 'neigh1d', 'hfb', 'agfb', 'travel'}
+    INVERT_VARS = {'hagri', 'neigh1d', 'hfb', 'agfb'}
     
     # Variable name corrections for corrupted/truncated names
     VARIABLE_NAME_CORRECTIONS = {

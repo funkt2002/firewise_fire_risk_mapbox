@@ -2753,8 +2753,12 @@
             } else {
                 // Disable variable
                 container.classList.add('disabled');
-                controls.classList.remove('expanded');
-                controls.classList.add('collapsed');
+                
+                // Only collapse if it's not the travel time variable
+                if (variableId !== 'travel_s') {
+                    controls.classList.remove('expanded');
+                    controls.classList.add('collapsed');
+                }
                 
                 // Store the current value before setting to 0
                 slider.dataset.previousValue = slider.value;

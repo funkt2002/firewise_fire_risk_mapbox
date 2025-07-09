@@ -4,7 +4,7 @@
         <input type="checkbox" class="variable-enable-checkbox" id="enable-{{ variable.id }}" {{ 'checked' if variable.enabled else '' }}>
         <span class="variable-name">{{ variable.name }}</span>
     </div>
-    <div class="variable-controls expanded">
+    <div class="variable-controls {% if variable.enabled or variable.id == 'travel_s' %}expanded{% else %}collapsed{% endif %}">
         {% if variable.subtitle %}
         <div style="font-size: 10px; color: #888; margin-bottom: 3px;">{{ variable.subtitle }}</div>
         {% endif %}
