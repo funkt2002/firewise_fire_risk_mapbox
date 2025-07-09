@@ -10,6 +10,7 @@ import tempfile
 import zipfile
 import traceback
 import gzip
+import gc  # For garbage collection
 import psutil  # For memory monitoring
 
 from flask import Flask, request, jsonify, render_template, send_file, make_response
@@ -31,7 +32,7 @@ from config import Config, get_config
 from exceptions import handle_api_errors, DatabaseError, ValidationError, CacheError
 from utils import (
     normalize_variable_name, correct_variable_names, format_number, 
-    safe_float, validate_parcel_ids, log_memory_usage,
+    safe_float, validate_parcel_ids, log_memory_usage, cleanup_memory,
     get_session_directory, create_session_directory, get_session_file_path
 )
 
@@ -706,6 +707,11 @@ def check_cache_for_base_dataset(data, start_time):
                 logger.info(f"CACHE HIT: Retrieved base dataset in {cache_time*1000:.1f}ms")
                 logger.info(f"Decompressed {data_size_mb:.1f}MB → {decompressed_size_mb:.1f}MB ({compression_ratio:.1f}% compression)")
                 
+                # Clear intermediate data immediately
+                cached_data = None
+                decompressed_data = None
+                gc.collect()
+                
                 # Update response with cache timing
                 cached_result['cache_used'] = True
                 cached_result['cache_time'] = cache_time
@@ -713,6 +719,11 @@ def check_cache_for_base_dataset(data, start_time):
                 
                 return cached_result, cache_time, use_filters
             except Exception as decomp_error:
+                # Cleanup on error too
+                cached_data = None
+                decompressed_data = None
+                cached_result = None
+                gc.collect()
                 logger.error(f"CACHE DECOMPRESSION ERROR: {decomp_error}")
                 # Fall through to database query
         else:
@@ -809,8 +820,12 @@ def execute_database_query(data, timings):
         db_close_start = time.time()
         cur.close()
         conn.close()
+        
+        # Force garbage collection after DB cleanup
+        gc.collect()
+        
         timings['database_cleanup'] = time.time() - db_close_start
-        logger.info(f"Database connection closed in {timings['database_cleanup']:.3f}s")
+        logger.info(f"Database connection closed and memory cleaned in {timings['database_cleanup']:.3f}s")
 
 def process_query_results(raw_results, data, timings):
     """Process raw database results into attribute format"""
@@ -828,13 +843,20 @@ def process_query_results(raw_results, data, timings):
     # Data preparation - convert raw results to dictionaries
     prep_start = time.time()
     scored_results = []
+    BATCH_SIZE = 10000
+    
     for i, row in enumerate(raw_results):
         row_dict = dict(row)
         scored_results.append(row_dict)
         
-        # Log progress for large datasets
-        if i > 0 and i % 10000 == 0:
-            logger.info(f"Processed {i:,}/{len(raw_results):,} rows ({i/len(raw_results)*100:.1f}%)")
+        # Log progress and clean memory for large datasets
+        if i > 0 and i % BATCH_SIZE == 0:
+            gc.collect()
+            logger.info(f"Processed {i:,}/{len(raw_results):,} rows ({i/len(raw_results)*100:.1f}%), memory cleaned")
+    
+    # Clear raw_results after processing
+    raw_results = None
+    gc.collect()
     
     timings['data_preparation'] = time.time() - prep_start
     logger.info(f"Data preparation completed in {timings['data_preparation']:.3f}s - processed {len(scored_results):,} rows")
@@ -857,9 +879,17 @@ def process_query_results(raw_results, data, timings):
         
         attributes.append(attribute_record)
         
-        # Log progress for large datasets
-        if i > 0 and i % 10000 == 0:
-            logger.info(f"VECTOR TILES: Built {i:,}/{len(scored_results):,} attribute records ({i/len(scored_results)*100:.1f}%)")
+        # Clear the row from scored_results to free memory
+        scored_results[i] = None
+        
+        # Log progress and clean memory for large datasets
+        if i > 0 and i % BATCH_SIZE == 0:
+            gc.collect()
+            logger.info(f"VECTOR TILES: Built {i:,}/{len(scored_results):,} attribute records ({i/len(scored_results)*100:.1f}%), memory cleaned")
+    
+    # Final cleanup
+    scored_results = None
+    gc.collect()
     
     timings['attribute_creation'] = time.time() - attribute_creation_start
     timings['properties_processing'] = properties_processing_time
@@ -911,8 +941,18 @@ def build_response_and_cache(attributes, total_parcels_before_filter, total_parc
                 
                 logger.info(f"CACHE SET: Compressed {original_size_mb:.1f}MB → {compressed_size_mb:.1f}MB ({compression_ratio:.1f}% reduction)")
                 logger.info(f"CACHE SET: Stored compressed dataset in {cache_save_time*1000:.1f}ms")
+                
+                # Clear intermediate data
+                json_data = None
+                compressed_data = None
+                gc.collect()
+                
                 timings['cache_save'] = cache_save_time
             except Exception as e:
+                # Cleanup on error
+                json_data = None
+                compressed_data = None
+                gc.collect()
                 logger.error(f"CACHE ERROR: Failed to save base dataset: {e}")
         else:
             logger.warning("CACHE SKIP: Redis not available for saving")
@@ -942,7 +982,8 @@ def prepare_data():
     start_time = time.time()
     timings = {}
     
-    log_memory_usage("Start of prepare_data")
+    # Log initial memory
+    initial_memory = log_memory_usage("Start of prepare_data")
     
     try:
         # Parse request
@@ -966,19 +1007,36 @@ def prepare_data():
             raw_results, data, timings
         )
         
+        # Clear raw_results after processing
+        raw_results = None
+        gc.collect()
+        
         # Build response and cache
         response_data = build_response_and_cache(
-            attributes, total_parcels_before_filter, len(raw_results),
+            attributes, total_parcels_before_filter, len(attributes),
             use_local_normalization, use_quantile, max_parcels, 
             timings, start_time, use_filters
         )
         
-        log_memory_usage("End of prepare_data")
+        # Clear attributes after building response
+        attributes = None
+        gc.collect()
+        
+        # Log memory difference
+        final_memory = log_memory_usage("End of prepare_data")
+        if initial_memory and final_memory:
+            memory_increase = final_memory - initial_memory
+            logger.info(f"Memory increase during request: {memory_increase:.1f}MB")
+        
         return jsonify(response_data)
         
     except ValueError as ve:
+        # Cleanup on error
+        gc.collect()
         return jsonify({"error": str(ve)}), 400
     except Exception as e:
+        # Cleanup on error
+        gc.collect()
         logger.error(f"Error in /api/prepare: {str(e)}")
         return jsonify({"error": str(e), "traceback": traceback.format_exc()}), 500
 

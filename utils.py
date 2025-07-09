@@ -696,3 +696,38 @@ def log_memory_usage(context: str = "") -> Optional[float]:
     except Exception as e:
         logger.warning(f"Could not get memory info: {e}")
         return None
+
+
+def cleanup_memory(context: str = "", threshold_mb: float = 800) -> Optional[float]:
+    """
+    Force garbage collection and log memory usage.
+    
+    Args:
+        context: Description of when this is called
+        threshold_mb: Log warning if memory exceeds this
+    
+    Returns:
+        Current memory usage in MB
+    """
+    import gc
+    import psutil
+    
+    # Force garbage collection
+    collected = gc.collect()
+    
+    try:
+        # Get current memory usage
+        process = psutil.Process()
+        memory_mb = process.memory_info().rss / 1024 / 1024
+        
+        if collected > 0:
+            logger.info(f"GC at {context}: collected {collected} objects, memory: {memory_mb:.1f}MB")
+        
+        if memory_mb > threshold_mb:
+            logger.warning(f"High memory usage at {context}: {memory_mb:.1f}MB (threshold: {threshold_mb}MB)")
+        
+        return memory_mb
+        
+    except Exception as e:
+        logger.warning(f"Could not get memory info during cleanup: {e}")
+        return None

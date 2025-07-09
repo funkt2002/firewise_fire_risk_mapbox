@@ -800,8 +800,6 @@
                     }
                 }
             });
-            
-            console.log(`Updated distribution buttons to use ${suffix} suffix for score plots`);
         }
 
         function getCurrentFilters() {
@@ -984,22 +982,16 @@
         fireRiskApp.map.addControl(fireRiskApp.draw, 'top-right');
 
         // Initialize services before map loads (fixes timing issue with score calculations)
-        console.log('🏗️ MEMORY OPTIMIZATION: Initializing shared data store...');
         fireRiskApp.services.sharedDataStore = new SharedDataStore();
-        console.log('✅ SharedDataStore created - will eliminate duplicate data copies');
         
         // Initialize utility instances
         fireRiskApp.services.performanceTracker = new PerformanceTracker();
         fireRiskApp.services.apiClient = new TimedAPIClient();
-        console.log('📈 Utility instances created');
         
         // Initialize all managers with shared data store
-        console.log('🔧 Initializing managers with shared data store...');
         fireRiskApp.services.clientFilterManager = new ClientFilterManager(fireRiskApp.services.sharedDataStore);
         fireRiskApp.services.clientNormalizationManager = new ClientNormalizationManager(fireRiskApp.services.sharedDataStore);
         fireRiskApp.services.fireRiskScoring = new FireRiskScoring(fireRiskApp.services.sharedDataStore);
-        console.log('✅ MEMORY OPTIMIZATION: All managers using single shared dataset (no duplicates)');
-        console.log('💾 EXPECTED BENEFIT: ~66% reduction in client memory usage for large datasets');
         
         // Keep backward compatibility
         window.sharedDataStore = fireRiskApp.services.sharedDataStore;
@@ -1109,25 +1101,17 @@
 
         // Initialize with precomputed scores from vector tiles (no API call)
         async function initializeWithPrecomputedScores() {
-            console.log('INITIALIZING WITH PRECOMPUTED SCORES (no API call)');
-            
             // Set initial statistics based on precomputed default scores  
             document.getElementById('total-parcels').textContent = '62,416';
             document.getElementById('selected-parcels').textContent = '0';
             document.getElementById('total-risk').textContent = '0';
             document.getElementById('avg-risk').textContent = '0';
             
-            // NO blue outlines initially - only show white-red symbology
-            console.log('Initializing without blue outlines - only showing default score colors...');
-            
             // Set empty filter for top 500 layer (no blue outlines initially)
             map.setFilter('parcels-top500', ['==', 'parcel_id', '']);
             
-            console.log('Map initialized with precomputed scores only - ready for Calculate button');
-            
             // Auto-trigger calculate button after a short delay to ensure everything is loaded
             setTimeout(() => {
-                console.log('AUTO-TRIGGERING CALCULATE BUTTON...');
                 document.getElementById('calculate-btn').click();
             }, 500);
         }
@@ -1135,7 +1119,7 @@
         // Enhanced update scores function with comprehensive client-side processing
         async function updateScores(isFilterChange = false) {
             const overallStartTime = performance.now();
-            console.log(`=== ${isFilterChange ? 'FULL LOAD' : 'CLIENT PROCESSING'} STARTED ===`);
+            console.log(`Processing started: ${isFilterChange ? 'server load' : 'client-side calculation'}`);
             
             document.getElementById('spinner').style.display = 'block';
             
@@ -1157,7 +1141,7 @@
             try {
                 // Check if we have complete dataset stored and can use client-side processing
                 if (window.fireRiskScoring.getCompleteDatasetCount() > 0) {
-                    console.log('Using comprehensive client-side processing (filtering + scoring)');
+                    console.log('Cache hit: Using client-side processing');
                     
                     // Use the new processData method for everything client-side
                     const clientResult = window.fireRiskScoring.processData(
@@ -1184,13 +1168,13 @@
                         }
                         
                         const totalTime = performance.now() - overallStartTime;
-                        console.log(`=== CLIENT PROCESSING COMPLETED in ${totalTime.toFixed(1)}ms ===`);
+                        console.log(`Client processing completed in ${totalTime.toFixed(1)}ms`);
                         return;
                     }
                 }
                 
                 // First time load: fetch complete dataset from server
-                console.log('Loading complete dataset from server (first time)');
+                console.log('Cache miss: Loading dataset from server');
                 
                 const responseData = await window.apiClient.prepareData({
                     weights,
@@ -1206,13 +1190,6 @@
                 console.log(`Stored ${storedCount} parcels for client-side processing`);
                 
                 // ALWAYS use client-side score calculation, even on first load
-                console.log('FIRST CLIENT-SIDE CALCULATION STARTING...');
-                console.log(`   - Weights:`, weights);
-                console.log(`   - Max parcels: ${maxParcels}`);
-                console.log(`   - Local normalization: ${filters.use_local_normalization}`);
-                console.log(`   - Use quantile: ${filters.use_quantile}`);
-
-                
                 const firstCalcStart = performance.now();
                 const clientResult = window.fireRiskScoring.processData(
                     weights, 
@@ -1227,13 +1204,9 @@
                 // Use client-calculated scores, not server precomputed scores
                 if (clientResult) {
                     currentData = clientResult;
-                    console.log(`FIRST CLIENT-SIDE CALCULATION SUCCEEDED in ${firstCalcTime.toFixed(1)}ms`);
-                    console.log(`   - Calculated scores for ${clientResult.features.length} parcels`);
-                    console.log(`   - Top ${clientResult.selected_count} parcels selected`);
-                    console.log(`   - Using client-calculated composite scores (not precomputed)`);
+                    console.log(`First client calculation: ${firstCalcTime.toFixed(1)}ms for ${clientResult.features.length} parcels`);
                 } else {
-                    console.error(`FIRST CLIENT-SIDE CALCULATION FAILED after ${firstCalcTime.toFixed(1)}ms`);
-                    console.error('   - Falling back to server precomputed scores');
+                    console.error(`Client calculation failed after ${firstCalcTime.toFixed(1)}ms, using server data`);
                     currentData = responseData;
                 }
                 updateMap();
@@ -1248,7 +1221,7 @@
                 }
                 
                 const totalTime = performance.now() - overallStartTime;
-                console.log(`=== INITIAL LOAD COMPLETED in ${totalTime.toFixed(1)}ms ===`);
+                console.log(`Initial load completed in ${totalTime.toFixed(1)}ms`);
                 
             } catch (error) {
                 console.error('Error updating scores:', error);
@@ -1308,7 +1281,6 @@
             });
             
             updateSelectionCount();
-            console.log(`Added ${type} selection area. Total areas: ${selectionAreas.length}`);
         }
 
         function removeLastSelectionArea() {
@@ -1325,7 +1297,6 @@
                 }
                 
                 updateSelectionCount();
-                console.log(`Removed last selection area (${removed.type}). Remaining: ${selectionAreas.length}`);
             }
         }
 
@@ -1346,7 +1317,6 @@
             
             selectionAreas = [];
             updateSelectionCount();
-            console.log('Cleared all selection areas');
         }
 
         function combineSelectionAreas() {
@@ -1359,8 +1329,6 @@
             // For multiple areas, create a union using Turf.js
             if (window.turf && window.turf.union && window.turf.feature) {
                 try {
-                    console.log(`Combining ${selectionAreas.length} selection areas using Turf.js`);
-                    
                     let combined = window.turf.feature(selectionAreas[0].geometry);
                     
                     for (let i = 1; i < selectionAreas.length; i++) {
@@ -1368,14 +1336,11 @@
                         combined = window.turf.union(combined, nextFeature);
                     }
                     
-                    console.log(`Union result type: ${combined.geometry.type}`);
-                    
                     // Return just the geometry, not the full feature
                     return combined.geometry;
                 } catch (error) {
                     console.error('Failed to union selection areas:', error);
                     // Fall back to returning all areas as separate features for backend OR processing
-                    console.log('Falling back to FeatureCollection approach');
                     return {
                         type: "FeatureCollection",
                         features: selectionAreas.map(area => ({
@@ -1416,8 +1381,6 @@
         function updateMap() {
             if (!currentData) return;
             
-            console.log('VECTOR TILES: Updating map styling with attribute data...');
-            
             // Handle both old FeatureCollection and new AttributeCollection formats
             let attributes;
             if (currentData.type === "AttributeCollection") {
@@ -1426,7 +1389,7 @@
                 // Legacy format - extract properties
                 attributes = currentData.features.map(feature => feature.properties);
             } else {
-                console.error('VECTOR TILES: Unknown data format:', currentData.type);
+                console.error('Unknown data format:', currentData.type);
                 return;
             }
             
@@ -1458,8 +1421,6 @@
             window.top500ParcelIds = top500Ids;
             window.filteredParcelIds = Object.values(scoreObject).filter(score => score !== undefined).map(score => parseFloat(score)).sort((a, b) => a - b);
             
-            console.log(`VECTOR TILES: Updated styling data for ${Object.keys(scoreObject).length} parcels (${top500Ids.length} top parcels)`);
-            
             // Update map paint properties with new scores
             map.setPaintProperty('parcels-fill', 'fill-color', [
                 'case',
@@ -1480,8 +1441,6 @@
             
             // Update top 500 filter  
             map.setFilter('parcels-top500', ['in', ['to-string', ['get', 'parcel_id']], ['literal', top500Ids]]);
-            
-            console.log('VECTOR TILES: Map styling updated successfully');
         }
         
 
@@ -1652,7 +1611,6 @@
                 return;
             }
             
-            console.log('Downloading LP file on-demand (memory optimized)');
             const response = await fetch(`/api/download-lp/${currentOptimizationSession}`);
             
             if (!response.ok) {
@@ -1669,8 +1627,6 @@
             a.click();
             window.URL.revokeObjectURL(url);
             document.body.removeChild(a);
-            
-            console.log('LP file downloaded successfully - no client storage used');
         }, { errorMessage: 'Error downloading LP file. Please try again.' });
 
         // Download .TXT report (memory optimized - on-demand from server)
@@ -1680,7 +1636,6 @@
                 return;
             }
             
-            console.log('Downloading TXT report on-demand (memory optimized)');
             const response = await fetch(`/api/download-txt/${currentOptimizationSession}`);
                 
             if (!response.ok) {
@@ -1697,8 +1652,6 @@
             a.click();
             window.URL.revokeObjectURL(url);
             document.body.removeChild(a);
-            
-            console.log('TXT report downloaded successfully - no client storage used');
         }, { errorMessage: 'Error downloading TXT report. Please try again.' });
 
         // View solution report in modal (memory optimized - on-demand from server)
@@ -1707,7 +1660,6 @@
                 alert('No optimization session available. Please run weight optimization first.');
                 return;
             }
-            console.log('Loading solution on-demand (memory optimized)');
             const response = await fetch(`/api/view-solution/${currentOptimizationSession}`);
             
             if (!response.ok) {
@@ -1720,8 +1672,6 @@
             newWindow.document.write(htmlContent);
             newWindow.document.close();
             newWindow.document.title = 'Fire Risk Optimization Solution';
-            
-            console.log('Solution viewed successfully - no client storage used');
         }, { errorMessage: 'Error viewing solution. Please try again.' });
 
         // Multi-area selection handlers - Add Rectangle
@@ -1777,7 +1727,6 @@
         document.getElementById('filter-parcels').addEventListener('click', () => {
             const features = draw.getAll().features;
             if (features.length && subsetArea) {
-                console.log('Applying spatial filter with subsetArea:', subsetArea);
                 document.getElementById('subset-indicator').style.display = 'block';
                 
                 // Clear the drawn shape from the map after filtering
@@ -1785,8 +1734,6 @@
                 
                 // Use client-side processing for spatial filtering
                 updateScores();
-            } else {
-                console.log('No features or subsetArea to filter with. Features:', features.length, 'subsetArea:', subsetArea);
             }
         });
         
@@ -1805,8 +1752,6 @@
             const use_quantile = document.getElementById('use-quantile').checked;
             const use_raw_scoring = document.getElementById('use-raw-scoring').checked;
             const use_local_normalization = document.getElementById('use-local-normalization').checked;
-            
-            console.log(`Collecting parcel scores: quantile=${use_quantile}, raw=${use_raw_scoring}, local=${use_local_normalization}`);
 
             const selectedParcels = [];
             const turf = window.turf;
@@ -1845,8 +1790,6 @@
                     console.error('Error processing selection area:', e);
                 }
             }
-
-            console.log(`Found ${selectedParcelIds.size} unique parcels in selection areas`);
 
             // Function to get factor scores for a parcel
             function getParcelFactorScores(parcelId) {
@@ -1889,7 +1832,6 @@
 
             // Only absolute optimization supported
 
-            console.log(`Collected scores for ${selectedParcels.length} selected parcels`);
             return { selectedParcels };
         }
 
@@ -1934,10 +1876,6 @@
             document.getElementById('spinner').style.display = 'block';
 
             try {
-                console.log(`Optimizing weights for ${selectionAreas.length} selection areas (${optimizationType} mode):`, 
-                    selectionAreas.map(area => area.type));
-                console.log(`Sending ${parcelScoreData.selectedParcels.length} selected parcel scores to server`);
-
                 // Prepare request data
                 const requestData = {
                     selection: combinedSelection,
@@ -1970,14 +1908,12 @@
                         });
                     }
                     requestData.parcel_scores = allParcelScores;
-                    console.log(`Collected ${allParcelScores.length} total parcel scores for separation constraints`);
                 }
 
                 const data = await window.apiClient.inferWeights(requestData);
 
                 // Store only the session ID (memory optimized - no bulk data)
                 currentOptimizationSession = data.session_id;
-                console.log(`Memory optimization: Stored only session ID, no bulk data in client`);
 
                 // Clear any previous optimization data to prevent memory buildup
                 selectedParcels = [];
@@ -1994,17 +1930,12 @@
                 }
 
                 // Update the weight sliders with optimized values
-                console.log('Optimization result weights:', data.weights);
                 Object.entries(data.weights).forEach(([key, value]) => {
                     const sliderKey = key + '_s'; // Add _s suffix for slider IDs
-                    console.log(`Trying to update slider: ${sliderKey} = ${value}`);
                     const slider = document.getElementById(sliderKey);
                     if (slider) {
-                        console.log(`Found slider ${sliderKey}, updating to ${value}`);
                         slider.value = value;
                         updateSliderFill(slider);
-                    } else {
-                        console.log(`Slider not found for key: ${sliderKey}`);
                     }
                 });
                 
@@ -2012,7 +1943,6 @@
                 normalizeWeights();
                 
                 // Trigger a score recalculation with the new weights
-                console.log(`Applied optimized weights from ${optimizationType} optimization`);
                 await updateScores(); // Recalculate scores with new weights
                 
                 // Clear the drawn features after successful optimization
@@ -2224,53 +2154,47 @@
                 // Reset selection mode to simple_select so user can draw more
                 isAddingSelection = false;
                 draw.changeMode('simple_select');
-                
-                console.log(`Added ${selectionType} to selection areas. Total: ${selectionAreas.length}`);
             } 
             // Legacy single selection (kept for compatibility) - updated for vector tiles
             else {
-                // Regular single selection for weight inference (legacy mode)
-                document.getElementById('infer-weights').disabled = false;
+                            // Regular single selection for weight inference (legacy mode)
+            document.getElementById('infer-weights').disabled = false;
+            
+            if (window.turf) {
+                // Use queryRenderedFeatures for vector tile selection
+                const bbox = window.turf.bbox(selection);
+                const pixelBounds = [
+                    map.project([bbox[0], bbox[1]]),
+                    map.project([bbox[2], bbox[3]])
+                ];
                 
-                console.log('VECTOR TILES: Legacy selection mode - using queryRenderedFeatures...');
+                const selectedFeatures = map.queryRenderedFeatures(
+                    pixelBounds,
+                    { layers: ['parcels-fill'] }
+                );
                 
-                if (window.turf) {
-                    // Use queryRenderedFeatures for vector tile selection
-                    const bbox = window.turf.bbox(selection);
-                    const pixelBounds = [
-                        map.project([bbox[0], bbox[1]]),
-                        map.project([bbox[2], bbox[3]])
-                    ];
-                    
-                    const selectedFeatures = map.queryRenderedFeatures(
-                        pixelBounds,
-                        { layers: ['parcels-fill'] }
-                    );
-                    
-                    // Filter geometrically and map to attribute data
-                    selectedParcels = selectedFeatures
-                        .filter(feature => window.turf.booleanIntersects(feature, selection))
-                        .map(feature => {
-                            const parcelId = feature.properties.parcel_id || feature.id;
-                            const attributes = window.fireRiskScoring.getAttributesByParcelId(parcelId);
-                            return {
-                                type: "Feature",
-                                geometry: null, // Don't need geometry for weight inference
-                                properties: attributes
-                            };
-                        })
-                        .filter(feature => feature.properties); // Remove any missing attributes
-                    
-                    const selectedCount = selectedParcels.length;
-                    const totalRisk = selectedParcels.reduce((sum, f) => sum + (f.properties.score || 0), 0);
-                    const avgRisk = selectedCount > 0 ? totalRisk / selectedCount : 0;
-                    
-                    console.log(`VECTOR TILES: Legacy selection found ${selectedCount} parcels`);
-                    
-                    document.getElementById('selected-parcels').textContent = selectedCount.toLocaleString();
-                    document.getElementById('total-risk').textContent = totalRisk.toFixed(2);
-                    document.getElementById('avg-risk').textContent = avgRisk.toFixed(2);
-                }
+                // Filter geometrically and map to attribute data
+                selectedParcels = selectedFeatures
+                    .filter(feature => window.turf.booleanIntersects(feature, selection))
+                    .map(feature => {
+                        const parcelId = feature.properties.parcel_id || feature.id;
+                        const attributes = window.fireRiskScoring.getAttributesByParcelId(parcelId);
+                        return {
+                            type: "Feature",
+                            geometry: null, // Don't need geometry for weight inference
+                            properties: attributes
+                        };
+                    })
+                    .filter(feature => feature.properties); // Remove any missing attributes
+                
+                const selectedCount = selectedParcels.length;
+                const totalRisk = selectedParcels.reduce((sum, f) => sum + (f.properties.score || 0), 0);
+                const avgRisk = selectedCount > 0 ? totalRisk / selectedCount : 0;
+                
+                document.getElementById('selected-parcels').textContent = selectedCount.toLocaleString();
+                document.getElementById('total-risk').textContent = totalRisk.toFixed(2);
+                document.getElementById('avg-risk').textContent = avgRisk.toFixed(2);
+            }
             }
         });
 
@@ -2376,43 +2300,16 @@
                 return;
             }
             
-            console.log('VECTOR TILES: Parcel clicked, looking up attributes...');
-            
             const parcelId = e.features[0].properties.parcel_id || e.features[0].id;
             const attributes = window.fireRiskScoring.getAttributesByParcelId(parcelId);
             
             if (attributes) {
-                console.log(`VECTOR TILES: Found attributes for parcel ${parcelId}`);
-                console.log(`VECTOR TILES DEBUG: Attributes for popup:`, {
-                    score: attributes.score,
-                    rank: attributes.rank,
-                    par_buf_sl: attributes.par_buf_sl,
-                    hlfmi_agfb: attributes.hlfmi_agfb,
-                    parcel_id: attributes.parcel_id
-                });
-                
-                // Debug raw variables
-                console.log(`🔍 POPUP DEBUG - Raw variables for parcel ${parcelId}:`, {
-                    qtrmi_cnt: attributes.qtrmi_cnt,
-                    hlfmi_wui: attributes.hlfmi_wui,
-                    hlfmi_agri: attributes.hlfmi_agri,
-                    hlfmi_vhsz: attributes.hlfmi_vhsz,
-                    hlfmi_fb: attributes.hlfmi_fb,
-                    avg_slope: attributes.avg_slope,
-                    neigh1_d: attributes.neigh1_d,
-                    hlfmi_brn: attributes.hlfmi_brn,
-                    par_buf_sl: attributes.par_buf_sl,
-                    hlfmi_agfb: attributes.hlfmi_agfb
-                });
-                
-                // Also debug the shared data store
-                window.sharedDataStore?.debugParcel(parcelId);
                 new mapboxgl.Popup()
                     .setLngLat(e.lngLat)
                     .setHTML(createPopupContent(attributes))
                     .addTo(map);
             } else {
-                console.warn(`VECTOR TILES: No attributes found for parcel ${parcelId}`);
+                console.warn(`No attributes found for parcel ${parcelId}`);
                 new mapboxgl.Popup()
                     .setLngLat(e.lngLat)
                     .setHTML(`<div>Parcel ID: ${parcelId}<br/>No attribute data available</div>`)
@@ -2459,8 +2356,6 @@
 
         // Initialize layers function
         function initializeLayers() {
-            console.log('VECTOR TILES: Initializing layers with vector tile source...');
-            
             // Add vector tile source for parcels (ZOOM 10-16 - NO SCORES, geometry only!)
             // Updated: 2024 - New no-scores tileset theo1158.bj61xecs 
             // Supports zoom 10-16: geometry only, no fire risk scores for performance testing
@@ -2525,8 +2420,6 @@
                     'line-width': 2
                 }
             });
-            
-            console.log('VECTOR TILES: Parcel layers initialized with no-scores vector tile source');
             
             // Add vector tile sources for auxiliary layers
             const auxiliaryVectorLayers = [
@@ -2692,8 +2585,6 @@
 
         // Map load
         fireRiskApp.map.on('load', () => {
-            console.log('Map loaded - starting application initialization...');
-            
             // Services already initialized before map load
             
             initializeLayers();
@@ -2701,13 +2592,11 @@
             updateMaxParcels();
             updateSelectionCount(); // Initialize multi-area selection UI
             updateDistributionButtons(); // Initialize distribution buttons with correct score type
-            console.log('Initializing with precomputed scores from vector tiles...');
             initializeWithPrecomputedScores();  // Use precomputed scores, no API call
             
             document.querySelectorAll('input[type="range"]').forEach(slider => {
                 updateSliderFill(slider);
             });
-            console.log('Application initialization complete - map ready with precomputed scores');
         });
 
 
@@ -2776,7 +2665,6 @@
             
             if (hasActiveSelection && draw.getAll().features.length > 0) {
                 // Automatically rerun weight inference with updated exclude settings
-                console.log('Rerunning weight inference due to variable enable/disable change');
                 inferWeightsBtn.click();
             } else {
                 // No active weight inference selection, just update scores normally
