@@ -785,7 +785,7 @@ class ClientNormalizationManager {
     // Get factor scores for a feature based on normalization type
     getFactorScores(feature, use_local_normalization, use_quantile, use_raw_scoring = false) {
         const factorScores = {};
-        const weightVarsBase = ['qtrmi', 'hwui', 'hagri', 'hvhsz', 'hfb', 'slope', 'neigh1d', 'hbrn', 'par_sl', 'agfb'];
+        const weightVarsBase = ['qtrmi', 'hwui', 'hagri', 'hvhsz', 'hfb', 'slope', 'neigh1d', 'hbrn', 'par_sl', 'agfb', 'travel'];
 
         // Log the active combination (only once per call)
         if (!this.lastLoggedCombination || 
