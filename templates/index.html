@@ -17,6 +17,7 @@
     <script src="{{ url_for('static', filename='js/client-scoring.js') }}"></script>
     <script src="{{ url_for('static', filename='js/plotting.js') }}"></script>
     <script src="{{ url_for('static', filename='js/memory-tracker.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/cache-manager.js') }}"></script>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
 </head>
 <body>
@@ -925,6 +926,7 @@
             style: 'mapbox://styles/mapbox/satellite-streets-v12',
             center: [-119.758714, 34.44195],
             zoom: 11,
+            maxZoom: 14,
             pitch: 0,
             bearing: 0
         });
@@ -1160,6 +1162,11 @@
                     );
                     
                     if (clientResult) {
+                        // Clear old data before setting new data
+                        if (window.cacheManager) {
+                            window.cacheManager.clearBeforeUpdate();
+                        }
+                        
                         // Memory tracking for client-side processing
                         if (window.memoryTracker) {
                             window.memoryTracker.snapshot('After client processing');
@@ -1211,6 +1218,11 @@
                     filters.use_raw_scoring
                 );
                 const firstCalcTime = performance.now() - firstCalcStart;
+                
+                // Clear any existing data before setting new data
+                if (window.cacheManager) {
+                    window.cacheManager.clearBeforeUpdate();
+                }
                 
                 // Use client-calculated scores, not server precomputed scores
                 if (clientResult) {
