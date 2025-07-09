@@ -7,7 +7,7 @@ class SharedDataStore {
         this.attributeMap = new Map();
         this.baseVariables = [
             'qtrmi', 'hwui', 'hagri', 'hvhsz', 'hfb', 
-            'slope', 'neigh1d', 'hbrn', 'par_sl', 'agfb', 'travel_s'
+            'slope', 'neigh1d', 'hbrn', 'par_sl', 'agfb', 'travel'
         ];
         
         // Raw variable mapping for actual database column names
