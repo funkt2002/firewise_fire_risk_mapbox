@@ -117,6 +117,13 @@ class CacheManager {
                 window.fireRiskScoring.clearOldDatasets();
             }
             
+            // Only clear factor scores during periodic cleanup if they're very stale
+            const timeSinceLastUpdate = Date.now() - this.lastCleanup;
+            if (timeSinceLastUpdate > 60000 && window.fireRiskScoring?.factorScoresMap?.size > 10000) {
+                console.log('🧹 Clearing stale factor scores map');
+                window.fireRiskScoring.factorScoresMap.clear();
+            }
+            
         } catch (error) {
             console.warn('Stale cache clear error:', error);
         }
@@ -132,10 +139,8 @@ class CacheManager {
                 window.currentData = null;
             }
             
-            // Clear old factor scores
-            if (window.fireRiskScoring?.factorScoresMap) {
-                window.fireRiskScoring.factorScoresMap.clear();
-            }
+            // DON'T clear factorScoresMap here - it will be cleared by the scoring process
+            // The popup needs access to scores until new ones are calculated
             
             // Clear old filtered datasets
             if (window.fireRiskScoring?.filteredDataCache) {
