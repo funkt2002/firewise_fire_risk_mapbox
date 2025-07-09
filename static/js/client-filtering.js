@@ -835,10 +835,6 @@ class ClientNormalizationManager {
                 factorScores[varBase + '_s'] = scoreValue;
             }
             
-            // Debug logging for travel scores
-            if (varBase === 'travel') {
-                console.log(`🚗 FACTOR DEBUG: parcel=${feature.properties.parcel_id}, varBase=${varBase}, scoreValue=${scoreValue}, factorScores.travel_s=${factorScores.travel_s}`);
-            }
         }
 
         return factorScores;
@@ -937,10 +933,6 @@ class ClientNormalizationManager {
             normalizedScore = 1.0 - normalizedScore;
         }
 
-        // Debug logging for travel scores
-        if (varBase === 'travel') {
-            console.log(`🚗 TRAVEL DEBUG: varBase=${varBase}, rawVar=${rawVar}, rawValue=${rawValue}, normalizedScore=${normalizedScore}, shouldInvert=${shouldInvert}`);
-        }
 
         return normalizedScore;
     }
