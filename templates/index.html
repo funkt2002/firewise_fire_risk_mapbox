@@ -16,6 +16,7 @@
     <script src="{{ url_for('static', filename='js/client-filtering.js') }}"></script>
     <script src="{{ url_for('static', filename='js/client-scoring.js') }}"></script>
     <script src="{{ url_for('static', filename='js/plotting.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/memory-tracker.js') }}"></script>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
 </head>
 <body>
@@ -1159,6 +1160,11 @@
                     );
                     
                     if (clientResult) {
+                        // Memory tracking for client-side processing
+                        if (window.memoryTracker) {
+                            window.memoryTracker.snapshot('After client processing');
+                        }
+                        
                         // Update current data
                         currentData = clientResult;
                         updateMap();
@@ -1214,6 +1220,12 @@
                     console.error(`Client calculation failed after ${firstCalcTime.toFixed(1)}ms, using server data`);
                     currentData = responseData;
                 }
+                
+                // Memory tracking for initial data load
+                if (window.memoryTracker) {
+                    window.memoryTracker.snapshot('After initial data load');
+                }
+                
                 updateMap();
                 updateStatistics();
                 
