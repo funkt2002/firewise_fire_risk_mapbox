@@ -7,7 +7,7 @@ class SharedDataStore {
         this.attributeMap = new Map();
         this.baseVariables = [
             'qtrmi', 'hwui', 'hagri', 'hvhsz', 'hfb', 
-            'slope', 'neigh1d', 'hbrn', 'par_sl', 'agfb'
+            'slope', 'neigh1d', 'hbrn', 'par_sl', 'agfb', 'travel_s'
         ];
         
         // Raw variable mapping for actual database column names
@@ -21,7 +21,8 @@ class SharedDataStore {
             'neigh1d': 'neigh1_d',
             'hbrn': 'hlfmi_brn',
             'par_sl': 'par_buf_sl',
-            'agfb': 'hlfmi_agfb'
+            'agfb': 'hlfmi_agfb',
+            'travel': 'travel_tim'
         };
     }
 
@@ -136,6 +137,7 @@ class SharedDataStore {
                 hlfmi_brn: attrs.hlfmi_brn,
                 par_buf_sl: attrs.par_buf_sl,
                 hlfmi_agfb: attrs.hlfmi_agfb,
+                travel_tim: attrs.travel_tim,
                 total_keys: Object.keys(attrs).length
             });
         } else {
