@@ -731,3 +731,59 @@ def cleanup_memory(context: str = "", threshold_mb: float = 800) -> Optional[flo
     except Exception as e:
         logger.warning(f"Could not get memory info during cleanup: {e}")
         return None
+
+
+def force_memory_cleanup(context: str = "", locals_dict: dict = None) -> Optional[float]:
+    """
+    Aggressive memory cleanup function to clear variables and force garbage collection.
+    
+    Args:
+        context: Description of when this is called
+        locals_dict: Local variables dictionary to clear (use locals())
+    
+    Returns:
+        Memory usage in MB after cleanup
+    """
+    import gc
+    import psutil
+    
+    # Log memory before cleanup
+    try:
+        process = psutil.Process()
+        memory_before = process.memory_info().rss / 1024 / 1024
+    except Exception:
+        memory_before = None
+    
+    # Clear provided local variables
+    if locals_dict:
+        # Clear large data structures
+        for var_name, var_value in list(locals_dict.items()):
+            if var_name.startswith('_'):  # Skip special variables
+                continue
+            if isinstance(var_value, (list, dict, tuple)) and len(str(var_value)) > 1000:
+                locals_dict[var_name] = None
+            elif hasattr(var_value, '__len__') and len(str(var_value)) > 1000:
+                locals_dict[var_name] = None
+    
+    # Force multiple rounds of garbage collection
+    collected = 0
+    for _ in range(3):
+        collected += gc.collect()
+    
+    # Log memory after cleanup
+    try:
+        process = psutil.Process()
+        memory_after = process.memory_info().rss / 1024 / 1024
+        
+        if memory_before:
+            memory_freed = memory_before - memory_after
+            logger.info(f"MEMORY CLEANUP at {context}: freed {memory_freed:.1f}MB, collected {collected} objects")
+            logger.info(f"Memory: {memory_before:.1f}MB → {memory_after:.1f}MB")
+        else:
+            logger.info(f"MEMORY CLEANUP at {context}: {memory_after:.1f}MB, collected {collected} objects")
+        
+        return memory_after
+        
+    except Exception as e:
+        logger.warning(f"Could not get memory info after cleanup: {e}")
+        return None

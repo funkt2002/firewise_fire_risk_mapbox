@@ -33,7 +33,8 @@ from exceptions import handle_api_errors, DatabaseError, ValidationError, CacheE
 from utils import (
     normalize_variable_name, correct_variable_names, format_number, 
     safe_float, validate_parcel_ids, log_memory_usage, cleanup_memory,
-    get_session_directory, create_session_directory, get_session_file_path
+    get_session_directory, create_session_directory, get_session_file_path,
+    force_memory_cleanup
 )
 
 # ====================
@@ -393,14 +394,21 @@ def export_shapefile():
                     if os.path.exists(file_path):
                         zipf.write(file_path, os.path.basename(file_path))
             
-            return send_file(
+            response = send_file(
                 zip_path,
                 mimetype='application/zip',
                 as_attachment=True,
                 download_name='fire_risk_selected_parcels.zip'
             )
             
+            # Memory cleanup for export endpoint
+            force_memory_cleanup("End of export-shapefile", locals())
+            
+            return response
+            
     except Exception as e:
+        # Cleanup on error
+        force_memory_cleanup("export-shapefile exception", locals())
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/distribution/<variable>', methods=['POST'])
@@ -499,13 +507,18 @@ def get_distribution(variable):
     cur.close()
     conn.close()
     
-    return jsonify({
+    response_data = {
         "values": values,
         "min": min(values) if values else 0,
         "max": max(values) if values else 1,
         "count": len(values),
         "normalization": "raw"
-    })
+    }
+    
+    # Memory cleanup for distribution endpoint
+    force_memory_cleanup("End of distribution", locals())
+    
+    return jsonify(response_data)
 
 # ====================
 # ROUTES - LAYER DATA
@@ -1079,21 +1092,18 @@ def prepare_data():
         attributes = None
         gc.collect()
         
-        # Log memory difference
-        final_memory = log_memory_usage("End of prepare_data")
-        if initial_memory and final_memory:
-            memory_increase = final_memory - initial_memory
-            logger.info(f"Memory increase during request: {memory_increase:.1f}MB")
+        # Final memory cleanup
+        force_memory_cleanup("End of prepare_data", locals())
         
         return jsonify(response_data)
         
     except ValueError as ve:
         # Cleanup on error
-        gc.collect()
+        force_memory_cleanup("prepare_data error", locals())
         return jsonify({"error": str(ve)}), 400
     except Exception as e:
         # Cleanup on error
-        gc.collect()
+        force_memory_cleanup("prepare_data exception", locals())
         logger.error(f"Error in /api/prepare: {str(e)}")
         return jsonify({"error": str(e), "traceback": traceback.format_exc()}), 500
 
@@ -2170,9 +2180,15 @@ def infer_weights():
             response_data['separation_gap'] = separation_metrics['separation_gap']
         
         logger.info(f"Sending response: {len(str(response_data))} characters")
+        
+        # Final memory cleanup for infer-weights endpoint
+        force_memory_cleanup("End of infer-weights", locals())
+        
         return jsonify(response_data)
         
     except Exception as e:
+        # Cleanup on error
+        force_memory_cleanup("infer-weights exception", locals())
         logger.error(f"Exception in /api/infer-weights: {e}")
         return jsonify({"error": str(e), "traceback": traceback.format_exc()}), 500
 
