@@ -10,6 +10,7 @@ import tempfile
 import zipfile
 import traceback
 import gzip
+import gc  # For garbage collection
 import psutil  # For memory monitoring
 
 from flask import Flask, request, jsonify, render_template, send_file, make_response
@@ -28,7 +29,6 @@ import redis
 
 # Phase 1 refactoring: Import new modules
 from config import Config, get_config
-from exceptions import handle_api_errors, DatabaseError, ValidationError, CacheError
 from utils import (
     normalize_variable_name, correct_variable_names, format_number, 
     safe_float, validate_parcel_ids, log_memory_usage,
