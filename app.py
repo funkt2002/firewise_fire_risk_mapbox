@@ -10,7 +10,6 @@ import tempfile
 import zipfile
 import traceback
 import gzip
-import gc  # For garbage collection
 import psutil  # For memory monitoring
 
 from flask import Flask, request, jsonify, render_template, send_file, make_response
@@ -32,7 +31,7 @@ from config import Config, get_config
 from exceptions import handle_api_errors, DatabaseError, ValidationError, CacheError
 from utils import (
     normalize_variable_name, correct_variable_names, format_number, 
-    safe_float, validate_parcel_ids, log_memory_usage, cleanup_memory,
+    safe_float, validate_parcel_ids, log_memory_usage,
     get_session_directory, create_session_directory, get_session_file_path
 )
 
@@ -205,79 +204,90 @@ def get_score_vars(use_quantile=False):
 @app.route('/')
 def index():
     try:
-        # Define weight slider variables for template components
+        # Weight variables configuration with new default values and ordering
         weight_variables = [
+            # Non-collapsed variables (enabled by default) - these appear first
             {
                 'id': 'qtrmi_s',
-                'name': 'Number of Structures Within Window (1/4 mile)',
-                'value': 30,
+                'name': 'Number of Structures Within Window (1/4 mile)', 
+                'value': 23,
                 'enabled': True,
                 'raw_key': 'qtrmi_cnt',
-                'correlation_key': 'qtrmi',
-                'subtitle': None
+                'correlation_key': 'qtrmi_s'
             },
+            {
+                'id': 'hwui_s',
+                'name': 'Wildland Urban Interface (WUI) coverage percentage (1/2 mile)',
+                'value': 33,
+                'enabled': True,
+                'raw_key': 'hlfmi_wui',
+                'correlation_key': 'hwui_s'
+            },
+            {
+                'id': 'hvhsz_s',
+                'name': 'Fire Hazard Severity Zone (1/2 mile)',
+                'value': 23,
+                'enabled': True,
+                'raw_key': 'hlfmi_vhsz',
+                'correlation_key': 'hvhsz_s'
+            },
+            {
+                'id': 'agfb_s',
+                'name': 'Agriculture & Fuelbreaks (1/2 mile)',
+                'value': 11,
+                'enabled': True,
+                'raw_key': 'hlfmi_agfb',
+                'correlation_key': 'agfb_s'
+            },
+            {
+                'id': 'slope_s',
+                'name': 'Slope (degrees)',
+                'value': 0,
+                'enabled': True,
+                'raw_key': 'slope_s',
+                'correlation_key': 'slope_s'
+            },
+            {
+                'id': 'travel_s',
+                'name': 'Travel Time to Fire Station (minutes)',
+                'value': 10,
+                'enabled': True,
+                'raw_key': 'travel_tim',
+                'correlation_key': 'travel_s'
+            },
+            
+            # Collapsed variables (disabled by default) - these appear below
             {
                 'id': 'neigh1d_s',
                 'name': 'Distance to Nearest Neighbor',
                 'value': 0,
                 'enabled': False,
                 'raw_key': 'neigh1_d',
-                'correlation_key': 'neigh1d',
-                'subtitle': 'Only Includes Parcels with Structure Data'
-            },
-            {
-                'id': 'hwui_s',
-                'name': 'Wildland Urban Interface (WUI) coverage percentage (1/2 mile)',
-                'value': 20,
-                'enabled': True,
-                'raw_key': 'hwui',
-                'correlation_key': 'hwui',
-                'subtitle': None
-            },
-            {
-                'id': 'hvhsz_s',
-                'name': 'Fire Hazard Severity Zone (1/2 mile)',
-                'value': 20,
-                'enabled': True,
-                'raw_key': 'hvhsz',
-                'correlation_key': 'hvhsz',
-                'subtitle': None
+                'correlation_key': 'neigh1d_s'
             },
             {
                 'id': 'hbrn_s',
                 'name': 'Burn Scar Exposure (1/2 mile)',
-                'value': 10,
+                'value': 0,
                 'enabled': False,
-                'raw_key': 'hbrn',
-                'correlation_key': 'hbrn',
-                'subtitle': None
+                'raw_key': 'hlfmi_brn',
+                'correlation_key': 'hbrn_s'
             },
             {
                 'id': 'hagri_s',
                 'name': 'Agricultural Coverage (1/2 mile)',
-                'value': 10,
+                'value': 0,
                 'enabled': False,
-                'raw_key': 'hagri',
-                'correlation_key': 'hagri',
-                'subtitle': None
+                'raw_key': 'hlfmi_agri',
+                'correlation_key': 'hagri_s'
             },
             {
                 'id': 'hfb_s',
                 'name': 'Fuel Break Coverage (1/2 mile)',
-                'value': 10,
+                'value': 0,
                 'enabled': False,
-                'raw_key': 'hfb',
-                'correlation_key': 'hfb',
-                'subtitle': None
-            },
-            {
-                'id': 'agfb_s',
-                'name': 'Agriculture & Fuelbreaks (1/2 mile)',
-                'value': 10,
-                'enabled': True,
-                'raw_key': 'hlfmi_agfb',
-                'correlation_key': 'agfb',
-                'subtitle': None
+                'raw_key': 'hlfmi_fb',
+                'correlation_key': 'hfb_s'
             },
             {
                 'id': 'par_sl_s',
@@ -285,26 +295,7 @@ def index():
                 'value': 0,
                 'enabled': False,
                 'raw_key': 'par_buf_sl',
-                'correlation_key': 'par_sl',
-                'subtitle': None
-            },
-            {
-                'id': 'slope_s',
-                'name': 'Slope (degrees)',
-                'value': 0,
-                'enabled': True,
-                'raw_key': 'slope',
-                'correlation_key': 'slope',
-                'subtitle': None
-            },
-            {
-                'id': 'travel_s',
-                'name': 'Travel Time to Fire Station (minutes)',
-                'value': 0,
-                'enabled': True,
-                'raw_key': 'travel_tim',
-                'correlation_key': 'travel_tim',
-                'subtitle': None
+                'correlation_key': 'par_sl_s'
             }
         ]
         
@@ -600,51 +591,6 @@ def clear_cache():
             "timestamp": time.strftime('%Y-%m-%d %H:%M:%S')
         }), 500
 
-@app.route('/api/memory-status', methods=['GET'])
-def memory_status():
-    """Monitor memory usage and system resources"""
-    try:
-        process = psutil.Process()
-        memory_info = process.memory_info()
-        
-        # Get system memory info
-        system_memory = psutil.virtual_memory()
-        
-        # Get process info
-        cpu_percent = process.cpu_percent(interval=0.1)
-        num_threads = process.num_threads()
-        
-        # Try to get open files and connections count
-        try:
-            open_files = len(process.open_files())
-        except:
-            open_files = "N/A"
-            
-        try:
-            connections = len(process.connections())
-        except:
-            connections = "N/A"
-        
-        return jsonify({
-            "process": {
-                "memory_mb": round(memory_info.rss / 1024 / 1024, 1),
-                "memory_percent": round(process.memory_percent(), 1),
-                "cpu_percent": round(cpu_percent, 1),
-                "threads": num_threads,
-                "open_files": open_files,
-                "connections": connections
-            },
-            "system": {
-                "total_memory_mb": round(system_memory.total / 1024 / 1024, 1),
-                "available_memory_mb": round(system_memory.available / 1024 / 1024, 1),
-                "memory_percent_used": round(system_memory.percent, 1)
-            },
-            "timestamp": time.strftime('%Y-%m-%d %H:%M:%S')
-        })
-        
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
 @app.route('/api/debug/columns', methods=['GET'])
 def get_columns():
     """Debug endpoint to check columns"""
@@ -695,6 +641,8 @@ def get_columns():
         
         score_columns = {
             '_s_columns': [col for col in column_info.keys() if col.endswith('_s')],
+            '_q_columns': [col for col in column_info.keys() if col.endswith('_q')],
+            '_z_columns': [col for col in column_info.keys() if col.endswith('_z')],
             'raw_columns': [col for col in column_info.keys() if col in Config.RAW_VAR_MAP.values()]
         }
         
@@ -704,6 +652,8 @@ def get_columns():
             "weight_vars_base": Config.WEIGHT_VARS_BASE,
             "raw_var_map": Config.RAW_VAR_MAP,
             "expected_s_columns": [var + '_s' for var in Config.WEIGHT_VARS_BASE],
+            "expected_q_columns": [var + '_q' for var in Config.WEIGHT_VARS_BASE],
+            "expected_z_columns": [var + '_z' for var in Config.WEIGHT_VARS_BASE],
             "column_tests": column_tests,
             "query_test": query_test,
             "database_url_hint": app.config.get('DATABASE_URL', 'Not set')[:50] + "..." if app.config.get('DATABASE_URL') else "Not set"
@@ -716,94 +666,91 @@ def get_columns():
 # ROUTES - DATA PREPARATION & SCORING
 # ====================
 
-def check_cache_for_base_dataset(data, start_time):
-    """Check Redis cache for unfiltered base dataset"""
-    cache_key = "fire_risk:base_dataset:v1"
+@app.route('/api/prepare', methods=['POST'])
+def prepare_data():
+    """VECTOR TILES: Modified /api/prepare endpoint to return AttributeCollection format without geometry"""
+    start_time = time.time()
+    timings = {}
     
-    # Determine if filters are being used
-    use_filters = any([
-        data.get('yearbuilt_max') is not None,
-        data.get('exclude_yearbuilt_unknown'),
-        data.get('neigh1d_max') is not None,
-        data.get('strcnt_min') is not None,
-        data.get('exclude_wui_zero'),
-        data.get('exclude_vhsz_zero'),
-        data.get('exclude_no_brns'),
-        data.get('exclude_agri_protection'),
-        data.get('subset_area')
-    ])
-    
-    # If filters are applied, skip cache
-    if use_filters:
-        logger.info("Filters detected - bypassing cache, querying database directly")
-        return None, 0, use_filters
-    
-    # Try cache lookup
-    cache_start = time.time()
-    redis_client = get_redis_client()
-    if not redis_client:
-        return None, 0, use_filters
+    log_memory_usage("Start of prepare_data")
     
     try:
-        cached_data = redis_client.get(cache_key)
-        cache_time = time.time() - cache_start
+        # Parse request
+        request_start = time.time()
+        data = request.get_json() or {}
+        timings['request_parsing'] = (time.time() - request_start) * 1000
+        logger.info(f"Prepare data called - request parsed in {timings['request_parsing']:.3f}ms")
         
-        if cached_data:
-            try:
-                # Decompress and deserialize cached data
-                decompressed_data = gzip.decompress(cached_data)
-                cached_result = json.loads(decompressed_data.decode('utf-8'))
-                
-                data_size_mb = len(cached_data) / 1024 / 1024
-                decompressed_size_mb = len(decompressed_data) / 1024 / 1024
-                compression_ratio = (1 - data_size_mb / decompressed_size_mb) * 100
-                
-                logger.info(f"CACHE HIT: Retrieved base dataset in {cache_time*1000:.1f}ms")
-                logger.info(f"Decompressed {data_size_mb:.1f}MB → {decompressed_size_mb:.1f}MB ({compression_ratio:.1f}% compression)")
-                
-                # Clear intermediate data immediately
-                cached_data = None
-                decompressed_data = None
-                gc.collect()
-                
-                # Update response with cache timing
-                cached_result['cache_used'] = True
-                cached_result['cache_time'] = cache_time
-                cached_result['total_time'] = time.time() - start_time
-                
-                return cached_result, cache_time, use_filters
-            except Exception as decomp_error:
-                # Cleanup on error too
-                cached_data = None
-                decompressed_data = None
-                cached_result = None
-                gc.collect()
-                logger.error(f"CACHE DECOMPRESSION ERROR: {decomp_error}")
-                # Fall through to database query
+        # Check Redis cache first (only for unfiltered base dataset)
+        cache_key = "fire_risk:base_dataset:v1"
+        use_filters = any([
+            data.get('yearbuilt_max') is not None,
+            data.get('exclude_yearbuilt_unknown'),
+            data.get('neigh1d_max') is not None,
+            data.get('strcnt_min') is not None,
+            data.get('exclude_wui_zero'),
+            data.get('exclude_vhsz_zero'),
+            data.get('exclude_no_brns'),
+            data.get('exclude_agri_protection'),
+            data.get('subset_area')
+        ])
+        
+        # If no filters are applied, try cache first
+        cached_result = None
+        cache_time = 0
+        if not use_filters:
+            cache_start = time.time()
+            redis_client = get_redis_client()
+            if redis_client:
+                try:
+                    cached_data = redis_client.get(cache_key)
+                    cache_time = time.time() - cache_start
+                    if cached_data:
+                        # Decompress and deserialize cached data
+                        try:
+                            # Decompress the gzipped data
+                            decompressed_data = gzip.decompress(cached_data)
+                            cached_result = json.loads(decompressed_data.decode('utf-8'))
+                            
+                            data_size_mb = len(cached_data) / 1024 / 1024
+                            decompressed_size_mb = len(decompressed_data) / 1024 / 1024
+                            compression_ratio = (1 - data_size_mb / decompressed_size_mb) * 100
+                            
+                            logger.info(f"CACHE HIT: Retrieved base dataset in {cache_time*1000:.1f}ms")
+                            logger.info(f"Decompressed {data_size_mb:.1f}MB → {decompressed_size_mb:.1f}MB ({compression_ratio:.1f}% compression)")
+                            
+                            # Update response with cache timing
+                            cached_result['cache_used'] = True
+                            cached_result['cache_time'] = cache_time
+                            cached_result['total_time'] = time.time() - start_time
+                            
+                            return jsonify(cached_result)
+                        except Exception as decomp_error:
+                            logger.error(f"CACHE DECOMPRESSION ERROR: {decomp_error}")
+                            # Fall through to database query
+                    else:
+                        logger.info(f"CACHE MISS: Base dataset not cached")
+                except Exception as e:
+                    logger.error(f"CACHE ERROR: {e}")
+            
+            timings['cache_check'] = cache_time
         else:
-            logger.info("CACHE MISS: Base dataset not cached")
-    except Exception as e:
-        logger.error(f"CACHE ERROR: {e}")
-    
-    return None, cache_time, use_filters
-
-def execute_database_query(data, timings):
-    """Execute database query and return results with parcels count"""
-    # Build filters
-    filter_start = time.time()
-    conditions, params = build_filter_conditions(data)
-    where_clause = "WHERE " + " AND ".join(conditions) if conditions else ""
-    timings['filter_building'] = time.time() - filter_start
-    logger.info(f"Filter building completed in {timings['filter_building']:.3f}s")
-    
-    # Database connection
-    db_connect_start = time.time()
-    conn = get_db()
-    cur = conn.cursor()
-    timings['database_connection'] = time.time() - db_connect_start
-    logger.info(f"Database connection established in {timings['database_connection']:.3f}s")
-    
-    try:
+            logger.info(f"Filters detected - bypassing cache, querying database directly")
+        
+        # Build filters
+        filter_start = time.time()
+        conditions, params = build_filter_conditions(data)
+        where_clause = "WHERE " + " AND ".join(conditions) if conditions else ""
+        timings['filter_building'] = time.time() - filter_start
+        logger.info(f"Filter building completed in {timings['filter_building']:.3f}s")
+        
+        # Database connection
+        db_connect_start = time.time()
+        conn = get_db()
+        cur = conn.cursor()
+        timings['database_connection'] = time.time() - db_connect_start
+        logger.info(f"Database connection established in {timings['database_connection']:.3f}s")
+        
         # Get total count
         count_start = time.time()
         cur.execute("SELECT COUNT(*) as total_count FROM parcels")
@@ -812,11 +759,12 @@ def execute_database_query(data, timings):
         timings['count_query'] = time.time() - count_start
         logger.info(f"Count query completed in {timings['count_query']:.3f}s - total parcels: {total_parcels_before_filter:,}")
         
-        # Prepare columns
+        # Prepare columns - get all score variables and raw variables
         col_prep_start = time.time()
         all_score_vars = []
         for var_base in Config.WEIGHT_VARS_BASE:
-            all_score_vars.append(var_base + '_s')
+            # Only include _s columns (quantile vs min-max determined by calculation logic)
+            all_score_vars.extend([var_base + '_s', var_base + '_q'])
         
         other_columns = ['yearbuilt', 'qtrmi_cnt', 'hlfmi_agri', 'hlfmi_wui', 'hlfmi_vhsz', 
                         'hlfmi_fb', 'hlfmi_brn', 'num_neighb', 'parcel_id', 'strcnt', 
@@ -825,7 +773,7 @@ def execute_database_query(data, timings):
         
         raw_var_columns = [Config.RAW_VAR_MAP[var_base] for var_base in Config.WEIGHT_VARS_BASE]
         
-        # Apply neigh1_d capping and substitution at SQL level
+        # Apply neigh1_d capping and substitution at SQL level for raw variables
         capped_raw_columns = []
         for raw_var in raw_var_columns:
             if raw_var == 'neigh1_d':
@@ -840,7 +788,7 @@ def execute_database_query(data, timings):
         timings['column_preparation'] = time.time() - col_prep_start
         logger.info(f"Column preparation completed in {timings['column_preparation']:.3f}s - prepared {len(all_columns)} columns")
         
-        # Build and execute query
+        # Query data from database
         query_start = time.time()
         query_build_start = time.time()
         query = f"""
@@ -867,230 +815,134 @@ def execute_database_query(data, timings):
         logger.info(f"Data fetched in {timings['data_fetching']:.3f}s - returned {len(raw_results):,} rows")
         logger.info(f"Total database query completed in {timings['raw_data_query']:.3f}s")
         
-        return raw_results, total_parcels_before_filter
-        
-    finally:
         # Close database connection
         db_close_start = time.time()
         cur.close()
         conn.close()
-        
-        # Force garbage collection after DB cleanup
-        gc.collect()
-        
         timings['database_cleanup'] = time.time() - db_close_start
-        logger.info(f"Database connection closed and memory cleaned in {timings['database_cleanup']:.3f}s")
+        logger.info(f"Database connection closed in {timings['database_cleanup']:.3f}s")
+        
+        if len(raw_results) < 10:
+            return jsonify({"error": "Not enough data for analysis"}), 400
+        
+        # Settings extraction
+        settings_start = time.time()
+        use_local_normalization = data.get('use_local_normalization', True)  # Default to local for missing scores
+        use_quantile = data.get('use_quantile', False)
 
-def process_query_results(raw_results, data, timings):
-    """Process raw database results into attribute format"""
-    if len(raw_results) < 10:
-        raise ValueError("Not enough data for analysis")
-    
-    # Settings extraction
-    settings_start = time.time()
-    use_local_normalization = data.get('use_local_normalization', True)
-    use_quantile = data.get('use_quantile', False)
-    max_parcels = data.get('max_parcels', 500)
-    timings['settings_extraction'] = time.time() - settings_start
-    logger.info(f"Settings extracted in {timings['settings_extraction']:.3f}s")
-    
-    # Data preparation - convert raw results to dictionaries
-    prep_start = time.time()
-    scored_results = []
-    BATCH_SIZE = 10000
-    
-    for i, row in enumerate(raw_results):
-        row_dict = dict(row)
-        scored_results.append(row_dict)
+        max_parcels = data.get('max_parcels', 500)
+        timings['settings_extraction'] = time.time() - settings_start
+        logger.info(f"Settings extracted in {timings['settings_extraction']:.3f}s")
         
-        # Log progress and clean memory for large datasets
-        if i > 0 and i % BATCH_SIZE == 0:
-            gc.collect()
-            logger.info(f"Processed {i:,}/{len(raw_results):,} rows ({i/len(raw_results)*100:.1f}%), memory cleaned")
-    
-    # Clear raw_results after processing
-    raw_results = None
-    gc.collect()
-    
-    timings['data_preparation'] = time.time() - prep_start
-    logger.info(f"Data preparation completed in {timings['data_preparation']:.3f}s - processed {len(scored_results):,} rows")
-    
-    # Create attribute records (no geometry for vector tiles)
-    attribute_creation_start = time.time()
-    attributes = []
-    properties_processing_time = 0
-    
-    for i, row in enumerate(scored_results):
-        row_dict = dict(row)
+        # Data preparation - convert raw results to dictionaries
+        prep_start = time.time()
+        scored_results = []
+        for i, row in enumerate(raw_results):
+            row_dict = dict(row)
+            # No scoring on server - client will handle everything
+            scored_results.append(row_dict)
+            
+            # Log progress for large datasets
+            if i > 0 and i % 10000 == 0:
+                logger.info(f"Processed {i:,}/{len(raw_results):,} rows ({i/len(raw_results)*100:.1f}%)")
+            
+        timings['data_preparation'] = time.time() - prep_start
+        logger.info(f"Data preparation completed in {timings['data_preparation']:.3f}s - processed {len(scored_results):,} rows")
         
-        # Build attribute record (no geometry)
-        props_start = time.time()
-        attribute_record = {
-            "id": row_dict['id'],
-            **{k: row_dict[k] for k in row_dict.keys() if k not in ['id']}
+        # Create attribute records (no geometry for vector tiles)
+        attribute_creation_start = time.time()
+        attributes = []
+        
+        properties_processing_time = 0
+        
+        for i, row in enumerate(scored_results):
+            row_dict = dict(row)
+            
+            # Build attribute record (no geometry)
+            props_start = time.time()
+            attribute_record = {
+                "id": row_dict['id'],
+                **{k: row_dict[k] for k in row_dict.keys() if k not in ['id']}
+            }
+            properties_processing_time += time.time() - props_start
+            
+            attributes.append(attribute_record)
+            
+            # Log progress for large datasets
+            if i > 0 and i % 10000 == 0:
+                logger.info(f"VECTOR TILES: Built {i:,}/{len(scored_results):,} attribute records ({i/len(scored_results)*100:.1f}%)")
+        
+        timings['attribute_creation'] = time.time() - attribute_creation_start
+        timings['properties_processing'] = properties_processing_time
+        
+        logger.info(f"VECTOR TILES: Attribute creation completed in {timings['attribute_creation']:.3f}s:")
+        logger.info(f"  - Properties processing: {timings['properties_processing']:.3f}s") 
+        logger.info(f"  - Created {len(attributes):,} attribute records (no geometry)")
+        
+        # Build response
+        response_start = time.time()
+        response_data = {
+            "type": "AttributeCollection",
+            "attributes": attributes,
+            "status": "prepared",
+            "total_parcels_before_filter": total_parcels_before_filter,
+            "total_parcels_after_filter": len(raw_results),
+            "use_local_normalization": use_local_normalization,
+            "use_quantile": use_quantile,
+            "max_parcels": max_parcels,
+            "timings": timings,
+            "total_time": time.time() - start_time,
+            "cache_used": False
         }
-        properties_processing_time += time.time() - props_start
+        timings['response_building'] = time.time() - response_start
         
-        attributes.append(attribute_record)
+        # Cache the result if no filters were applied (clean base dataset)
+        if not use_filters:
+            cache_save_start = time.time()
+            redis_client = get_redis_client()
+            if redis_client:
+                try:
+                    # Compress the JSON data before storing
+                    json_data = json.dumps(response_data)
+                    compressed_data = gzip.compress(json_data.encode('utf-8'))
+                    
+                    redis_client.setex(cache_key, 86400, compressed_data)  # 24 hour TTL
+                    cache_save_time = time.time() - cache_save_start
+                    
+                    original_size_mb = len(json_data) / 1024 / 1024
+                    compressed_size_mb = len(compressed_data) / 1024 / 1024
+                    compression_ratio = (1 - compressed_size_mb / original_size_mb) * 100
+                    
+                    logger.info(f"CACHE SET: Compressed {original_size_mb:.1f}MB → {compressed_size_mb:.1f}MB ({compression_ratio:.1f}% reduction)")
+                    logger.info(f"CACHE SET: Stored compressed dataset in {cache_save_time*1000:.1f}ms")
+                    timings['cache_save'] = cache_save_time
+                except Exception as e:
+                    logger.error(f"CACHE ERROR: Failed to save base dataset: {e}")
+            else:
+                logger.warning(f"CACHE SKIP: Redis not available for saving")
         
-        # Clear the row from scored_results to free memory
-        scored_results[i] = None
+        total_time = time.time() - start_time
         
-        # Log progress and clean memory for large datasets
-        if i > 0 and i % BATCH_SIZE == 0:
-            gc.collect()
-            logger.info(f"VECTOR TILES: Built {i:,}/{len(scored_results):,} attribute records ({i/len(scored_results)*100:.1f}%), memory cleaned")
-    
-    # Final cleanup
-    scored_results = None
-    gc.collect()
-    
-    timings['attribute_creation'] = time.time() - attribute_creation_start
-    timings['properties_processing'] = properties_processing_time
-    
-    logger.info(f"VECTOR TILES: Attribute creation completed in {timings['attribute_creation']:.3f}s:")
-    logger.info(f"  - Properties processing: {timings['properties_processing']:.3f}s") 
-    logger.info(f"  - Created {len(attributes):,} attribute records (no geometry)")
-    
-    return attributes, use_local_normalization, use_quantile, max_parcels
-
-def build_response_and_cache(attributes, total_parcels_before_filter, total_parcels_after_filter, 
-                           use_local_normalization, use_quantile, max_parcels, timings, 
-                           start_time, use_filters):
-    """Build response and cache if applicable"""
-    # Build response
-    response_start = time.time()
-    response_data = {
-        "type": "AttributeCollection",
-        "attributes": attributes,
-        "status": "prepared",
-        "total_parcels_before_filter": total_parcels_before_filter,
-        "total_parcels_after_filter": total_parcels_after_filter,
-        "use_local_normalization": use_local_normalization,
-        "use_quantile": use_quantile,
-        "max_parcels": max_parcels,
-        "timings": timings,
-        "total_time": time.time() - start_time,
-        "cache_used": False
-    }
-    timings['response_building'] = time.time() - response_start
-    
-    # Cache the result if no filters were applied (clean base dataset)
-    if not use_filters:
-        cache_key = "fire_risk:base_dataset:v1"
-        cache_save_start = time.time()
-        redis_client = get_redis_client()
-        if redis_client:
-            try:
-                # Compress the JSON data before storing
-                json_data = json.dumps(response_data)
-                compressed_data = gzip.compress(json_data.encode('utf-8'))
-                
-                redis_client.setex(cache_key, 86400, compressed_data)  # 24 hour TTL
-                cache_save_time = time.time() - cache_save_start
-                
-                original_size_mb = len(json_data) / 1024 / 1024
-                compressed_size_mb = len(compressed_data) / 1024 / 1024
-                compression_ratio = (1 - compressed_size_mb / original_size_mb) * 100
-                
-                logger.info(f"CACHE SET: Compressed {original_size_mb:.1f}MB → {compressed_size_mb:.1f}MB ({compression_ratio:.1f}% reduction)")
-                logger.info(f"CACHE SET: Stored compressed dataset in {cache_save_time*1000:.1f}ms")
-                
-                # Clear intermediate data
-                json_data = None
-                compressed_data = None
-                gc.collect()
-                
-                timings['cache_save'] = cache_save_time
-            except Exception as e:
-                # Cleanup on error
-                json_data = None
-                compressed_data = None
-                gc.collect()
-                logger.error(f"CACHE ERROR: Failed to save base dataset: {e}")
-        else:
-            logger.warning("CACHE SKIP: Redis not available for saving")
-    
-    # Final logging
-    total_time = time.time() - start_time
-    import sys
-    payload_size_mb = sys.getsizeof(str(response_data)) / 1024 / 1024
-    
-    logger.info(f"Response built in {timings['response_building']:.3f}s")
-    logger.info(f"Estimated payload size: {payload_size_mb:.1f} MB")
-    logger.info(f"Gzip compression: ENABLED (Flask-Compress auto-configured)")
-    logger.info(f"Expected compressed size: ~{payload_size_mb * 0.3:.1f}-{payload_size_mb * 0.4:.1f} MB (60-70% reduction)")
-    logger.info(f"=== PREPARE COMPLETED ===")
-    logger.info(f"Total server time: {total_time:.3f}s")
-    logger.info(f"VECTOR TILES: Sent {len(attributes):,} parcels attributes for client-side calculation")
-    logger.info(f"Server processing breakdown:")
-    for operation, timing in timings.items():
-        percentage = (timing / total_time) * 100
-        logger.info(f"  - {operation}: {timing:.3f}s ({percentage:.1f}%)")
-    
-    return response_data
-
-@app.route('/api/prepare', methods=['POST'])
-def prepare_data():
-    """VECTOR TILES: Modified /api/prepare endpoint to return AttributeCollection format without geometry"""
-    start_time = time.time()
-    timings = {}
-    
-    # Log initial memory
-    initial_memory = log_memory_usage("Start of prepare_data")
-    
-    try:
-        # Parse request
-        request_start = time.time()
-        data = request.get_json() or {}
-        timings['request_parsing'] = (time.time() - request_start) * 1000
-        logger.info(f"Prepare data called - request parsed in {timings['request_parsing']:.3f}ms")
+        # Calculate payload size estimate
+        import sys
+        payload_size_mb = sys.getsizeof(str(response_data)) / 1024 / 1024
         
-        # Check cache first
-        cached_result, cache_time, use_filters = check_cache_for_base_dataset(data, start_time)
-        if cached_result:
-            return jsonify(cached_result)
+        logger.info(f"Response built in {timings['response_building']:.3f}s")
+        logger.info(f"Estimated payload size: {payload_size_mb:.1f} MB")
+        logger.info(f"Gzip compression: ENABLED (Flask-Compress auto-configured)")
+        logger.info(f"Expected compressed size: ~{payload_size_mb * 0.3:.1f}-{payload_size_mb * 0.4:.1f} MB (60-70% reduction)")
+        logger.info(f"=== PREPARE COMPLETED ===")
+        logger.info(f"Total server time: {total_time:.3f}s")
+        logger.info(f"VECTOR TILES: Sent {len(attributes):,} parcels attributes for client-side calculation")
+        logger.info(f"Server processing breakdown:")
+        for operation, timing in timings.items():
+            percentage = (timing / total_time) * 100
+            logger.info(f"  - {operation}: {timing:.3f}s ({percentage:.1f}%)")
         
-        timings['cache_check'] = cache_time
-        
-        # Execute database query
-        raw_results, total_parcels_before_filter = execute_database_query(data, timings)
-        
-        # Process results
-        attributes, use_local_normalization, use_quantile, max_parcels = process_query_results(
-            raw_results, data, timings
-        )
-        
-        # Clear raw_results after processing
-        raw_results = None
-        gc.collect()
-        
-        # Build response and cache
-        response_data = build_response_and_cache(
-            attributes, total_parcels_before_filter, len(attributes),
-            use_local_normalization, use_quantile, max_parcels, 
-            timings, start_time, use_filters
-        )
-        
-        # Clear attributes after building response
-        attributes = None
-        gc.collect()
-        
-        # Log memory difference
-        final_memory = log_memory_usage("End of prepare_data")
-        if initial_memory and final_memory:
-            memory_increase = final_memory - initial_memory
-            logger.info(f"Memory increase during request: {memory_increase:.1f}MB")
-        
+        log_memory_usage("End of prepare_data")
         return jsonify(response_data)
         
-    except ValueError as ve:
-        # Cleanup on error
-        gc.collect()
-        return jsonify({"error": str(ve)}), 400
     except Exception as e:
-        # Cleanup on error
-        gc.collect()
         logger.error(f"Error in /api/prepare: {str(e)}")
         return jsonify({"error": str(e), "traceback": traceback.format_exc()}), 500
 
@@ -1157,6 +1009,9 @@ def get_parcel_scores_for_optimization(data, include_vars):
         first_var = include_vars[0]
         if first_var.endswith('_s'):
             score_suffix = '_s'
+        elif first_var.endswith('_q'):
+            score_suffix = '_q'
+        # _z suffix no longer used - always use _s
         else:
             score_suffix = ''
     
@@ -1258,7 +1113,7 @@ def solve_weight_optimization(parcel_data, include_vars):
     import gc
     
     # Process variable names efficiently
-    include_vars_base = [var[:-2] if var.endswith('_s') else var for var in include_vars]
+    include_vars_base = [var[:-2] if var.endswith(('_s', '_q')) else var for var in include_vars]
     
     # Allow unrestricted weights - dominant solutions are acceptable
     min_weight = 0.0
@@ -1323,7 +1178,7 @@ def solve_separation_optimization(parcel_data, include_vars, all_parcels_data):
     import gc
     
     # Process variable names efficiently
-    include_vars_base = [var[:-2] if var.endswith('_s') else var for var in include_vars]
+    include_vars_base = [var[:-2] if var.endswith(('_s', '_q')) else var for var in include_vars]
     
     logger.info(f"SEPARATION OPTIMIZATION (LP): {len(parcel_data):,} selected parcels, {len(all_parcels_data):,} total parcels, {len(include_vars_base)} variables")
     
@@ -1440,6 +1295,9 @@ def generate_solution_files(include_vars, best_weights, weights_pct, total_score
     for var in include_vars:
         if var.endswith('_s'):
             base_var = var[:-2]  # Remove last 2 characters (_s)
+        elif var.endswith('_q'):
+            base_var = var[:-2]  # Remove last 2 characters (_q)
+        # _z suffix no longer used
         else:
             base_var = var  # No suffix to remove
         include_vars_base.append(base_var)
@@ -1474,7 +1332,18 @@ def generate_solution_files(include_vars, best_weights, weights_pct, total_score
     lp_content = "\n".join(lp_lines)
     
     # Generate TXT file
-    factor_names = Config.FACTOR_NAMES
+    factor_names = {
+        'qtrmi': 'Structures (1/4 mile)',
+        'hwui': 'WUI Coverage (1/2 mile)',
+        'hagri': 'Agriculture (1/2 mile)',
+        'hvhsz': 'Fire Hazard (1/2 mile)',
+        'hfb': 'Fuel Breaks (1/2 mile)',
+        'slope': 'Slope',
+        'neigh1d': 'Neighbor Distance',
+        'hbrn': 'Burn Scars (1/2 mile)',
+        'par_buf_sl': 'Slope within 100 ft of structure',
+        'hlfmi_agfb': 'Agriculture & Fuelbreaks (1/2 mile)'
+    }
     
     txt_lines = []
     # Get selection area info for reporting
@@ -1552,6 +1421,9 @@ def generate_solution_files(include_vars, best_weights, weights_pct, total_score
         # Properly remove only the suffix, not all occurrences
         if var_name.endswith('_s'):
             var_base = var_name[:-2]  # Remove last 2 characters (_s)
+        elif var_name.endswith('_q'):
+            var_base = var_name[:-2]  # Remove last 2 characters (_q)
+        # _z suffix no longer used
         else:
             var_base = var_name  # No suffix to remove
             
@@ -1571,10 +1443,32 @@ def generate_enhanced_solution_html(txt_content, lp_content, parcel_data, weight
     """Generate enhanced HTML solution report with LP file and parcel table"""
     
     # Factor names for display
-    factor_names = Config.FACTOR_NAMES
+    factor_names = {
+        'qtrmi': 'Structures (1/4 mile)',
+        'hwui': 'WUI Coverage (1/2 mile)',
+        'hagri': 'Agriculture (1/2 mile)',
+        'hvhsz': 'Fire Hazard (1/2 mile)',
+        'hfb': 'Fuel Breaks (1/2 mile)',
+        'slope': 'Slope',
+        'neigh1d': 'Neighbor Distance',
+        'hbrn': 'Burn Scars (1/2 mile)',
+        'par_buf_sl': 'Slope within 100 ft of structure',
+        'hlfmi_agfb': 'Agriculture & Fuelbreaks (1/2 mile)'
+    }
     
     # Mapping from base variable to raw property name
-    raw_var_map = Config.RAW_VAR_MAP
+    raw_var_map = {
+        'qtrmi': 'qtrmi_cnt',
+        'hwui': 'hlfmi_wui',
+        'hagri': 'hlfmi_agri',
+        'hvhsz': 'hlfmi_vhsz',
+        'hfb': 'hlfmi_fb',
+        'slope': 'avg_slope',  # Fixed: should be avg_slope, not slope_s
+        'neigh1d': 'neigh1_d',
+        'hbrn': 'hlfmi_brn',
+        'par_buf_sl': 'par_buf_sl',
+        'hlfmi_agfb': 'hlfmi_agfb'
+    }
     
     # Calculate composite scores for each parcel
     parcels_with_composite_scores = []
@@ -1585,6 +1479,8 @@ def generate_enhanced_solution_html(txt_content, lp_content, parcel_data, weight
         for var_name, score in parcel.get('scores', {}).items():
             # Remove suffix to get base variable name
             if var_name.endswith('_s'):
+                var_base = var_name[:-2]
+            elif var_name.endswith('_q'):
                 var_base = var_name[:-2]
             else:
                 var_base = var_name
@@ -1856,7 +1752,18 @@ function downloadSelectionData() {
         
         // Add headers for raw values and scores
         sortedVars.forEach(function(varName) {
-            var factorNames = {json.dumps(Config.FACTOR_NAMES)};
+            var factorNames = {
+                'qtrmi': 'Structures (1/4 mile)',
+                'hwui': 'WUI Coverage (1/2 mile)',
+                'hagri': 'Agriculture (1/2 mile)',
+                'hvhsz': 'Fire Hazard (1/2 mile)',
+                'hfb': 'Fuel Breaks (1/2 mile)',
+                'slope': 'Slope',
+                'neigh1d': 'Neighbor Distance',
+                'hbrn': 'Burn Scars (1/2 mile)',
+                'par_buf_sl': 'Slope within 100 ft',
+                'hlfmi_agfb': 'Agriculture & Fuelbreaks (1/2 mile)'
+            };
             var displayName = factorNames[varName] || varName;
             headers.push(displayName + ' Raw');
             headers.push(displayName + ' Score');
@@ -1871,7 +1778,18 @@ function downloadSelectionData() {
             
             sortedVars.forEach(function(varName) {
                 // Map variable names to raw property names
-                var rawVarMap = {json.dumps(Config.RAW_VAR_MAP)};
+                var rawVarMap = {
+                    'qtrmi': 'qtrmi_cnt',
+                    'hwui': 'hlfmi_wui',
+                    'hagri': 'hlfmi_agri',
+                    'hvhsz': 'hlfmi_vhsz',
+                    'hfb': 'hlfmi_fb',
+                    'slope': 'avg_slope',
+                    'neigh1d': 'neigh1_d',
+                    'hbrn': 'hlfmi_brn',
+                    'par_buf_sl': 'par_buf_sl',
+                    'hlfmi_agfb': 'hlfmi_agfb'
+                };
                 
                 var rawProp = rawVarMap[varName] || varName;
                 var rawValue = parcel.raw[rawProp] !== undefined ? parcel.raw[rawProp] : 'N/A';
@@ -2215,10 +2133,32 @@ def download_all_parcels(session_id):
         headers = ['Parcel ID']
         
         # Add headers for each variable (raw and score)
-        var_names = Config.WEIGHT_VARS_BASE
-        factor_names = Config.FACTOR_NAMES
+        var_names = ['qtrmi', 'hwui', 'hagri', 'hvhsz', 'hfb', 'slope', 'neigh1d', 'hbrn', 'par_buf_sl', 'hlfmi_agfb']
+        factor_names = {
+            'qtrmi': 'Structures (1/4 mile)',
+            'hwui': 'WUI Coverage (1/2 mile)',
+            'hagri': 'Agriculture (1/2 mile)',
+            'hvhsz': 'Fire Hazard (1/2 mile)',
+            'hfb': 'Fuel Breaks (1/2 mile)',
+            'slope': 'Slope',
+            'neigh1d': 'Neighbor Distance',
+            'hbrn': 'Burn Scars (1/2 mile)',
+            'par_buf_sl': 'Slope within 100 ft',
+            'hlfmi_agfb': 'Agriculture & Fuelbreaks'
+        }
         
-        raw_var_map = Config.RAW_VAR_MAP
+        raw_var_map = {
+            'qtrmi': 'qtrmi_cnt',
+            'hwui': 'hlfmi_wui',
+            'hagri': 'hlfmi_agri',
+            'hvhsz': 'hlfmi_vhsz',
+            'hfb': 'hlfmi_fb',
+            'slope': 'avg_slope',
+            'neigh1d': 'neigh1_d',
+            'hbrn': 'hlfmi_brn',
+            'par_buf_sl': 'par_buf_sl',
+            'hlfmi_agfb': 'hlfmi_agfb'
+        }
         
         # Determine which variables are present
         included_vars = []
@@ -2309,6 +2249,8 @@ def cleanup_expired_sessions():
     except Exception as e:
         logger.error(f"Error cleaning up sessions: {e}")
         return jsonify({"error": str(e)}), 500
+
+
 
 # ====================
 # MAIN EXECUTION
