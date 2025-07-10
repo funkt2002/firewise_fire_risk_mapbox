@@ -733,6 +733,34 @@ def cleanup_memory(context: str = "", threshold_mb: float = 800) -> Optional[flo
         return None
 
 
+def check_memory_threshold(threshold_mb: float = 800, context: str = "") -> bool:
+    """
+    Check if memory usage exceeds threshold and trigger cleanup if needed.
+    
+    Args:
+        threshold_mb: Memory threshold in MB
+        context: Context description
+    
+    Returns:
+        True if memory was over threshold and cleanup was triggered
+    """
+    try:
+        import psutil
+        process = psutil.Process()
+        current_memory = process.memory_info().rss / 1024 / 1024
+        
+        if current_memory > threshold_mb:
+            logger.warning(f"MEMORY THRESHOLD EXCEEDED at {context}: {current_memory:.1f}MB > {threshold_mb}MB - triggering cleanup")
+            force_memory_cleanup(f"threshold exceeded - {context}")
+            return True
+        
+        return False
+        
+    except Exception as e:
+        logger.warning(f"Could not check memory threshold: {e}")
+        return False
+
+
 def force_memory_cleanup(context: str = "", locals_dict: dict = None) -> Optional[float]:
     """
     Aggressive memory cleanup function to clear variables and force garbage collection.
@@ -754,16 +782,31 @@ def force_memory_cleanup(context: str = "", locals_dict: dict = None) -> Optiona
     except Exception:
         memory_before = None
     
-    # Clear provided local variables
+    # Clear provided local variables more aggressively
     if locals_dict:
-        # Clear large data structures
+        # Clear any data structures that could hold significant memory
+        cleared_vars = []
         for var_name, var_value in list(locals_dict.items()):
             if var_name.startswith('_'):  # Skip special variables
                 continue
-            if isinstance(var_value, (list, dict, tuple)) and len(str(var_value)) > 1000:
+            if var_name in ['request', 'app', 'current_app', 'g']:  # Skip Flask objects
+                continue
+                
+            # Clear any substantial data structures
+            should_clear = False
+            if isinstance(var_value, (list, dict, tuple, set)):
+                should_clear = True
+            elif hasattr(var_value, '__len__') and len(str(var_value)) > 100:
+                should_clear = True
+            elif str(type(var_value)) in ['<class \'pandas.core.frame.DataFrame\'>', '<class \'geopandas.geodataframe.GeoDataFrame\'>']:
+                should_clear = True
+                
+            if should_clear:
                 locals_dict[var_name] = None
-            elif hasattr(var_value, '__len__') and len(str(var_value)) > 1000:
-                locals_dict[var_name] = None
+                cleared_vars.append(var_name)
+        
+        if cleared_vars:
+            logger.debug(f"Cleared variables: {', '.join(cleared_vars[:10])}{'...' if len(cleared_vars) > 10 else ''}")
     
     # Force multiple rounds of garbage collection
     collected = 0

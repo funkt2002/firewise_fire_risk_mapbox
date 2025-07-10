@@ -534,8 +534,15 @@ def get_layer(layer_name):
     
     try:
         geojson = fetch_geojson_features(table_name)
-        return jsonify(geojson)
+        response_data = jsonify(geojson)
+        
+        # Memory cleanup for layer endpoint
+        force_memory_cleanup(f"End of layer {layer_name}", locals())
+        
+        return response_data
     except Exception as e:
+        # Cleanup on error
+        force_memory_cleanup(f"layer {layer_name} exception", locals())
         logger.error(f"Error fetching layer {layer_name}: {e}")
         return jsonify({"error": str(e)}), 500
 
@@ -591,7 +598,8 @@ def clear_cache():
             if keys_to_delete:
                 total_deleted = redis_client.delete(*keys_to_delete)
             
-            log_memory_usage("After cache clear")
+            # Force aggressive memory cleanup after cache clear
+            force_memory_cleanup("After cache clear", locals())
             
             logger.info(f"Cache cleared: {deleted} specific key deleted, {total_deleted} total keys deleted")
             return jsonify({
@@ -2406,9 +2414,15 @@ def download_all_parcels(session_id):
         response.headers['Content-Disposition'] = f'attachment; filename=all_parcels_scores_{session_id}.csv'
         
         logger.info(f"Downloaded all parcels CSV ({len(parcels)} parcels) for session {session_id}")
+        
+        # Memory cleanup for download endpoint
+        force_memory_cleanup("End of download-all-parcels", locals())
+        
         return response
         
     except Exception as e:
+        # Cleanup on error
+        force_memory_cleanup("download-all-parcels exception", locals())
         logger.error(f"Error downloading all parcels: {e}")
         import traceback
         traceback.print_exc()
