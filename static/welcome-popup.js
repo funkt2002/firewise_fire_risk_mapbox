@@ -35,6 +35,8 @@ class WelcomePopup {
                             <div class="development-note">
                                 <p><strong>RECENT UPDATES</strong></p>
                                 <ul style="margin: 10px 0; padding-left: 20px;">
+                                    <li><strong>Travel Time Calculations:</strong> Now shows actual driving times from nearest fire station to each parcel using OSRM routing</li>
+                                    <li><strong>Travel Time Map Layer:</strong> New map layer visualizes fire station response times across the county</li>
                                     <li><strong>Faster performance:</strong> Map loads instantly with vector tiles and client-side calculations</li>
                                     <li><strong>Infer Weights:</strong> Draw a polygon (rectange/lasso) and infer what weighting will maximize composite fire risk scores. After clicking infer weights, click 'Solutiuon Summary' to see formulation and results. Test this tool with different scoring methods and subsets of data.</li>
                                     <li><strong>Local vs global scoring:</strong> Score based on your filtered data or the entire county</li>
@@ -112,7 +114,7 @@ class WelcomePopup {
                             <h2>----- OTHER FEATURES -----</h2>
                             <ul>
                                 <li><strong>Click parcels:</strong> See detailed info for any property</li>
-                                <li><strong>Map Layers:</strong> Turn on/off agriculture, fire zones, burn scars, etc.</li>
+                                <li><strong>Map Layers:</strong> Turn on/off agriculture, fire zones, burn scars, travel times, etc.</li>
 
                                 <li><strong>View Charts:</strong> See score distributions and statistics</li>
                                 <li><strong>Measure Tool:</strong> Measure distances on the map</li>
