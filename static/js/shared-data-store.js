@@ -111,7 +111,22 @@ class SharedDataStore {
             }
             
             if (primaryKey) {
+                // Store with primary key
                 this.attributeMap.set(primaryKey, allAttrs);
+                
+                // COMPATIBILITY: Also store with alternate decimal formats to handle inconsistencies
+                if (typeof primaryKey === 'string') {
+                    // If key has .0, also store without .0
+                    if (primaryKey.endsWith('.0')) {
+                        const keyWithoutDecimal = primaryKey.slice(0, -2);
+                        this.attributeMap.set(keyWithoutDecimal, allAttrs);
+                    } 
+                    // If key doesn't have .0, also store with .0
+                    else if (primaryKey.match(/^p_\d+$/)) {
+                        const keyWithDecimal = primaryKey + '.0';
+                        this.attributeMap.set(keyWithDecimal, allAttrs);
+                    }
+                }
                 
                 // Count key types for debugging
                 if (typeof primaryKey === 'string') stringKeyCount++;
@@ -119,6 +134,11 @@ class SharedDataStore {
                 
                 if (debugCount <= 10) {
                     console.log(`  - Using PRIMARY key: ${primaryKey} (${typeof primaryKey})`);
+                    if (primaryKey.endsWith('.0')) {
+                        console.log(`  - Also stored as: ${primaryKey.slice(0, -2)}`);
+                    } else if (primaryKey.match(/^p_\d+$/)) {
+                        console.log(`  - Also stored as: ${primaryKey}.0`);
+                    }
                 }
             } else {
                 console.warn('No valid key found for attribute record:', attributes);
