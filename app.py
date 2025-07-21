@@ -955,6 +955,7 @@ def process_query_results(raw_results, data, timings):
             logger.info(f"DEBUG ROW {i}: Available fields: {list(row_dict.keys())}")
             logger.info(f"DEBUG ROW {i}: id field = {row_dict.get('id', 'MISSING')}")
             logger.info(f"DEBUG ROW {i}: parcel_id field = {row_dict.get('parcel_id', 'MISSING')}")
+            logger.info(f"DEBUG: Investigating parcel ID mismatch issue")
         
         # Create attribute record with both id fields for compatibility
         attribute_record = {
