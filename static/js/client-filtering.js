@@ -850,7 +850,17 @@ class ClientNormalizationManager {
                 // For local normalization, the scores should have been calculated by calculateLocalNormalization()
                 // with the proper transforms. Use those calculated scores.
                 scoreValue = feature.properties[varBase + '_s'];
-                factorScores[varBase + '_s'] = scoreValue !== null && scoreValue !== undefined ? parseFloat(scoreValue) : 0.0;
+                if (scoreValue !== null && scoreValue !== undefined) {
+                    factorScores[varBase + '_s'] = parseFloat(scoreValue);
+                } else {
+                    // Debug: Log when parcels get 0.0 due to missing score properties
+                    const parcelId = feature.properties.parcel_id;
+                    if (parcelId && (parcelId.includes('57878') || parcelId.includes('58035') || parcelId.includes('57935') || parcelId.includes('58844') || parcelId.includes('57830'))) {
+                        console.warn(`🚨 PROBLEMATIC PARCEL ${parcelId}: Missing ${varBase}_s property, defaulting to 0.0`);
+                        console.log(`Available properties:`, Object.keys(feature.properties).filter(k => k.endsWith('_s')));
+                    }
+                    factorScores[varBase + '_s'] = 0.0;
+                }
             } else {
                 // For global normalization, calculate from raw values with proper transforms
                 scoreValue = this.calculateGlobalScore(feature, varBase, use_quantile, use_raw_scoring);

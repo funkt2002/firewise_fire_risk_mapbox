@@ -181,6 +181,15 @@ class FireRiskScoring {
                 const factorScore = factorScores[weightKey] || 0;
                 compositeScore += weight * factorScore;
             }
+            
+            // Debug: Log problematic parcels' scoring details
+            const parcelId = parcel.properties.parcel_id;
+            if (parcelId && (parcelId.includes('57878') || parcelId.includes('58035') || parcelId.includes('57935') || parcelId.includes('58844') || parcelId.includes('57830'))) {
+                console.warn(`🚨 PROBLEMATIC PARCEL ${parcelId} SCORING:`);
+                console.log(`  Composite Score: ${compositeScore}`);
+                console.log(`  Factor Scores:`, factorScores);
+                console.log(`  Normalized Weights:`, normalizedWeights);
+            }
 
             return {
                 ...parcel,
