@@ -183,8 +183,30 @@ class ClientFilterManager {
                             geometricallyFilteredFeatures.push(feature);
                         }
                     } catch (e) {
-                        // Skip features that cause geometry errors
-                        console.warn('VECTOR TILES: Geometry intersection failed for feature, skipping');
+                        // Fallback for problematic geometries: use bounding box intersection
+                        console.warn(`VECTOR TILES: Geometry intersection failed for parcel ${feature.properties.parcel_id}, using bbox fallback`);
+                        try {
+                            // Get feature bounding box and check if it intersects with polygon bbox
+                            const featureBbox = window.turf.bbox(feature);
+                            const polygonBbox = window.turf.bbox(polygon);
+                            
+                            // Simple bbox overlap check
+                            const bboxOverlaps = !(
+                                featureBbox[2] < polygonBbox[0] || // feature max x < polygon min x
+                                featureBbox[0] > polygonBbox[2] || // feature min x > polygon max x  
+                                featureBbox[3] < polygonBbox[1] || // feature max y < polygon min y
+                                featureBbox[1] > polygonBbox[3]    // feature min y > polygon max y
+                            );
+                            
+                            if (bboxOverlaps) {
+                                console.log(`VECTOR TILES: Parcel ${feature.properties.parcel_id} included via bbox fallback`);
+                                geometricallyFilteredFeatures.push(feature);
+                            }
+                        } catch (bboxError) {
+                            // Final fallback: include the feature to avoid silent exclusion
+                            console.warn(`VECTOR TILES: Bbox fallback also failed for parcel ${feature.properties.parcel_id}, including anyway`);
+                            geometricallyFilteredFeatures.push(feature);
+                        }
                     }
                 }
                 console.log(`VECTOR TILES: Geometric intersection reduced from ${visibleFeatures.length} to ${geometricallyFilteredFeatures.length} parcels`);
