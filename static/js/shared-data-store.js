@@ -76,20 +76,44 @@ class SharedDataStore {
     buildAttributeMap(attributeData) {
         this.attributeMap.clear();
         
-        attributeData.attributes.forEach(attributes => {
+        let debugCount = 0;
+        attributeData.attributes.forEach((attributes, index) => {
             const parcelId = attributes.parcel_id;
+            const id = attributes.id;
+            
+            // DEBUG: Log first 5 attribute records for ID investigation
+            if (index < 5) {
+                console.log(`🔍 ATTRIBUTE MAP DEBUG ${index}:`);
+                console.log('  - Available attribute keys:', Object.keys(attributes));
+                console.log('  - parcel_id field:', parcelId);
+                console.log('  - id field:', id);
+                console.log('  - Using as map key:', parcelId || id);
+                debugCount++;
+            }
             
             // Store ALL attributes for popup access (including raw variables)
             const allAttrs = { ...attributes };
             
             // Also store parcel_id and any score fields
-            allAttrs.parcel_id = parcelId;
+            allAttrs.parcel_id = parcelId || id;  // Fallback to id if parcel_id missing
+            allAttrs.id = id || parcelId;         // Ensure both fields exist
             if (attributes.score !== undefined) allAttrs.score = attributes.score;
             if (attributes.rank !== undefined) allAttrs.rank = attributes.rank;
             if (attributes.top500 !== undefined) allAttrs.top500 = attributes.top500;
             
-            this.attributeMap.set(parcelId, allAttrs);
+            // Use parcel_id if available, otherwise use id
+            const mapKey = parcelId || id;
+            this.attributeMap.set(mapKey, allAttrs);
+            
+            // Also set with alternate key for compatibility
+            if (parcelId && id && parcelId !== id) {
+                this.attributeMap.set(id, allAttrs);
+            }
         });
+        
+        if (debugCount > 0) {
+            console.log(`🗂️ Attribute map built with ${this.attributeMap.size} entries`);
+        }
     }
 
     // Get complete dataset

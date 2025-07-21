@@ -2330,7 +2330,20 @@
             }
             
             const parcelId = e.features[0].properties.parcel_id || e.features[0].id;
+            
+            // DEBUG: Log parcel click details for ID investigation
+            console.log('🔍 PARCEL CLICK DEBUG:');
+            console.log('  - Feature properties:', e.features[0].properties);
+            console.log('  - Feature id:', e.features[0].id);
+            console.log('  - Resolved parcelId:', parcelId);
+            console.log('  - Available property keys:', Object.keys(e.features[0].properties));
+            
             const attributes = window.fireRiskScoring.getAttributesByParcelId(parcelId);
+            console.log('  - Found attributes:', !!attributes);
+            if (attributes) {
+                console.log('  - Attributes parcel_id:', attributes.parcel_id);
+                console.log('  - Attributes id:', attributes.id);
+            }
             
             if (attributes) {
                 new mapboxgl.Popup()

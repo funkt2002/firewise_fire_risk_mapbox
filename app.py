@@ -949,8 +949,17 @@ def process_query_results(raw_results, data, timings):
         
         # Build attribute record (no geometry)
         props_start = time.time()
+        
+        # DEBUG: Log ID field investigation for first 5 records
+        if i < 5:
+            logger.info(f"DEBUG ROW {i}: Available fields: {list(row_dict.keys())}")
+            logger.info(f"DEBUG ROW {i}: id field = {row_dict.get('id', 'MISSING')}")
+            logger.info(f"DEBUG ROW {i}: parcel_id field = {row_dict.get('parcel_id', 'MISSING')}")
+        
+        # Create attribute record with both id fields for compatibility
         attribute_record = {
             "id": row_dict['id'],
+            "parcel_id": row_dict.get('parcel_id', row_dict['id']),  # Fallback to id if parcel_id missing
             **{k: row_dict[k] for k in row_dict.keys() if k not in ['id']}
         }
         properties_processing_time += time.time() - props_start
