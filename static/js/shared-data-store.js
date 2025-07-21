@@ -132,14 +132,7 @@ class SharedDataStore {
                 if (typeof primaryKey === 'string') stringKeyCount++;
                 else numericKeyCount++;
                 
-                if (debugCount <= 10) {
-                    console.log(`  - Using PRIMARY key: ${primaryKey} (${typeof primaryKey})`);
-                    if (primaryKey.endsWith('.0')) {
-                        console.log(`  - Also stored as: ${primaryKey.slice(0, -2)}`);
-                    } else if (primaryKey.match(/^p_\d+$/)) {
-                        console.log(`  - Also stored as: ${primaryKey}.0`);
-                    }
-                }
+                // Removed excessive debugging
             } else {
                 console.warn('No valid key found for attribute record:', attributes);
             }
