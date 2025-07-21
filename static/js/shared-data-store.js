@@ -77,42 +77,60 @@ class SharedDataStore {
         this.attributeMap.clear();
         
         let debugCount = 0;
+        let stringKeyCount = 0;
+        let numericKeyCount = 0;
+        
         attributeData.attributes.forEach((attributes, index) => {
             const parcelId = attributes.parcel_id;
             const id = attributes.id;
             
-            // DEBUG: Log first 5 attribute records for ID investigation
-            if (index < 5) {
+            // DEBUG: Log first 10 attribute records for ID investigation
+            if (index < 10) {
                 console.log(`🔍 ATTRIBUTE MAP DEBUG ${index}:`);
                 console.log('  - Available attribute keys:', Object.keys(attributes));
-                console.log('  - parcel_id field:', parcelId);
-                console.log('  - id field:', id);
-                console.log('  - Using as map key:', parcelId || id);
+                console.log('  - parcel_id field:', parcelId, typeof parcelId);
+                console.log('  - id field:', id, typeof id);
                 debugCount++;
             }
             
             // Store ALL attributes for popup access (including raw variables)
             const allAttrs = { ...attributes };
             
-            // Also store parcel_id and any score fields
-            allAttrs.parcel_id = parcelId || id;  // Fallback to id if parcel_id missing
-            allAttrs.id = id || parcelId;         // Ensure both fields exist
+            // Ensure both fields exist for compatibility
+            allAttrs.parcel_id = parcelId || id;
+            allAttrs.id = id || parcelId;
             if (attributes.score !== undefined) allAttrs.score = attributes.score;
             if (attributes.rank !== undefined) allAttrs.rank = attributes.rank;
             if (attributes.top500 !== undefined) allAttrs.top500 = attributes.top500;
             
-            // Use parcel_id if available, otherwise use id
-            const mapKey = parcelId || id;
-            this.attributeMap.set(mapKey, allAttrs);
+            // PRIORITY: Use string parcel_id as primary key since that's what vector tiles use
+            // Only fall back to numeric id if parcel_id is missing
+            let primaryKey = parcelId;
+            if (!primaryKey && id) {
+                primaryKey = id;
+            }
             
-            // Also set with alternate key for compatibility
-            if (parcelId && id && parcelId !== id) {
-                this.attributeMap.set(id, allAttrs);
+            if (primaryKey) {
+                this.attributeMap.set(primaryKey, allAttrs);
+                
+                // Count key types for debugging
+                if (typeof primaryKey === 'string') stringKeyCount++;
+                else numericKeyCount++;
+                
+                if (debugCount <= 10) {
+                    console.log(`  - Using PRIMARY key: ${primaryKey} (${typeof primaryKey})`);
+                }
+            } else {
+                console.warn('No valid key found for attribute record:', attributes);
             }
         });
         
         if (debugCount > 0) {
-            console.log(`🗂️ Attribute map built with ${this.attributeMap.size} entries`);
+            console.log(`🗂️ FIXED Attribute map built:`);
+            console.log(`  - Total entries: ${this.attributeMap.size} (should be ~62k, not 124k)`);
+            console.log(`  - String keys: ${stringKeyCount}`);
+            console.log(`  - Numeric keys: ${numericKeyCount}`);
+            console.log(`  - Sample keys:`, Array.from(this.attributeMap.keys()).slice(0, 5));
         }
     }
 
