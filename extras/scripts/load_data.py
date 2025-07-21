@@ -66,6 +66,37 @@ class ParcelDataLoader:
             self.conn.rollback()
             raise
 
+    def backup_parcels_table(self):
+        """Backup existing parcels table with timestamp"""
+        try:
+            from datetime import datetime
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            backup_table_name = f"parcels_backup_{timestamp}"
+            
+            # Check if parcels table exists
+            self.cur.execute("""
+                SELECT EXISTS (
+                    SELECT FROM information_schema.tables 
+                    WHERE table_name = 'parcels'
+                );
+            """)
+            table_exists = self.cur.fetchone()[0]
+            
+            if table_exists:
+                # Create backup by renaming existing table
+                self.cur.execute(f"ALTER TABLE parcels RENAME TO {backup_table_name};")
+                self.conn.commit()
+                logger.info(f"Successfully backed up parcels table as {backup_table_name}")
+                return backup_table_name
+            else:
+                logger.info("No existing parcels table to backup")
+                return None
+                
+        except Exception as e:
+            logger.error(f"Failed to backup parcels table: {e}")
+            self.conn.rollback()
+            raise
+
     def drop_parcels_only(self):
         """Drop only the parcels table, preserving auxiliary layers"""
         try:
@@ -430,6 +461,7 @@ def main():
     parser = argparse.ArgumentParser(description='Load geospatial data into PostgreSQL database')
     parser.add_argument('--drop-tables', action='store_true', help='Drop all existing tables')
     parser.add_argument('--drop-parcels-only', action='store_true', help='Drop only parcels table')
+    parser.add_argument('--backup-and-replace-parcels', action='store_true', help='Backup existing parcels table and replace with new data')
     parser.add_argument('--create-tables', action='store_true', help='Create tables')
     parser.add_argument('--parcels', type=str, help='Path to parcels shapefile')
     parser.add_argument('--verify', action='store_true', help='Verify loaded data')
@@ -453,10 +485,28 @@ def main():
         if args.drop_parcels_only:
             loader.drop_parcels_only()
         
+        if args.backup_and_replace_parcels:
+            if not args.parcels:
+                logger.error("--parcels argument required when using --backup-and-replace-parcels")
+                sys.exit(1)
+            
+            # Backup existing table
+            backup_name = loader.backup_parcels_table()
+            if backup_name:
+                logger.info(f"Existing parcels table backed up as: {backup_name}")
+            
+            # Create tables (will create parcels table)
+            loader.create_tables()
+            
+            # Load new parcels data
+            loader.load_parcels(args.parcels)
+            
+            logger.info("Successfully replaced parcels table with new data")
+        
         if args.create_tables:
             loader.create_tables()
         
-        if args.parcels:
+        if args.parcels and not args.backup_and_replace_parcels:
             loader.load_parcels(args.parcels)
         
         if args.verify:
