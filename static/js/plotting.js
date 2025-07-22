@@ -829,14 +829,18 @@ class PlottingManager {
 
             console.log(`📊 SCORE DISTRIBUTION: Found ${dataSource.features.length} parcels`);
 
-            // Extract scores - use attributeMap directly (Option A fix)
+            // Extract scores - use sharedDataStore with normalized IDs
             const scores = dataSource.features.map(f => {
-                const attrs = window.fireRiskScoring.getAttributesByParcelId(f.properties.parcel_id);
+                const attrs = window.sharedDataStore ? 
+                    window.sharedDataStore.getAttributesByParcelNumber(f.properties.parcel_id) :
+                    f.properties;
                 return attrs ? attrs.score : null;
             }).filter(s => s !== null);
             
             const selectedScores = dataSource.features.map(f => {
-                const attrs = window.fireRiskScoring.getAttributesByParcelId(f.properties.parcel_id);
+                const attrs = window.sharedDataStore ? 
+                    window.sharedDataStore.getAttributesByParcelNumber(f.properties.parcel_id) :
+                    f.properties;
                 return attrs && attrs.top500 ? attrs.score : null;
             }).filter(s => s !== null);
 
@@ -936,7 +940,9 @@ class PlottingManager {
                 
                 // Extract scores for selected parcels
                 inferWeightsScores = Array.from(selectionParcelIds).map(parcelId => {
-                    const attrs = window.fireRiskScoring.getAttributesByParcelId(parcelId);
+                    const attrs = window.sharedDataStore ? 
+                        window.sharedDataStore.getAttributesByParcelNumber(parcelId) :
+                        null;
                     return attrs ? attrs.score : null;
                 }).filter(s => s !== null && s !== undefined && !isNaN(s) && isFinite(s));
                 

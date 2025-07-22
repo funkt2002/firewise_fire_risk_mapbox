@@ -1279,6 +1279,13 @@
             }
         }
 
+        // Helper function to refresh score distribution plot
+        function refreshScoreDistributionPlot() {
+            if (window.plottingManager) {
+                window.plottingManager.showScoreDistribution();
+            }
+        }
+
         // Multi-area selection management
         function updateSelectionCount() {
             UIUpdater.update('selection-count', selectionAreas.length);
@@ -1441,11 +1448,10 @@
                     }
                     
                     // Update the stored attributes with score and rank for popups
-                    const storedAttrs = window.fireRiskScoring.getAttributesByParcelId(attr.parcel_id);
-                    if (storedAttrs) {
-                        storedAttrs.score = attr.score;
-                        storedAttrs.rank = attr.rank;
-                        storedAttrs.top500 = attr.top500;
+                    if (window.sharedDataStore) {
+                        window.sharedDataStore.updateAttributeMapProperty(attr.parcel_id, 'score', attr.score);
+                        window.sharedDataStore.updateAttributeMapProperty(attr.parcel_id, 'rank', attr.rank);
+                        window.sharedDataStore.updateAttributeMapProperty(attr.parcel_id, 'top500', attr.top500);
                     }
                 }
             });
