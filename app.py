@@ -949,29 +949,10 @@ def process_query_results(raw_results, data, timings):
         
         # Build attribute record (no geometry)
         props_start = time.time()
-        
-        # DEBUG: Log ID field investigation for first 5 records
-        if i < 5:
-            logger.info(f"DEBUG ROW {i}: Available fields: {list(row_dict.keys())}")
-            logger.info(f"DEBUG ROW {i}: id field = {row_dict.get('id', 'MISSING')}")
-            logger.info(f"DEBUG ROW {i}: parcel_id field = {row_dict.get('parcel_id', 'MISSING')}")
-            logger.info(f"DEBUG: Investigating parcel ID mismatch issue")
-        
-        # Create attribute record with both id fields for compatibility
-        # CRITICAL: Preserve original parcel_id if it exists, don't overwrite with numeric id
-        original_parcel_id = row_dict.get('parcel_id')
-        numeric_id = row_dict['id']
-        
         attribute_record = {
-            "id": numeric_id,
-            "parcel_id": original_parcel_id if original_parcel_id else numeric_id,
-            **{k: row_dict[k] for k in row_dict.keys() if k not in ['id', 'parcel_id']}
+            "id": row_dict['id'],
+            **{k: row_dict[k] for k in row_dict.keys() if k not in ['id']}
         }
-        
-        # DEBUG: Log first 5 records showing final parcel_id values
-        if i < 5:
-            logger.info(f"DEBUG FINAL ROW {i}: parcel_id='{attribute_record['parcel_id']}' (type: {type(attribute_record['parcel_id'])})")
-            logger.info(f"DEBUG FINAL ROW {i}: id={attribute_record['id']} (type: {type(attribute_record['id'])})")
         properties_processing_time += time.time() - props_start
         
         attributes.append(attribute_record)

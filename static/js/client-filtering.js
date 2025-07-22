@@ -373,41 +373,64 @@ class ClientFilterManager {
                 // Some parcels filtered out - use paint expressions to make excluded parcels transparent
                 console.log(`VECTOR TILES: Applying transparency to show ${filteredFeatures.length} of ${completeDataset.features.length} parcels`);
                 
-                // Create lookup object for visible parcels using parcel numbers
-                const visibleParcelNumbers = {};
-                filteredFeatures.forEach(f => {
-                    // NUMBER-BASED: Use extracted parcel number
-                    const parcelNumber = this.dataStore.extractParcelNumber(f.properties.parcel_id);
-                    if (parcelNumber) {
-                        visibleParcelNumbers[parcelNumber] = true;
-                    }
-                });
-                
                 // Remove any existing filters since we're using paint expressions now
                 window.map.setFilter('parcels-fill', null);
                 window.map.setFilter('parcels-boundary', null);
                 
-                // For now, create a combined lookup with both original IDs and numbers
-                const combinedVisibleIds = { ...visibleParcelNumbers };
+                // Create comprehensive lookup object for visible parcels
+                // Include multiple ID formats to ensure vector tile compatibility
+                const combinedVisibleIds = {};
                 filteredFeatures.forEach(f => {
                     const originalId = f.properties.parcel_id;
                     if (originalId) {
+                        // Add original ID
                         combinedVisibleIds[originalId.toString()] = true;
+                        
+                        // Add extracted parcel number
+                        const parcelNumber = this.dataStore.extractParcelNumber(originalId);
+                        if (parcelNumber && parcelNumber !== originalId.toString()) {
+                            combinedVisibleIds[parcelNumber] = true;
+                        }
+                        
+                        // Also try common vector tile formats (with/without .0)
+                        if (originalId.toString().includes('.')) {
+                            // Remove decimal part: "p_57942.0" -> "p_57942"
+                            const withoutDecimal = originalId.toString().replace(/\.0+$/, '');
+                            combinedVisibleIds[withoutDecimal] = true;
+                        } else {
+                            // Add decimal version: "p_57942" -> "p_57942.0"
+                            combinedVisibleIds[originalId.toString() + '.0'] = true;
+                        }
                     }
                 });
                 
-                // Update fill opacity: normal for included parcels, transparent for excluded
+                console.log(`🔧 SPATIAL FILTER: Created combined ID lookup with ${Object.keys(combinedVisibleIds).length} ID variants`);
+                if (Object.keys(combinedVisibleIds).length > 0) {
+                    const sampleIds = Object.keys(combinedVisibleIds).slice(0, 3);
+                    console.log(`🔧 SPATIAL FILTER: Sample combined IDs:`, sampleIds);
+                }
+                
+                // Update fill opacity using BOTH feature.id (via promoteId) AND parcel_id property
+                // This ensures compatibility with different ID formats
                 window.map.setPaintProperty('parcels-fill', 'fill-opacity', [
                     'case',
-                    ['has', ['to-string', ['get', 'parcel_id']], ['literal', combinedVisibleIds]],
+                    [
+                        'any',
+                        ['has', ['to-string', ['id']], ['literal', combinedVisibleIds]],
+                        ['has', ['to-string', ['get', 'parcel_id']], ['literal', combinedVisibleIds]]
+                    ],
                     0.8,  // Normal opacity for included parcels
                     0.05  // Very faint for excluded parcels (so we can see it working)
                 ]);
                 
-                // Update boundary opacity: normal for included parcels, very faint for excluded
+                // Update boundary opacity using BOTH feature.id (via promoteId) AND parcel_id property
                 window.map.setPaintProperty('parcels-boundary', 'line-opacity', [
                     'case',
-                    ['has', ['to-string', ['get', 'parcel_id']], ['literal', combinedVisibleIds]],
+                    [
+                        'any',
+                        ['has', ['to-string', ['id']], ['literal', combinedVisibleIds]],
+                        ['has', ['to-string', ['get', 'parcel_id']], ['literal', combinedVisibleIds]]
+                    ],
                     0.3,   // Normal opacity for included parcels  
                     0.1    // Very faint outline for excluded parcels
                 ]);
