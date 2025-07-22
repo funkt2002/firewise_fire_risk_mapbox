@@ -37,19 +37,16 @@ class SharedDataStore {
         // Convert AttributeCollection to FeatureCollection format once
         this.completeDataset = this.convertToFeatureCollection(attributeData);
         
-        // Build attribute lookup map once
-        this.buildAttributeMap(attributeData);
-        
-        // Discover vector tile ID format if map is available
+        // Convert attribute IDs to match Mapbox format if map is available
         if (window.map && window.map.isStyleLoaded()) {
-            console.log('🎯 VECTOR ID INTEGRATION: Map is ready, discovering vector tile ID format...');
-            this.discoverVectorTileIdFormat();
-            if (this.canonicalIdFormat) {
-                this.buildCanonicalMapping();
-            }
+            console.log('🔧 SIMPLE ID FIX: Converting attribute IDs to match Mapbox format...');
+            this.convertAttributeIdsToMapboxFormat(attributeData);
         } else {
-            console.log('🎯 VECTOR ID INTEGRATION: Map not ready, will discover format later');
+            console.log('🔧 SIMPLE ID FIX: Map not ready, will convert IDs later');
         }
+        
+        // Build attribute lookup map once (after ID conversion)
+        this.buildAttributeMap(attributeData);
         
         const loadTime = performance.now() - start;
         console.log(`✅ SharedDataStore: Stored ${this.completeDataset.features.length} features in ${loadTime.toFixed(1)}ms`);
@@ -192,21 +189,58 @@ class SharedDataStore {
         this.canonicalIdFormat = null;
     }
 
-    // ===== PHASE 1: Vector Tile ID Discovery =====
+    // ===== SIMPLE ID CONVERSION =====
     
-    // Discover the actual ID format used by vector tiles
-    discoverVectorTileIdFormat() {
+    // Convert all attribute IDs to match Mapbox vector tile format
+    convertAttributeIdsToMapboxFormat(attributeData) {
         if (!window.map || !window.map.isStyleLoaded()) {
-            console.warn('🔍 VECTOR ID DISCOVERY: Map not ready, skipping discovery');
-            return null;
+            console.warn('🔧 ID CONVERSION: Map not ready, skipping conversion');
+            return;
         }
         
         try {
-            // Query a small area around map center for sample features
+            // Sample Mapbox vector tiles to detect ID format
+            const mapboxIdFormat = this.sampleMapboxIdFormat();
+            if (!mapboxIdFormat) {
+                console.warn('🔧 ID CONVERSION: Could not detect Mapbox ID format');
+                return;
+            }
+            
+            console.log(`🔧 ID CONVERSION: Mapbox uses format "${mapboxIdFormat}", converting all attribute IDs...`);
+            
+            let convertedCount = 0;
+            
+            // Convert all attribute IDs to match Mapbox format
+            attributeData.attributes.forEach(attr => {
+                const originalId = attr.parcel_id;
+                if (originalId) {
+                    const convertedId = this.convertIdToMapboxFormat(originalId, mapboxIdFormat);
+                    if (convertedId !== originalId) {
+                        attr.parcel_id = convertedId;
+                        convertedCount++;
+                        
+                        // Debug first few conversions
+                        if (convertedCount <= 5) {
+                            console.log(`🔧 ID CONVERSION: "${originalId}" → "${convertedId}"`);
+                        }
+                    }
+                }
+            });
+            
+            console.log(`✅ ID CONVERSION COMPLETE: Converted ${convertedCount} attribute IDs to match Mapbox format`);
+            
+        } catch (error) {
+            console.error('🔧 ID CONVERSION ERROR:', error);
+        }
+    }
+    
+    // Sample a few Mapbox features to detect their ID format
+    sampleMapboxIdFormat() {
+        try {
             const center = window.map.getCenter();
             const bounds = [
                 [center.lng - 0.01, center.lat - 0.01],
-                [center.lng + 0.01, center.lat + 0.01]  
+                [center.lng + 0.01, center.lat + 0.01]
             ];
             
             const features = window.map.queryRenderedFeatures(bounds, {
@@ -215,144 +249,63 @@ class SharedDataStore {
             
             if (features.length > 0) {
                 const sample = features[0];
-                const vectorId = sample.id || sample.properties.parcel_id;
-                const vectorIdType = typeof vectorId;
+                const mapboxId = sample.id || sample.properties.parcel_id;
                 
-                console.log('🔍 VECTOR TILE ID DISCOVERY:');
-                console.log(`  - Sample vector ID: "${vectorId}" (${vectorIdType})`);
-                console.log(`  - feature.id: "${sample.id}" (${typeof sample.id})`);
-                console.log(`  - feature.properties.parcel_id: "${sample.properties.parcel_id}" (${typeof sample.properties.parcel_id})`);
-                console.log(`  - Other properties:`, Object.keys(sample.properties));
-                
-                this.canonicalIdFormat = {
-                    sample: vectorId,
-                    type: vectorIdType,
-                    hasDecimal: vectorId.toString().includes('.'),
-                    pattern: this.detectIdPattern(vectorId)
-                };
-                
-                console.log('🎯 CANONICAL ID FORMAT DETECTED:', this.canonicalIdFormat);
-                return vectorId;
-            } else {
-                console.warn('🔍 VECTOR ID DISCOVERY: No features found in sample area');
-                return null;
+                console.log(`🔧 MAPBOX SAMPLE: Found ID "${mapboxId}" (type: ${typeof mapboxId})`);
+                return mapboxId.toString();
             }
+            
+            return null;
         } catch (error) {
-            console.error('🔍 VECTOR ID DISCOVERY ERROR:', error);
+            console.error('🔧 MAPBOX SAMPLING ERROR:', error);
             return null;
         }
     }
     
-    // Detect ID pattern for format analysis
-    detectIdPattern(id) {
-        const idStr = id.toString();
-        if (idStr.match(/^p_\d+\.0$/)) return 'p_XXXXX.0';
-        if (idStr.match(/^p_\d+$/)) return 'p_XXXXX';
-        if (idStr.match(/^\d+\.0$/)) return 'XXXXX.0';
-        if (idStr.match(/^\d+$/)) return 'XXXXX';
-        return 'unknown';
-    }
-
-    // ===== PHASE 2: Vector-to-Attribute Mapping =====
-    
-    // Normalize attribute ID to match vector tile format
-    normalizeToVectorFormat(attributeId, vectorIdFormat) {
-        if (!vectorIdFormat) return attributeId;
+    // Convert a single attribute ID to match Mapbox format
+    convertIdToMapboxFormat(attributeId, mapboxSampleId) {
+        const attrStr = attributeId.toString();
+        const mapboxStr = mapboxSampleId.toString();
         
-        const idStr = attributeId.toString();
-        const vectorPattern = vectorIdFormat.pattern;
+        // Detect Mapbox format patterns
+        const mapboxHasDecimal = mapboxStr.includes('.');
+        const mapboxHasPrefix = mapboxStr.startsWith('p_');
         
-        // Convert based on detected vector tile pattern
-        switch (vectorPattern) {
-            case 'p_XXXXX.0':
-                // Vector tiles use p_XXXXX.0 format
-                if (idStr.match(/^p_\d+$/)) return idStr + '.0';
-                return idStr;
-                
-            case 'p_XXXXX':
-                // Vector tiles use p_XXXXX format (no decimal)
-                if (idStr.endsWith('.0')) return idStr.slice(0, -2);
-                return idStr;
-                
-            case 'XXXXX.0':
-                // Vector tiles use numeric with decimal
-                if (idStr.startsWith('p_')) {
-                    const numeric = idStr.replace('p_', '');
-                    return numeric.includes('.') ? numeric : numeric + '.0';
-                }
-                return idStr.includes('.') ? idStr : idStr + '.0';
-                
-            case 'XXXXX':
-                // Vector tiles use pure numeric
-                if (idStr.startsWith('p_')) {
-                    return idStr.replace('p_', '').replace('.0', '');
-                }
-                return idStr.replace('.0', '');
-                
-            default:
-                return attributeId;
-        }
-    }
-    
-    // Build canonical ID mapping between vector tiles and attributes
-    buildCanonicalMapping() {
-        if (!this.canonicalIdFormat) {
-            console.warn('🎯 CANONICAL MAPPING: No vector ID format discovered yet');
-            return;
+        let converted = attrStr;
+        
+        // Apply conversions based on Mapbox format
+        if (mapboxHasPrefix && !converted.startsWith('p_')) {
+            // Mapbox has p_ prefix, attribute doesn't
+            converted = 'p_' + converted;
+        } else if (!mapboxHasPrefix && converted.startsWith('p_')) {
+            // Mapbox has no prefix, attribute does
+            converted = converted.replace('p_', '');
         }
         
-        console.log('🎯 CANONICAL MAPPING: Building vector tile to attribute mapping...');
-        this.vectorToAttributeMap.clear();
+        if (mapboxHasDecimal && !converted.includes('.')) {
+            // Mapbox has decimal, attribute doesn't
+            converted = converted + '.0';
+        } else if (!mapboxHasDecimal && converted.endsWith('.0')) {
+            // Mapbox has no decimal, attribute does
+            converted = converted.slice(0, -2);
+        }
         
-        let mappingCount = 0;
-        let conflictCount = 0;
-        
-        // Rebuild attribute map using canonical vector IDs as keys
-        const newAttributeMap = new Map();
-        
-        for (const [attributeId, attributes] of this.attributeMap) {
-            const canonicalId = this.normalizeToVectorFormat(attributeId, this.canonicalIdFormat);
+        return converted;
+    }
+    
+    // Initialize ID conversion when map becomes available (for deferred loading)
+    initializeIdConversion() {
+        if (this.completeDataset && window.map && window.map.isStyleLoaded()) {
+            console.log('🔧 DEFERRED ID CONVERSION: Map now ready, converting IDs...');
             
-            // Store mapping from canonical ID to original attribute ID
-            if (this.vectorToAttributeMap.has(canonicalId)) {
-                conflictCount++;
-                console.warn(`⚠️ ID CONFLICT: Multiple attributes map to canonical ID "${canonicalId}"`);
-            }
+            // Extract original attribute data from stored dataset
+            const attributeData = {
+                attributes: this.completeDataset.features.map(f => f.properties)
+            };
             
-            this.vectorToAttributeMap.set(canonicalId, attributeId);
-            newAttributeMap.set(canonicalId, attributes);
-            mappingCount++;
-        }
-        
-        // Replace attribute map with canonical ID version
-        this.attributeMap = newAttributeMap;
-        
-        console.log(`✅ CANONICAL MAPPING COMPLETE:`);
-        console.log(`  - ${mappingCount} mappings created`);
-        console.log(`  - ${conflictCount} conflicts detected`);
-        console.log(`  - Sample canonical IDs:`, Array.from(this.attributeMap.keys()).slice(0, 5));
-    }
-    
-    // Get canonical vector tile ID for an attribute ID
-    getCanonicalId(attributeId) {
-        if (!this.canonicalIdFormat) return attributeId;
-        return this.normalizeToVectorFormat(attributeId, this.canonicalIdFormat);
-    }
-    
-    // Get attributes by canonical vector tile ID
-    getAttributesByCanonicalId(canonicalId) {
-        return this.attributeMap.get(canonicalId);
-    }
-    
-    // Initialize canonical mapping when map becomes available
-    initializeCanonicalMapping() {
-        if (!this.canonicalIdFormat && window.map && window.map.isStyleLoaded()) {
-            console.log('🎯 DEFERRED INITIALIZATION: Discovering vector tile ID format...');
-            this.discoverVectorTileIdFormat();
-            if (this.canonicalIdFormat) {
-                this.buildCanonicalMapping();
-                return true;
-            }
+            this.convertAttributeIdsToMapboxFormat(attributeData);
+            this.buildAttributeMap(attributeData);
+            return true;
         }
         return false;
     }

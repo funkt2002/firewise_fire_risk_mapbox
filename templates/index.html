@@ -1426,22 +1426,19 @@
             const scoreObject = {};
             const top500Ids = [];
             
-            // PHASE 4: Initialize canonical mapping before building score objects
+            // SIMPLE FIX: Initialize ID conversion if needed
             if (window.sharedDataStore) {
-                window.sharedDataStore.initializeCanonicalMapping();
+                window.sharedDataStore.initializeIdConversion();
             }
             
             attributes.forEach(attr => {
                 if (attr.parcel_id && attr.score !== undefined) {
-                    // PHASE 4: Use canonical ID for score object keys
-                    const attributeId = attr.parcel_id.toString();
-                    const canonicalId = window.sharedDataStore ? 
-                        window.sharedDataStore.getCanonicalId(attributeId) : attributeId;
-                    const lookupId = canonicalId || attributeId;
+                    // SIMPLE FIX: IDs already converted, use directly
+                    const parcelId = attr.parcel_id.toString();
                     
-                    scoreObject[lookupId] = attr.score;
+                    scoreObject[parcelId] = attr.score;
                     if (attr.top500) {
-                        top500Ids.push(lookupId);
+                        top500Ids.push(parcelId);
                     }
                     
                     // Update the stored attributes with score and rank for popups
@@ -2340,22 +2337,20 @@
                 return;
             }
             
-            // PHASE 5: Use canonical vector tile ID directly
-            const canonicalId = e.features[0].id || e.features[0].properties.parcel_id;
+            // SIMPLE FIX: Use vector tile ID directly (IDs now match after conversion)
+            const parcelId = e.features[0].id || e.features[0].properties.parcel_id;
             
             // DEBUG: Log parcel click details for ID investigation
-            console.log('🔍 PARCEL CLICK DEBUG (CANONICAL):');
+            console.log('🔧 PARCEL CLICK DEBUG (SIMPLE):');
             console.log('  - Feature properties:', e.features[0].properties);
-            console.log('  - Feature id (canonical):', e.features[0].id);
-            console.log('  - Canonical ID:', canonicalId);
+            console.log('  - Feature id:', e.features[0].id);
+            console.log('  - Parcel ID:', parcelId);
             console.log('  - Available property keys:', Object.keys(e.features[0].properties));
             
-            // PHASE 5: Look up attributes using canonical ID
-            const attributes = window.sharedDataStore ? 
-                window.sharedDataStore.getAttributesByCanonicalId(canonicalId) :
-                window.fireRiskScoring.getAttributesByParcelId(canonicalId);
+            // SIMPLE FIX: Look up attributes using parcel ID (should work after ID conversion)
+            const attributes = window.fireRiskScoring.getAttributesByParcelId(parcelId);
                 
-            console.log('  - Found attributes via canonical lookup:', !!attributes);
+            console.log('  - Found attributes:', !!attributes);
             if (attributes) {
                 console.log('  - Attributes parcel_id:', attributes.parcel_id);
                 console.log('  - Attributes id:', attributes.id);
