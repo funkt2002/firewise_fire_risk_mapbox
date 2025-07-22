@@ -215,36 +215,37 @@ class ClientFilterManager {
                 geometricallyFilteredFeatures.push(...visibleFeatures);
             }
 
-            // Extract parcel IDs from geometrically filtered features
-            const visibleParcelIds = new Set();
+            // Extract parcel numbers from geometrically filtered features
+            const visibleParcelNumbers = new Set();
             geometricallyFilteredFeatures.forEach(feature => {
-                // PHASE 3: Use canonical vector tile IDs directly
-                // Vector tiles define the canonical ID format through promoteId: 'parcel_id'
-                const canonicalId = feature.id || feature.properties.parcel_id;
-                if (canonicalId) {
-                    visibleParcelIds.add(canonicalId.toString());
+                // NUMBER-BASED: Extract parcel number from any ID format
+                const parcelId = feature.id || feature.properties.parcel_id;
+                if (parcelId) {
+                    const parcelNumber = this.dataStore.extractParcelNumber(parcelId);
+                    if (parcelNumber) {
+                        visibleParcelNumbers.add(parcelNumber);
+                    }
                 }
             });
 
-            console.log(`VECTOR TILES: Spatial filter found ${visibleParcelIds.size} parcels actually intersecting drawn shape`);
+            console.log(`VECTOR TILES: Spatial filter found ${visibleParcelNumbers.size} parcel numbers actually intersecting drawn shape`);
             console.log(`VECTOR TILES: Current zoom level: ${mapInstance.getZoom().toFixed(1)}`);
-            
-            // Initialize ID conversion if not already done
-            this.dataStore.initializeIdConversion();
             
             // Filter input features to only those that intersect the drawn polygon
             const filteredFeatures = features.filter(feature => {
                 const attributeId = feature.properties.parcel_id;
                 
-                // SIMPLE FIX: IDs should now match after conversion
-                const isVisible = attributeId && visibleParcelIds.has(attributeId.toString());
+                // NUMBER-BASED: Extract parcel number and check if it's in visible set
+                const parcelNumber = this.dataStore.extractParcelNumber(attributeId);
+                const isVisible = parcelNumber && visibleParcelNumbers.has(parcelNumber);
                 
                 // Debug problematic parcels
                 if (attributeId && (attributeId.includes('57942') || attributeId.includes('57878') || attributeId.includes('58035'))) {
-                    console.log(`🔧 SPATIAL FILTER DEBUG ${attributeId}:`);
+                    console.log(`🔢 SPATIAL FILTER DEBUG ${attributeId}:`);
                     console.log(`  - Attribute ID: "${attributeId}"`);
+                    console.log(`  - Parcel Number: "${parcelNumber}"`);
                     console.log(`  - In visible set: ${isVisible}`);
-                    console.log(`  - Visible set sample:`, Array.from(visibleParcelIds).slice(0, 3));
+                    console.log(`  - Visible numbers sample:`, Array.from(visibleParcelNumbers).slice(0, 3));
                 }
                 
                 return isVisible;
@@ -252,10 +253,12 @@ class ClientFilterManager {
 
             console.log(`VECTOR TILES: Spatial filter reduced from ${features.length} to ${filteredFeatures.length} parcels`);
             
-            // Update global spatial filter state for tracking
+            // Update global spatial filter state for tracking (using parcel numbers)
             window.spatialFilterActive = true;
-            window.spatialFilterParcelIds = new Set(filteredFeatures.map(f => f.properties.parcel_id.toString()));
-            console.log(`VECTOR TILES: Spatial filter activated with ${window.spatialFilterParcelIds.size} parcels`);
+            window.spatialFilterParcelIds = new Set(filteredFeatures.map(f => {
+                return this.dataStore.extractParcelNumber(f.properties.parcel_id);
+            }));
+            console.log(`VECTOR TILES: Spatial filter activated with ${window.spatialFilterParcelIds.size} parcel numbers`);
             
             // Note: Map visibility will be updated by updateMapVisibility() method using paint expressions
             
@@ -370,22 +373,33 @@ class ClientFilterManager {
                 // Some parcels filtered out - use paint expressions to make excluded parcels transparent
                 console.log(`VECTOR TILES: Applying transparency to show ${filteredFeatures.length} of ${completeDataset.features.length} parcels`);
                 
-                // Create lookup object for visible parcels
-                const visibleParcelIds = {};
+                // Create lookup object for visible parcels using parcel numbers
+                const visibleParcelNumbers = {};
                 filteredFeatures.forEach(f => {
-                    // SIMPLE FIX: IDs already converted, use directly
-                    const parcelId = f.properties.parcel_id;
-                    visibleParcelIds[parcelId.toString()] = true;
+                    // NUMBER-BASED: Use extracted parcel number
+                    const parcelNumber = this.dataStore.extractParcelNumber(f.properties.parcel_id);
+                    if (parcelNumber) {
+                        visibleParcelNumbers[parcelNumber] = true;
+                    }
                 });
                 
                 // Remove any existing filters since we're using paint expressions now
                 window.map.setFilter('parcels-fill', null);
                 window.map.setFilter('parcels-boundary', null);
                 
+                // For now, create a combined lookup with both original IDs and numbers
+                const combinedVisibleIds = { ...visibleParcelNumbers };
+                filteredFeatures.forEach(f => {
+                    const originalId = f.properties.parcel_id;
+                    if (originalId) {
+                        combinedVisibleIds[originalId.toString()] = true;
+                    }
+                });
+                
                 // Update fill opacity: normal for included parcels, transparent for excluded
                 window.map.setPaintProperty('parcels-fill', 'fill-opacity', [
                     'case',
-                    ['has', ['to-string', ['get', 'parcel_id']], ['literal', visibleParcelIds]],
+                    ['has', ['to-string', ['get', 'parcel_id']], ['literal', combinedVisibleIds]],
                     0.8,  // Normal opacity for included parcels
                     0.05  // Very faint for excluded parcels (so we can see it working)
                 ]);
@@ -393,7 +407,7 @@ class ClientFilterManager {
                 // Update boundary opacity: normal for included parcels, very faint for excluded
                 window.map.setPaintProperty('parcels-boundary', 'line-opacity', [
                     'case',
-                    ['has', ['to-string', ['get', 'parcel_id']], ['literal', visibleParcelIds]],
+                    ['has', ['to-string', ['get', 'parcel_id']], ['literal', combinedVisibleIds]],
                     0.3,   // Normal opacity for included parcels  
                     0.1    // Very faint outline for excluded parcels
                 ]);

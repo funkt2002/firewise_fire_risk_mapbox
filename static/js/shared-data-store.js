@@ -5,8 +5,6 @@ class SharedDataStore {
     constructor() {
         this.completeDataset = null;
         this.attributeMap = new Map();
-        this.vectorToAttributeMap = new Map(); // Vector ID -> Attribute ID mapping
-        this.canonicalIdFormat = null; // Discovered vector tile ID format
         this.baseVariables = [
             'qtrmi', 'hwui', 'hagri', 'hvhsz', 'hfb', 
             'slope', 'neigh1d', 'hbrn', 'par_sl', 'agfb', 'travel'
@@ -28,6 +26,15 @@ class SharedDataStore {
         };
     }
 
+    // ===== UNIVERSAL ID HELPER =====
+    
+    // Extract core parcel number from any ID format (p_57942, p_57942.0, 57942, etc.)
+    extractParcelNumber(id) {
+        if (!id) return null;
+        const match = id.toString().match(/\d+/);
+        return match ? match[0] : id.toString();
+    }
+
     // Store the complete dataset and build lookup structures once
     storeCompleteData(attributeData) {
         const start = performance.now();
@@ -37,15 +44,7 @@ class SharedDataStore {
         // Convert AttributeCollection to FeatureCollection format once
         this.completeDataset = this.convertToFeatureCollection(attributeData);
         
-        // Convert attribute IDs to match Mapbox format if map is available
-        if (window.map && window.map.isStyleLoaded()) {
-            console.log('🔧 SIMPLE ID FIX: Converting attribute IDs to match Mapbox format...');
-            this.convertAttributeIdsToMapboxFormat(attributeData);
-        } else {
-            console.log('🔧 SIMPLE ID FIX: Map not ready, will convert IDs later');
-        }
-        
-        // Build attribute lookup map once (after ID conversion)
+        // Build attribute lookup map using parcel numbers
         this.buildAttributeMap(attributeData);
         
         const loadTime = performance.now() - start;
@@ -82,79 +81,61 @@ class SharedDataStore {
         };
     }
 
-    // Build attribute lookup map for vector tile interactions
+    // Build attribute lookup map using parcel numbers
     buildAttributeMap(attributeData) {
         this.attributeMap.clear();
+        console.log('🔢 NUMBER-BASED: Building attribute map using parcel numbers...');
         
-        let debugCount = 0;
-        let stringKeyCount = 0;
-        let numericKeyCount = 0;
+        let mappedCount = 0;
+        let conflictCount = 0;
         
         attributeData.attributes.forEach((attributes, index) => {
-            const parcelId = attributes.parcel_id;
-            const id = attributes.id;
+            const parcelId = attributes.parcel_id || attributes.id;
             
-            // DEBUG: Log first 10 attribute records for ID investigation
-            if (index < 10) {
-                console.log(`🔍 ATTRIBUTE MAP DEBUG ${index}:`);
-                console.log('  - Available attribute keys:', Object.keys(attributes));
-                console.log('  - parcel_id field:', parcelId, typeof parcelId);
-                console.log('  - id field:', id, typeof id);
-                debugCount++;
-            }
-            
-            // Store ALL attributes for popup access (including raw variables)
-            const allAttrs = { ...attributes };
-            
-            // Ensure both fields exist for compatibility
-            allAttrs.parcel_id = parcelId || id;
-            allAttrs.id = id || parcelId;
-            if (attributes.score !== undefined) allAttrs.score = attributes.score;
-            if (attributes.rank !== undefined) allAttrs.rank = attributes.rank;
-            if (attributes.top500 !== undefined) allAttrs.top500 = attributes.top500;
-            
-            // PRIORITY: Use string parcel_id as primary key since that's what vector tiles use
-            // Only fall back to numeric id if parcel_id is missing
-            let primaryKey = parcelId;
-            if (!primaryKey && id) {
-                primaryKey = id;
-            }
-            
-            if (primaryKey) {
-                // Store with primary key
-                this.attributeMap.set(primaryKey, allAttrs);
+            if (parcelId) {
+                // Extract core parcel number
+                const parcelNumber = this.extractParcelNumber(parcelId);
                 
-                // COMPATIBILITY: Also store with alternate decimal formats to handle inconsistencies
-                if (typeof primaryKey === 'string') {
-                    // If key has .0, also store without .0
-                    if (primaryKey.endsWith('.0')) {
-                        const keyWithoutDecimal = primaryKey.slice(0, -2);
-                        this.attributeMap.set(keyWithoutDecimal, allAttrs);
-                    } 
-                    // If key doesn't have .0, also store with .0
-                    else if (primaryKey.match(/^p_\d+$/)) {
-                        const keyWithDecimal = primaryKey + '.0';
-                        this.attributeMap.set(keyWithDecimal, allAttrs);
+                if (parcelNumber) {
+                    // Store ALL attributes for popup access
+                    const allAttrs = { ...attributes };
+                    
+                    // Ensure fields exist for compatibility
+                    allAttrs.parcel_id = parcelId;
+                    allAttrs.id = attributes.id || parcelId;
+                    if (attributes.score !== undefined) allAttrs.score = attributes.score;
+                    if (attributes.rank !== undefined) allAttrs.rank = attributes.rank;
+                    if (attributes.top500 !== undefined) allAttrs.top500 = attributes.top500;
+                    
+                    // Check for conflicts
+                    if (this.attributeMap.has(parcelNumber)) {
+                        conflictCount++;
+                        if (conflictCount <= 5) {
+                            console.warn(`⚠️ NUMBER CONFLICT: Multiple parcels map to number "${parcelNumber}"`);
+                        }
                     }
+                    
+                    // Store with parcel number as key
+                    this.attributeMap.set(parcelNumber, allAttrs);
+                    mappedCount++;
+                    
+                    // Debug first few conversions
+                    if (mappedCount <= 5) {
+                        console.log(`🔢 NUMBER MAPPING: "${parcelId}" → "${parcelNumber}"`);
+                    }
+                } else {
+                    console.warn('Could not extract parcel number from:', parcelId);
                 }
-                
-                // Count key types for debugging
-                if (typeof primaryKey === 'string') stringKeyCount++;
-                else numericKeyCount++;
-                
-                // Removed excessive debugging
             } else {
-                console.warn('No valid key found for attribute record:', attributes);
+                console.warn('No parcel ID found for attribute record:', attributes);
             }
         });
         
-        if (debugCount > 0) {
-            console.log(`🗂️ FIXED Attribute map built:`);
-            console.log(`  - Total entries: ${this.attributeMap.size} (should be ~62k, not 124k)`);
-            console.log(`  - String keys: ${stringKeyCount}`);
-            console.log(`  - Numeric keys: ${numericKeyCount}`);
-            console.log(`  - Sample keys:`, Array.from(this.attributeMap.keys()).slice(0, 5));
-        }
+        console.log(`✅ NUMBER-BASED MAPPING COMPLETE:`);
+        console.log(`  - ${mappedCount} parcels mapped to numbers`);
+        console.log(`  - ${conflictCount} conflicts detected`);
+        console.log(`  - Final map size: ${this.attributeMap.size}`);
+        console.log(`  - Sample number keys:`, Array.from(this.attributeMap.keys()).slice(0, 5));
     }
 
     // Get complete dataset
@@ -185,129 +166,12 @@ class SharedDataStore {
     clear() {
         this.completeDataset = null;
         this.attributeMap.clear();
-        this.vectorToAttributeMap.clear();
-        this.canonicalIdFormat = null;
-    }
-
-    // ===== SIMPLE ID CONVERSION =====
-    
-    // Convert all attribute IDs to match Mapbox vector tile format
-    convertAttributeIdsToMapboxFormat(attributeData) {
-        if (!window.map || !window.map.isStyleLoaded()) {
-            console.warn('🔧 ID CONVERSION: Map not ready, skipping conversion');
-            return;
-        }
-        
-        try {
-            // Sample Mapbox vector tiles to detect ID format
-            const mapboxIdFormat = this.sampleMapboxIdFormat();
-            if (!mapboxIdFormat) {
-                console.warn('🔧 ID CONVERSION: Could not detect Mapbox ID format');
-                return;
-            }
-            
-            console.log(`🔧 ID CONVERSION: Mapbox uses format "${mapboxIdFormat}", converting all attribute IDs...`);
-            
-            let convertedCount = 0;
-            
-            // Convert all attribute IDs to match Mapbox format
-            attributeData.attributes.forEach(attr => {
-                const originalId = attr.parcel_id;
-                if (originalId) {
-                    const convertedId = this.convertIdToMapboxFormat(originalId, mapboxIdFormat);
-                    if (convertedId !== originalId) {
-                        attr.parcel_id = convertedId;
-                        convertedCount++;
-                        
-                        // Debug first few conversions
-                        if (convertedCount <= 5) {
-                            console.log(`🔧 ID CONVERSION: "${originalId}" → "${convertedId}"`);
-                        }
-                    }
-                }
-            });
-            
-            console.log(`✅ ID CONVERSION COMPLETE: Converted ${convertedCount} attribute IDs to match Mapbox format`);
-            
-        } catch (error) {
-            console.error('🔧 ID CONVERSION ERROR:', error);
-        }
     }
     
-    // Sample a few Mapbox features to detect their ID format
-    sampleMapboxIdFormat() {
-        try {
-            const center = window.map.getCenter();
-            const bounds = [
-                [center.lng - 0.01, center.lat - 0.01],
-                [center.lng + 0.01, center.lat + 0.01]
-            ];
-            
-            const features = window.map.queryRenderedFeatures(bounds, {
-                layers: ['parcels-fill']
-            });
-            
-            if (features.length > 0) {
-                const sample = features[0];
-                const mapboxId = sample.id || sample.properties.parcel_id;
-                
-                console.log(`🔧 MAPBOX SAMPLE: Found ID "${mapboxId}" (type: ${typeof mapboxId})`);
-                return mapboxId.toString();
-            }
-            
-            return null;
-        } catch (error) {
-            console.error('🔧 MAPBOX SAMPLING ERROR:', error);
-            return null;
-        }
-    }
-    
-    // Convert a single attribute ID to match Mapbox format
-    convertIdToMapboxFormat(attributeId, mapboxSampleId) {
-        const attrStr = attributeId.toString();
-        const mapboxStr = mapboxSampleId.toString();
-        
-        // Detect Mapbox format patterns
-        const mapboxHasDecimal = mapboxStr.includes('.');
-        const mapboxHasPrefix = mapboxStr.startsWith('p_');
-        
-        let converted = attrStr;
-        
-        // Apply conversions based on Mapbox format
-        if (mapboxHasPrefix && !converted.startsWith('p_')) {
-            // Mapbox has p_ prefix, attribute doesn't
-            converted = 'p_' + converted;
-        } else if (!mapboxHasPrefix && converted.startsWith('p_')) {
-            // Mapbox has no prefix, attribute does
-            converted = converted.replace('p_', '');
-        }
-        
-        if (mapboxHasDecimal && !converted.includes('.')) {
-            // Mapbox has decimal, attribute doesn't
-            converted = converted + '.0';
-        } else if (!mapboxHasDecimal && converted.endsWith('.0')) {
-            // Mapbox has no decimal, attribute does
-            converted = converted.slice(0, -2);
-        }
-        
-        return converted;
-    }
-    
-    // Initialize ID conversion when map becomes available (for deferred loading)
-    initializeIdConversion() {
-        if (this.completeDataset && window.map && window.map.isStyleLoaded()) {
-            console.log('🔧 DEFERRED ID CONVERSION: Map now ready, converting IDs...');
-            
-            // Extract original attribute data from stored dataset
-            const attributeData = {
-                attributes: this.completeDataset.features.map(f => f.properties)
-            };
-            
-            this.convertAttributeIdsToMapboxFormat(attributeData);
-            this.buildAttributeMap(attributeData);
-            return true;
-        }
-        return false;
+    // Get attributes by parcel number (extracted from any ID format)
+    getAttributesByParcelNumber(id) {
+        const parcelNumber = this.extractParcelNumber(id);
+        return this.attributeMap.get(parcelNumber);
     }
     
     // Debug method to check what's stored for a parcel

@@ -1426,19 +1426,18 @@
             const scoreObject = {};
             const top500Ids = [];
             
-            // SIMPLE FIX: Initialize ID conversion if needed
-            if (window.sharedDataStore) {
-                window.sharedDataStore.initializeIdConversion();
-            }
-            
             attributes.forEach(attr => {
                 if (attr.parcel_id && attr.score !== undefined) {
-                    // SIMPLE FIX: IDs already converted, use directly
-                    const parcelId = attr.parcel_id.toString();
+                    // NUMBER-BASED: Use extracted parcel number for score lookup
+                    const parcelNumber = window.sharedDataStore ? 
+                        window.sharedDataStore.extractParcelNumber(attr.parcel_id) : 
+                        attr.parcel_id.toString();
                     
-                    scoreObject[parcelId] = attr.score;
-                    if (attr.top500) {
-                        top500Ids.push(parcelId);
+                    if (parcelNumber) {
+                        scoreObject[parcelNumber] = attr.score;
+                        if (attr.top500) {
+                            top500Ids.push(parcelNumber);
+                        }
                     }
                     
                     // Update the stored attributes with score and rank for popups
@@ -1453,19 +1452,45 @@
             
 
             
+            // NUMBER-BASED: Create combined lookup for paint expressions
+            // Include both parcel numbers and common ID formats for maximum compatibility
+            const combinedScoreObject = { ...scoreObject };
+            const combinedTop500Ids = [...top500Ids];
+            
+            // Add common ID format variations for each parcel number
+            Object.keys(scoreObject).forEach(parcelNumber => {
+                const score = scoreObject[parcelNumber];
+                const isTop500 = top500Ids.includes(parcelNumber);
+                
+                // Add variations: p_NUMBER, p_NUMBER.0
+                const pFormat = `p_${parcelNumber}`;
+                const pFormatDecimal = `p_${parcelNumber}.0`;
+                
+                combinedScoreObject[pFormat] = score;
+                combinedScoreObject[pFormatDecimal] = score;
+                
+                if (isTop500) {
+                    combinedTop500Ids.push(pFormat);
+                    combinedTop500Ids.push(pFormatDecimal);
+                }
+            });
+            
             // Update global variables for expressions
-            window.parcelScores = scoreObject;
-            window.top500ParcelIds = top500Ids;
+            window.parcelScores = combinedScoreObject;
+            window.top500ParcelIds = combinedTop500Ids;
             window.filteredParcelIds = Object.values(scoreObject).filter(score => score !== undefined).map(score => parseFloat(score)).sort((a, b) => a - b);
+            
+            console.log('🔢 NUMBER-BASED SCORES: Created combined lookup with', Object.keys(combinedScoreObject).length, 'entries');
+            console.log('🔢 Sample score keys:', Object.keys(combinedScoreObject).slice(0, 6));
             
             // Update map paint properties with new scores
             map.setPaintProperty('parcels-fill', 'fill-color', [
                 'case',
-                ['has', ['to-string', ['get', 'parcel_id']], ['literal', scoreObject]],
+                ['has', ['to-string', ['get', 'parcel_id']], ['literal', combinedScoreObject]],
                 [
                     'interpolate',
                     ['linear'],
-                    ['get', ['to-string', ['get', 'parcel_id']], ['literal', scoreObject]],
+                    ['get', ['to-string', ['get', 'parcel_id']], ['literal', combinedScoreObject]],
                     0, '#ffffff',
                     0.2, '#ffdddd', 
                     0.4, '#ffaaaa',
@@ -1476,8 +1501,8 @@
                 '#eeeeee' // Default color for parcels without scores
             ]);
             
-            // Update top 500 filter  
-            map.setFilter('parcels-top500', ['in', ['to-string', ['get', 'parcel_id']], ['literal', top500Ids]]);
+            // Update top 500 filter using combined IDs
+            map.setFilter('parcels-top500', ['in', ['to-string', ['get', 'parcel_id']], ['literal', combinedTop500Ids]]);
         }
         
 
@@ -2337,18 +2362,23 @@
                 return;
             }
             
-            // SIMPLE FIX: Use vector tile ID directly (IDs now match after conversion)
+            // NUMBER-BASED: Use extracted parcel number for lookup
             const parcelId = e.features[0].id || e.features[0].properties.parcel_id;
+            const parcelNumber = window.sharedDataStore ? 
+                window.sharedDataStore.extractParcelNumber(parcelId) : parcelId;
             
             // DEBUG: Log parcel click details for ID investigation
-            console.log('🔧 PARCEL CLICK DEBUG (SIMPLE):');
+            console.log('🔢 PARCEL CLICK DEBUG (NUMBER-BASED):');
             console.log('  - Feature properties:', e.features[0].properties);
             console.log('  - Feature id:', e.features[0].id);
-            console.log('  - Parcel ID:', parcelId);
+            console.log('  - Original Parcel ID:', parcelId);
+            console.log('  - Extracted Number:', parcelNumber);
             console.log('  - Available property keys:', Object.keys(e.features[0].properties));
             
-            // SIMPLE FIX: Look up attributes using parcel ID (should work after ID conversion)
-            const attributes = window.fireRiskScoring.getAttributesByParcelId(parcelId);
+            // NUMBER-BASED: Look up attributes using parcel number
+            const attributes = window.sharedDataStore ? 
+                window.sharedDataStore.getAttributesByParcelNumber(parcelId) :
+                window.fireRiskScoring.getAttributesByParcelId(parcelId);
                 
             console.log('  - Found attributes:', !!attributes);
             if (attributes) {
