@@ -377,32 +377,24 @@ class ClientFilterManager {
                 window.map.setFilter('parcels-fill', null);
                 window.map.setFilter('parcels-boundary', null);
                 
-                // Create comprehensive lookup object for visible parcels
-                // Include multiple ID formats to ensure vector tile compatibility
-                const combinedVisibleIds = {};
+                // Create lookup object for visible parcels using normalized IDs
+                const visibleIds = {};
+                const visibleIdsWithDotZero = {};  // Also track .0 versions for mapbox matching
+                
                 filteredFeatures.forEach(f => {
                     const originalId = f.properties.parcel_id;
                     if (originalId) {
-                        // Add original ID
-                        combinedVisibleIds[originalId.toString()] = true;
+                        // Normalize the ID (remove .0 if present)
+                        const normalizedId = this.dataStore.normalizeParcelId(originalId);
                         
-                        // Add extracted parcel number
-                        const parcelNumber = this.dataStore.extractParcelNumber(originalId);
-                        if (parcelNumber && parcelNumber !== originalId.toString()) {
-                            combinedVisibleIds[parcelNumber] = true;
-                        }
-                        
-                        // Also try common vector tile formats (with/without .0)
-                        if (originalId.toString().includes('.')) {
-                            // Remove decimal part: "p_57942.0" -> "p_57942"
-                            const withoutDecimal = originalId.toString().replace(/\.0+$/, '');
-                            combinedVisibleIds[withoutDecimal] = true;
-                        } else {
-                            // Add decimal version: "p_57942" -> "p_57942.0"
-                            combinedVisibleIds[originalId.toString() + '.0'] = true;
-                        }
+                        // Add both normalized and .0 version for mapbox compatibility
+                        visibleIds[normalizedId] = true;
+                        visibleIdsWithDotZero[normalizedId + '.0'] = true;
                     }
                 });
+                
+                // Combine both lookups for mapbox matching
+                const combinedVisibleIds = { ...visibleIds, ...visibleIdsWithDotZero };
                 
                 console.log(`🔧 SPATIAL FILTER: Created combined ID lookup with ${Object.keys(combinedVisibleIds).length} ID variants`);
                 if (Object.keys(combinedVisibleIds).length > 0) {

@@ -26,7 +26,14 @@ class SharedDataStore {
         };
     }
 
-    // ===== UNIVERSAL ID HELPER =====
+    // ===== UNIVERSAL ID HELPERS =====
+    
+    // Normalize parcel ID by removing .0 suffix for consistent matching
+    normalizeParcelId(id) {
+        if (!id) return null;
+        // Convert to string and remove .0 suffix if present
+        return id.toString().replace(/\.0+$/, '');
+    }
     
     // Extract core parcel number from any ID format (p_57942, p_57942.0, 57942, etc.)
     extractParcelNumber(id) {
@@ -81,61 +88,57 @@ class SharedDataStore {
         };
     }
 
-    // Build attribute lookup map using parcel numbers
+    // Build attribute lookup map using normalized IDs
     buildAttributeMap(attributeData) {
         this.attributeMap.clear();
-        console.log('🔢 NUMBER-BASED: Building attribute map using parcel numbers...');
+        console.log('🔧 Building attribute map using normalized IDs (removing .0 suffix)...');
         
         let mappedCount = 0;
-        let conflictCount = 0;
+        let normalizationCount = 0;
         
         attributeData.attributes.forEach((attributes, index) => {
             const parcelId = attributes.parcel_id || attributes.id;
             
             if (parcelId) {
-                // Extract core parcel number
-                const parcelNumber = this.extractParcelNumber(parcelId);
+                // Normalize the ID by removing .0 suffix
+                const normalizedId = this.normalizeParcelId(parcelId);
                 
-                if (parcelNumber) {
-                    // Store ALL attributes for popup access
-                    const allAttrs = { ...attributes };
-                    
-                    // Ensure fields exist for compatibility
-                    allAttrs.parcel_id = parcelId;
-                    allAttrs.id = attributes.id || parcelId;
-                    if (attributes.score !== undefined) allAttrs.score = attributes.score;
-                    if (attributes.rank !== undefined) allAttrs.rank = attributes.rank;
-                    if (attributes.top500 !== undefined) allAttrs.top500 = attributes.top500;
-                    
-                    // Check for conflicts
-                    if (this.attributeMap.has(parcelNumber)) {
-                        conflictCount++;
-                        if (conflictCount <= 5) {
-                            console.warn(`⚠️ NUMBER CONFLICT: Multiple parcels map to number "${parcelNumber}"`);
-                        }
+                // Track if normalization changed the ID
+                if (normalizedId !== parcelId.toString()) {
+                    normalizationCount++;
+                    if (normalizationCount <= 5) {
+                        console.log(`🔧 ID normalized: "${parcelId}" → "${normalizedId}"`);
                     }
-                    
-                    // Store with parcel number as key
-                    this.attributeMap.set(parcelNumber, allAttrs);
-                    mappedCount++;
-                    
-                    // Debug first few conversions
-                    if (mappedCount <= 5) {
-                        console.log(`🔢 NUMBER MAPPING: "${parcelId}" → "${parcelNumber}"`);
-                    }
-                } else {
-                    console.warn('Could not extract parcel number from:', parcelId);
+                }
+                
+                // Store ALL attributes for popup access
+                const allAttrs = { ...attributes };
+                
+                // Ensure fields exist for compatibility
+                allAttrs.parcel_id = parcelId;
+                allAttrs.id = attributes.id || parcelId;
+                if (attributes.score !== undefined) allAttrs.score = attributes.score;
+                if (attributes.rank !== undefined) allAttrs.rank = attributes.rank;
+                if (attributes.top500 !== undefined) allAttrs.top500 = attributes.top500;
+                
+                // Store with normalized ID as key
+                this.attributeMap.set(normalizedId, allAttrs);
+                mappedCount++;
+                
+                // Debug first few mappings
+                if (mappedCount <= 5) {
+                    console.log(`📍 ID mapping: "${parcelId}" → normalized key: "${normalizedId}"`);
                 }
             } else {
                 console.warn('No parcel ID found for attribute record:', attributes);
             }
         });
         
-        console.log(`✅ NUMBER-BASED MAPPING COMPLETE:`);
-        console.log(`  - ${mappedCount} parcels mapped to numbers`);
-        console.log(`  - ${conflictCount} conflicts detected`);
+        console.log(`✅ NORMALIZED ID MAPPING COMPLETE:`);
+        console.log(`  - ${mappedCount} parcels mapped`);
+        console.log(`  - ${normalizationCount} IDs had .0 suffix removed`);
         console.log(`  - Final map size: ${this.attributeMap.size}`);
-        console.log(`  - Sample number keys:`, Array.from(this.attributeMap.keys()).slice(0, 5));
+        console.log(`  - Sample normalized keys:`, Array.from(this.attributeMap.keys()).slice(0, 5));
     }
 
     // Get complete dataset
@@ -156,8 +159,8 @@ class SharedDataStore {
 
     // Update attribute map with new properties (e.g., scores)
     updateAttributeMapProperty(parcelId, property, value) {
-        const parcelNumber = this.extractParcelNumber(parcelId);
-        const attrs = this.attributeMap.get(parcelNumber);
+        const normalizedId = this.normalizeParcelId(parcelId);
+        const attrs = this.attributeMap.get(normalizedId);
         if (attrs) {
             attrs[property] = value;
         }
@@ -169,16 +172,16 @@ class SharedDataStore {
         this.attributeMap.clear();
     }
     
-    // Get attributes by parcel number (extracted from any ID format)
+    // Get attributes by normalized ID
     getAttributesByParcelNumber(id) {
-        const parcelNumber = this.extractParcelNumber(id);
-        return this.attributeMap.get(parcelNumber);
+        const normalizedId = this.normalizeParcelId(id);
+        return this.attributeMap.get(normalizedId);
     }
     
     // Debug method to check what's stored for a parcel
     debugParcel(parcelId) {
-        const parcelNumber = this.extractParcelNumber(parcelId);
-        const attrs = this.attributeMap.get(parcelNumber);
+        const normalizedId = this.normalizeParcelId(parcelId);
+        const attrs = this.attributeMap.get(normalizedId);
         if (attrs) {
             console.log(`🔍 SharedDataStore DEBUG for parcel ${parcelId}:`, {
                 qtrmi_cnt: attrs.qtrmi_cnt,
