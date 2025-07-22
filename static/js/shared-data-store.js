@@ -156,7 +156,8 @@ class SharedDataStore {
 
     // Update attribute map with new properties (e.g., scores)
     updateAttributeMapProperty(parcelId, property, value) {
-        const attrs = this.attributeMap.get(parcelId);
+        const parcelNumber = this.extractParcelNumber(parcelId);
+        const attrs = this.attributeMap.get(parcelNumber);
         if (attrs) {
             attrs[property] = value;
         }
@@ -176,7 +177,8 @@ class SharedDataStore {
     
     // Debug method to check what's stored for a parcel
     debugParcel(parcelId) {
-        const attrs = this.attributeMap.get(parcelId);
+        const parcelNumber = this.extractParcelNumber(parcelId);
+        const attrs = this.attributeMap.get(parcelNumber);
         if (attrs) {
             console.log(`🔍 SharedDataStore DEBUG for parcel ${parcelId}:`, {
                 qtrmi_cnt: attrs.qtrmi_cnt,
