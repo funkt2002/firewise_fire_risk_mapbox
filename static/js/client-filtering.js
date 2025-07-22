@@ -8,14 +8,14 @@ class ClientFilterManager {
         this.spatialIndex = null;
         this.timings = {};
         
-        console.log('🔍 ClientFilterManager: Initialized with shared data store (no duplicate data storage)');
+        console.log('ClientFilterManager: Initialized with shared data store (no duplicate data storage)');
     }
 
     // REMOVED: storeCompleteDataset - now uses shared data store automatically
 
     // Apply all filters client-side
     applyFilters(filters) {
-        console.log('🔍 ClientFilterManager: Accessing shared dataset (no duplicate copy)');
+        console.log('ClientFilterManager: Accessing shared dataset (no duplicate copy)');
         const completeDataset = this.dataStore.getCompleteDataset();
         if (!completeDataset) {
             console.error('No complete dataset in shared store. Call storeCompleteData() first.');
@@ -373,7 +373,7 @@ class ClientNormalizationManager {
         this.normalizationCache = {};
         this.globalNormalizationCache = {};
         
-        console.log('📊 ClientNormalizationManager: Initialized with shared data store (no duplicate data storage)');
+        console.log('ClientNormalizationManager: Initialized with shared data store (no duplicate data storage)');
     }
     
     // REMOVED: storeCompleteDataset - now uses shared data store automatically
@@ -381,12 +381,12 @@ class ClientNormalizationManager {
     // Calculate local normalization on filtered dataset
     calculateLocalNormalization(filteredFeatures, use_quantile, use_raw_scoring = false) {
         const start = performance.now();
-        console.log(`🔧 NORMALIZATION DEBUG: Calculating local normalization for ${filteredFeatures.length} filtered parcels`);
-        console.log(`🔧 NORMALIZATION DEBUG: Settings - use_quantile: ${use_quantile}, use_raw_scoring: ${use_raw_scoring}`);
+        console.log(`NORMALIZATION DEBUG: Calculating local normalization for ${filteredFeatures.length} filtered parcels`);
+        console.log(`NORMALIZATION DEBUG: Settings - use_quantile: ${use_quantile}, use_raw_scoring: ${use_raw_scoring}`);
         
         // CRITICAL: Clear any cached normalization to ensure fresh calculation for each scoring type
         const scoringType = use_raw_scoring ? 'RAW' : 'ROBUST';
-        console.log(`🔧 NORMALIZATION DEBUG: *** CALCULATING ${scoringType} ${use_quantile ? 'QUANTILE' : 'MIN-MAX'} PARAMETERS ***`);
+        console.log(`NORMALIZATION DEBUG: *** CALCULATING ${scoringType} ${use_quantile ? 'QUANTILE' : 'MIN-MAX'} PARAMETERS ***`);
 
         const rawVarMap = {
             'qtrmi': 'qtrmi_cnt',
@@ -424,7 +424,7 @@ class ClientNormalizationManager {
                         if (neigh2Value !== null && neigh2Value !== undefined) {
                             rawValue = parseFloat(neigh2Value);
                             if (values.length < 3) {
-                                console.log(`🔧 NORMALIZATION DEBUG: ${varBase} SUBSTITUTION: neigh1_d=${originalValue} < 2, using neigh2_d=${rawValue}`);
+                                console.log(`NORMALIZATION DEBUG: ${varBase} SUBSTITUTION: neigh1_d=${originalValue} < 2, using neigh2_d=${rawValue}`);
                             }
                         }
                     }
@@ -440,13 +440,13 @@ class ClientNormalizationManager {
                             
                             // CRITICAL DEBUG: Show transform for first few features
                             if (values.length < 3) {
-                                console.log(`🔧 NORMALIZATION DEBUG: ${varBase} ROBUST transform: ${originalValue} → ${rawValue.toFixed(3)}`);
+                                console.log(`NORMALIZATION DEBUG: ${varBase} ROBUST transform: ${originalValue} → ${rawValue.toFixed(3)}`);
                             }
                         } else if (varBase === 'hagri' || varBase === 'hfb' || varBase === 'agfb') {
                             // Apply log transformation to agriculture, fuel breaks, and combined agriculture & fuelbreaks
                             rawValue = Math.log(1 + rawValue);
                             if (values.length < 3) {
-                                console.log(`🔧 NORMALIZATION DEBUG: ${varBase} ROBUST transform: ${originalValue} → ${rawValue.toFixed(3)}`);
+                                console.log(`NORMALIZATION DEBUG: ${varBase} ROBUST transform: ${originalValue} → ${rawValue.toFixed(3)}`);
                             }
                         }
                     } else {
@@ -455,7 +455,7 @@ class ClientNormalizationManager {
                             continue;
                         }
                         if (values.length < 3 && (varBase === 'neigh1d' || varBase === 'hagri' || varBase === 'hfb' || varBase === 'hlfmi_agfb')) {
-                            console.log(`🔧 NORMALIZATION DEBUG: ${varBase} RAW (no transform): ${originalValue}`);
+                            console.log(`NORMALIZATION DEBUG: ${varBase} RAW (no transform): ${originalValue}`);
                         }
                     }
                     
@@ -507,13 +507,13 @@ class ClientNormalizationManager {
                     
                     // CRITICAL DEBUG: Show calculated parameters for each scoring type
                     const scoringType = use_raw_scoring ? 'RAW' : 'ROBUST';
-                    console.log(`🔧 NORM PARAMS DEBUG: ${varBase} ${scoringType} MIN-MAX → min: ${min.toFixed(3)}, max: ${max.toFixed(3)}, range: ${range.toFixed(3)}`);
+                    console.log(`NORM PARAMS DEBUG: ${varBase} ${scoringType} MIN-MAX → min: ${min.toFixed(3)}, max: ${max.toFixed(3)}, range: ${range.toFixed(3)}`);
                 }
             }
         }
 
         // Second pass: calculate normalized scores for each feature  
-        console.log(`🔧 NORMALIZATION DEBUG: Starting second pass - calculating scores for features`);
+        console.log(`NORMALIZATION DEBUG: Starting second pass - calculating scores for features`);
         let featureCounter = 0;
         const normalizedFeatures = filteredFeatures.map(feature => {
             featureCounter++;
@@ -536,7 +536,7 @@ class ClientNormalizationManager {
                         if (neigh2Value !== null && neigh2Value !== undefined) {
                             rawValue = parseFloat(neigh2Value);
                             if (featureCounter <= 3) {
-                                console.log(`🔧 FEATURE ${featureCounter} SUBSTITUTION: neigh1_d=${originalValue} < 2, using neigh2_d=${rawValue}`);
+                                console.log(`FEATURE ${featureCounter} SUBSTITUTION: neigh1_d=${originalValue} < 2, using neigh2_d=${rawValue}`);
                             }
                         }
                     }
@@ -554,7 +554,7 @@ class ClientNormalizationManager {
                             
                             // CRITICAL DEBUG: Show transform for first few features
                             if (featureCounter <= 3 && (varBase === 'neigh1d' || varBase === 'hagri' || varBase === 'hfb')) {
-                                console.log(`🔧 FEATURE ${featureCounter} ROBUST: ${varBase} ${originalValue} → ${rawValue.toFixed(3)}`);
+                                console.log(`FEATURE ${featureCounter} ROBUST: ${varBase} ${originalValue} → ${rawValue.toFixed(3)}`);
                             }
                         } else if (varBase === 'hagri' || varBase === 'hfb' || varBase === 'agfb') {
                             // Apply log transformation to agriculture, fuel breaks, and combined agriculture & fuelbreaks
@@ -562,7 +562,7 @@ class ClientNormalizationManager {
                             
                             // CRITICAL DEBUG: Show transform for first few features
                             if (featureCounter <= 3 && (varBase === 'neigh1d' || varBase === 'hagri' || varBase === 'hfb')) {
-                                console.log(`🔧 FEATURE ${featureCounter} ROBUST: ${varBase} ${originalValue} → ${rawValue.toFixed(3)}`);
+                                console.log(`FEATURE ${featureCounter} ROBUST: ${varBase} ${originalValue} → ${rawValue.toFixed(3)}`);
                             }
                         }
                     } else {
@@ -574,7 +574,7 @@ class ClientNormalizationManager {
                         
                         // CRITICAL DEBUG: Show NO transform for first few features
                         if (featureCounter <= 3 && (varBase === 'neigh1d' || varBase === 'hagri' || varBase === 'hfb')) {
-                            console.log(`🔧 FEATURE ${featureCounter} RAW: ${varBase} ${originalValue} (no transform)`);
+                            console.log(`FEATURE ${featureCounter} RAW: ${varBase} ${originalValue} (no transform)`);
                         }
                     }
 
@@ -630,9 +630,9 @@ class ClientNormalizationManager {
                     if (featureCounter <= 3 && (varBase === 'neigh1d' || varBase === 'hagri' || varBase === 'hfb')) {
                         const scoringType = use_raw_scoring ? 'RAW' : 'ROBUST';
                         if (normInfo.norm_type === 'true_quantile' || normInfo.norm_type === 'true_quantile_no_zeros') {
-                            console.log(`🔧 FEATURE ${featureCounter} ${scoringType} FINAL: ${varBase}_s = ${normalizedScore.toFixed(4)} (quantile rank from ${normInfo.total_count} non-zero values)`);
+                            console.log(`FEATURE ${featureCounter} ${scoringType} FINAL: ${varBase}_s = ${normalizedScore.toFixed(4)} (quantile rank from ${normInfo.total_count} non-zero values)`);
                         } else {
-                            console.log(`🔧 FEATURE ${featureCounter} ${scoringType} FINAL: ${varBase}_s = ${normalizedScore.toFixed(4)} (using min:${normInfo.min.toFixed(3)}, max:${normInfo.max.toFixed(3)})`);
+                            console.log(`FEATURE ${featureCounter} ${scoringType} FINAL: ${varBase}_s = ${normalizedScore.toFixed(4)} (using min:${normInfo.min.toFixed(3)}, max:${normInfo.max.toFixed(3)})`);
                         }
                     }
                 }
@@ -663,12 +663,12 @@ class ClientNormalizationManager {
         
         // Return cached if available
         if (this.globalNormalizationCache[cacheKey]) {
-            console.log(`🌍 GLOBAL NORMALIZATION DEBUG: Using cached parameters for ${cacheKey}`);
+            console.log(`GLOBAL NORMALIZATION DEBUG: Using cached parameters for ${cacheKey}`);
             return this.globalNormalizationCache[cacheKey];
         }
 
         const start = performance.now();
-        console.log(`🌍 GLOBAL NORMALIZATION DEBUG: Calculating parameters (${use_quantile ? 'quantile' : 'min-max'}, ${use_raw_scoring ? 'raw' : 'log-transformed'}) for ${completeDataset.features.length} parcels`);
+        console.log(`GLOBAL NORMALIZATION DEBUG: Calculating parameters (${use_quantile ? 'quantile' : 'min-max'}, ${use_raw_scoring ? 'raw' : 'log-transformed'}) for ${completeDataset.features.length} parcels`);
 
         const rawVarMap = {
             'qtrmi': 'qtrmi_cnt',
@@ -740,7 +740,7 @@ class ClientNormalizationManager {
                         zero_count: nZeros,
                         norm_type: 'true_quantile_no_zeros'
                     };
-                    console.log(`🌍 ${varBase}: Global quantile normalization with ${sortedNonZeroValues.length} non-zero values (${pctZeros}% zeros excluded)`);
+                    console.log(`${varBase}: Global quantile normalization with ${sortedNonZeroValues.length} non-zero values (${pctZeros}% zeros excluded)`);
                 } else {
                     // Basic min-max
                     const min = Math.min(...values);
@@ -768,7 +768,7 @@ class ClientNormalizationManager {
                     
                     // CRITICAL DEBUG: Show calculated parameters for each scoring type (Global)
                     const scoringType = use_raw_scoring ? 'RAW' : 'ROBUST';
-                    console.log(`🌍 GLOBAL NORM PARAMS DEBUG: ${varBase} ${scoringType} MIN-MAX → min: ${min.toFixed(3)}, max: ${max.toFixed(3)}, range: ${range.toFixed(3)}`);
+                    console.log(`GLOBAL NORM PARAMS DEBUG: ${varBase} ${scoringType} MIN-MAX → min: ${min.toFixed(3)}, max: ${max.toFixed(3)}, range: ${range.toFixed(3)}`);
                 }
             }
         }
@@ -845,7 +845,7 @@ class ClientNormalizationManager {
         const globalNormData = this.calculateGlobalNormalization(use_quantile, use_raw_scoring);
         
         if (!globalNormData || !(varBase in globalNormData)) {
-            console.warn(`🌍 GLOBAL SCORE DEBUG: No normalization data for ${varBase}`);
+            console.warn(`GLOBAL SCORE DEBUG: No normalization data for ${varBase}`);
             return 0.0;
         }
 

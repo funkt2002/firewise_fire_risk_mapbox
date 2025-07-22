@@ -19,7 +19,7 @@ class CacheManager {
     }
     
     init() {
-        console.log('🧹 Cache Manager initialized');
+        console.log('Cache Manager initialized');
         window.cacheManager = this;
         
         // Start periodic cleanup
@@ -34,7 +34,7 @@ class CacheManager {
             this.performPeriodicCleanup();
         }, this.cleanupFrequency);
         
-        console.log(`🔄 Periodic cleanup started (every ${this.cleanupFrequency/1000}s)`);
+        console.log(`Periodic cleanup started (every ${this.cleanupFrequency/1000}s)`);
     }
     
     stopPeriodicCleanup() {
@@ -76,7 +76,7 @@ class CacheManager {
             const saved = beforeMemory && afterMemory ? beforeMemory - afterMemory : 0;
             
             if (cleanedItems.length > 0) {
-                console.log(`🧹 Periodic cleanup: ${cleanedItems.join(', ')} | Saved: ${this.formatMemory(saved)}`);
+                console.log(`Periodic cleanup: ${cleanedItems.join(', ')} | Saved: ${this.formatMemory(saved)}`);
             }
             
         } catch (error) {
@@ -120,7 +120,7 @@ class CacheManager {
             // Only clear factor scores during periodic cleanup if they're very stale
             const timeSinceLastUpdate = Date.now() - this.lastCleanup;
             if (timeSinceLastUpdate > 60000 && window.fireRiskScoring?.factorScoresMap?.size > 10000) {
-                console.log('🧹 Clearing stale factor scores map');
+                console.log('Clearing stale factor scores map');
                 window.fireRiskScoring.factorScoresMap.clear();
             }
             
@@ -176,7 +176,7 @@ class CacheManager {
     
     // Manual cleanup command for console
     manualCleanup() {
-        console.log('🧹 Manual cleanup started...');
+        console.log('Manual cleanup started...');
         this.clearBeforeUpdate();
         this.performPeriodicCleanup();
         

@@ -809,25 +809,25 @@ class PlottingManager {
     // Show calculated risk score distribution (simplified to match regular distributions)
     showScoreDistribution() {
         try {
-            console.log('📊 SCORE DISTRIBUTION: Starting...');
+            console.log('SCORE DISTRIBUTION: Starting...');
             
             // Check both client-side scoring data and legacy currentData
             let dataSource = null;
             if (window.fireRiskScoring && window.fireRiskScoring.currentDataset && window.fireRiskScoring.currentDataset.features) {
                 dataSource = window.fireRiskScoring.currentDataset;
-                console.log('📊 SCORE DISTRIBUTION: Using fireRiskScoring dataset');
+                console.log('SCORE DISTRIBUTION: Using fireRiskScoring dataset');
             } else if (window.currentData && window.currentData.features) {
                 dataSource = window.currentData;
-                console.log('📊 SCORE DISTRIBUTION: Using legacy currentData dataset');
+                console.log('SCORE DISTRIBUTION: Using legacy currentData dataset');
             }
             
             if (!dataSource) {
-                console.error('📊 SCORE DISTRIBUTION: No data source found');
+                console.error('SCORE DISTRIBUTION: No data source found');
                 alert('Please calculate scores first');
                 return;
             }
 
-            console.log(`📊 SCORE DISTRIBUTION: Found ${dataSource.features.length} parcels`);
+            console.log(`SCORE DISTRIBUTION: Found ${dataSource.features.length} parcels`);
 
             // Extract scores - use attributeMap directly (Option A fix)
             const scores = dataSource.features.map(f => {
@@ -840,16 +840,16 @@ class PlottingManager {
                 return attrs && attrs.top500 ? attrs.score : null;
             }).filter(s => s !== null);
 
-            console.log(`📊 SCORE DISTRIBUTION: Extracted ${scores.length} total scores, ${selectedScores.length} top scores`);
+            console.log(`SCORE DISTRIBUTION: Extracted ${scores.length} total scores, ${selectedScores.length} top scores`);
             
             // Detailed score validation
-            console.log('📊 SCORE DISTRIBUTION: Validating score data...');
+            console.log('SCORE DISTRIBUTION: Validating score data...');
             const invalidScores = scores.filter(s => s === null || s === undefined || isNaN(s) || !isFinite(s));
             const validScores = scores.filter(s => s !== null && s !== undefined && !isNaN(s) && isFinite(s));
-            console.log(`📊 SCORE DISTRIBUTION: Invalid scores: ${invalidScores.length}, Valid scores: ${validScores.length}`);
+            console.log(`SCORE DISTRIBUTION: Invalid scores: ${invalidScores.length}, Valid scores: ${validScores.length}`);
             
             if (invalidScores.length > 0) {
-                console.log(`📊 SCORE DISTRIBUTION: Sample invalid scores:`, invalidScores.slice(0, 5));
+                console.log(`SCORE DISTRIBUTION: Sample invalid scores:`, invalidScores.slice(0, 5));
             }
             
             if (validScores.length === 0) {
@@ -857,12 +857,12 @@ class PlottingManager {
             }
             
             // Log score samples and range
-            console.log(`📊 SCORE DISTRIBUTION: First 10 scores:`, scores.slice(0, 10));
-            console.log(`📊 SCORE DISTRIBUTION: Score types:`, scores.slice(0, 5).map(s => typeof s));
+                console.log(`SCORE DISTRIBUTION: First 10 scores:`, scores.slice(0, 10));
+    console.log(`SCORE DISTRIBUTION: Score types:`, scores.slice(0, 5).map(s => typeof s));
             
             const scoreMin = Math.min(...validScores);
             const scoreMax = Math.max(...validScores);
-            console.log(`📊 SCORE DISTRIBUTION: Valid score range: ${scoreMin.toFixed(6)} to ${scoreMax.toFixed(6)}`);
+            console.log(`SCORE DISTRIBUTION: Valid score range: ${scoreMin.toFixed(6)} to ${scoreMax.toFixed(6)}`);
             
             if (scoreMin === scoreMax) {
                 throw new Error(`All scores are identical (${scoreMin}). Cannot create meaningful histogram.`);
@@ -876,7 +876,7 @@ class PlottingManager {
 
             // Validate selected scores
             const validSelectedScores = selectedScores.filter(s => s !== null && s !== undefined && !isNaN(s) && isFinite(s));
-            console.log(`📊 SCORE DISTRIBUTION: Valid selected scores: ${validSelectedScores.length} out of ${selectedScores.length}`);
+            console.log(`SCORE DISTRIBUTION: Valid selected scores: ${validSelectedScores.length} out of ${selectedScores.length}`);
             
             if (validSelectedScores.length === 0) {
                 throw new Error(`No valid selected scores found!`);
@@ -886,15 +886,15 @@ class PlottingManager {
             const selectedScoresMin = Math.min(...validSelectedScores);
             const selectedScoresMax = Math.max(...validSelectedScores);
 
-            console.log(`📊 SCORE DISTRIBUTION: All scores - Mean: ${allScoresMean.toFixed(3)}, Std: ${allScoresStd.toFixed(3)}`);
-            console.log(`📊 SCORE DISTRIBUTION: Top scores - Mean: ${selectedScoresMean.toFixed(3)}, Range: ${selectedScoresMin.toFixed(3)}-${selectedScoresMax.toFixed(3)}`);
+                console.log(`SCORE DISTRIBUTION: All scores - Mean: ${allScoresMean.toFixed(3)}, Std: ${allScoresStd.toFixed(3)}`);
+    console.log(`SCORE DISTRIBUTION: Top scores - Mean: ${selectedScoresMean.toFixed(3)}, Range: ${selectedScoresMin.toFixed(3)}-${selectedScoresMax.toFixed(3)}`);
 
             // Check for infer weights selection areas
             let inferWeightsScores = [];
             let inferWeightsStats = null;
             
             if (window.selectionAreas && window.selectionAreas.length > 0) {
-                console.log(`📊 SCORE DISTRIBUTION: Found ${window.selectionAreas.length} selection areas for infer weights`);
+                console.log(`SCORE DISTRIBUTION: Found ${window.selectionAreas.length} selection areas for infer weights`);
                 
                 // Collect scores from parcels in selection areas
                 const selectionParcelIds = new Set();
@@ -948,7 +948,7 @@ class PlottingManager {
                         count: inferWeightsScores.length
                     };
                     
-                    console.log(`📊 SCORE DISTRIBUTION: Infer weights selection stats:`, inferWeightsStats);
+                    console.log(`SCORE DISTRIBUTION: Infer weights selection stats:`, inferWeightsStats);
                 }
             }
 
@@ -965,7 +965,7 @@ class PlottingManager {
             }
 
             // Simple histogram trace using valid scores only
-            console.log(`📊 SCORE DISTRIBUTION: Creating histogram with ${validScores.length} valid scores`);
+            console.log(`SCORE DISTRIBUTION: Creating histogram with ${validScores.length} valid scores`);
             const trace = {
                 x: validScores,  // Use only valid scores
                 type: 'histogram',
@@ -979,7 +979,7 @@ class PlottingManager {
                 nbinsx: numBins
             };
             
-            console.log('📊 SCORE DISTRIBUTION: Histogram trace created:', {
+            console.log('SCORE DISTRIBUTION: Histogram trace created:', {
                 dataLength: validScores.length,
                 dataType: typeof validScores[0],
                 numBins: numBins,
@@ -1153,14 +1153,14 @@ class PlottingManager {
                 );
             }
 
-            console.log('📊 SCORE DISTRIBUTION: Creating Plotly chart...');
-            console.log('📊 SCORE DISTRIBUTION: Final trace validation:', {
+            console.log('SCORE DISTRIBUTION: Creating Plotly chart...');
+            console.log('SCORE DISTRIBUTION: Final trace validation:', {
                 x_length: trace.x.length,
                 x_first_5: trace.x.slice(0, 5),
                 x_all_finite: trace.x.every(v => isFinite(v)),
                 nbinsx: trace.nbinsx
             });
-            console.log('📊 SCORE DISTRIBUTION: Layout validation:', {
+            console.log('SCORE DISTRIBUTION: Layout validation:', {
                 title: layout.title,
                 xaxis_title: layout.xaxis.title,
                 yaxis_title: layout.yaxis.title
@@ -1168,11 +1168,11 @@ class PlottingManager {
             
             Plotly.newPlot('dist-plot', [trace], layout);
             document.getElementById('dist-modal').style.display = "block";
-            console.log('📊 SCORE DISTRIBUTION: Successfully created chart');
+            console.log('SCORE DISTRIBUTION: Successfully created chart');
 
         } catch (error) {
-            console.error('📊 SCORE DISTRIBUTION: ERROR:', error);
-            console.error('📊 SCORE DISTRIBUTION: Stack trace:', error.stack);
+            console.error('SCORE DISTRIBUTION: ERROR:', error);
+            console.error('SCORE DISTRIBUTION: Stack trace:', error.stack);
             alert(`Error creating score distribution plot: ${error.message}`);
         }
     }

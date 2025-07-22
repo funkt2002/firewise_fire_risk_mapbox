@@ -26,14 +26,14 @@ class MemoryTracker {
     init() {
         // Set baseline memory
         this.baseline = this.getMemoryInfo();
-        console.log('🧠 Memory Tracker initialized. Baseline:', this.formatMemory(this.baseline));
+        console.log('Memory Tracker initialized. Baseline:', this.formatMemory(this.baseline));
         
         // Add to global scope for console access
         window.memoryTracker = this;
         
         // Log available commands
         console.log(`
-🧠 Memory Tracker Commands:
+Memory Tracker Commands:
 - memoryTracker.snapshot('description') - Take memory snapshot
 - memoryTracker.startLogging(intervalMs) - Start continuous logging
 - memoryTracker.stopLogging() - Stop continuous logging  
@@ -79,10 +79,10 @@ class MemoryTracker {
         
         // Check for memory alerts
         if (memory.used && memory.used > this.alertThreshold * 1024 * 1024) {
-            console.warn(`🚨 Memory Alert: ${this.formatMemory(memory.used)} exceeds threshold!`);
+            console.warn(`Memory Alert: ${this.formatMemory(memory.used)} exceeds threshold!`);
         }
         
-        console.log(`📸 Snapshot #${snapshot.id}: ${description}`, {
+        console.log(`Snapshot #${snapshot.id}: ${description}`, {
             memory: this.formatMemory(memory.used),
             objects: objectSizes
         });
@@ -149,13 +149,13 @@ class MemoryTracker {
             clearInterval(this.logInterval);
         }
         
-        console.log(`🔄 Starting memory logging every ${intervalMs}ms`);
+        console.log(`Starting memory logging every ${intervalMs}ms`);
         this.logInterval = setInterval(() => {
             const memory = this.getMemoryInfo();
             if (memory.used) {
                 const change = this.baseline.used ? 
                     `(+${this.formatMemory(memory.used - this.baseline.used)})` : '';
-                console.log(`🧠 Memory: ${this.formatMemory(memory.used)} ${change}`);
+                console.log(`Memory: ${this.formatMemory(memory.used)} ${change}`);
             }
         }, intervalMs);
     }
@@ -184,7 +184,7 @@ class MemoryTracker {
         }
         
         const latest = this.snapshots[this.snapshots.length - 1];
-        console.log('📊 Current Object Sizes:');
+        console.log('Current Object Sizes:');
         console.table(latest.objectSizes);
     }
     
@@ -205,11 +205,11 @@ class MemoryTracker {
         const memoryDiff = curr.memory.used - prev.memory.used;
         const memoryDiffMB = memoryDiff / 1024 / 1024;
         
-        console.log(`🔍 Memory Leak Detection:`);
+        console.log(`Memory Leak Detection:`);
         console.log(`Memory change: ${memoryDiffMB > 0 ? '+' : ''}${memoryDiffMB.toFixed(1)} MB`);
         
         if (memoryDiffMB > 100) {
-            console.warn('🚨 Potential memory leak detected! Large memory increase.');
+            console.warn('Potential memory leak detected! Large memory increase.');
         }
         
         // Compare object sizes
@@ -222,7 +222,7 @@ class MemoryTracker {
         }
         
         if (Object.keys(objectChanges).length > 0) {
-            console.log('📈 Object Size Changes:');
+            console.log('Object Size Changes:');
             console.table(objectChanges);
         }
     }

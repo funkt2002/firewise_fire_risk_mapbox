@@ -29,8 +29,8 @@ class SharedDataStore {
     // Store the complete dataset and build lookup structures once
     storeCompleteData(attributeData) {
         const start = performance.now();
-        console.log('🗄️ SharedDataStore: Storing complete dataset - SINGLE STORAGE POINT');
-        console.log(`📊 SharedDataStore: Input type: ${attributeData.type}, attributes: ${attributeData.attributes?.length || 0}`);
+        console.log('SharedDataStore: Storing complete dataset - SINGLE STORAGE POINT');
+        console.log(`SharedDataStore: Input type: ${attributeData.type}, attributes: ${attributeData.attributes?.length || 0}`);
         
         // Convert AttributeCollection to FeatureCollection format once
         this.completeDataset = this.convertToFeatureCollection(attributeData);
@@ -39,9 +39,9 @@ class SharedDataStore {
         this.buildAttributeMap(attributeData);
         
         const loadTime = performance.now() - start;
-        console.log(`✅ SharedDataStore: Stored ${this.completeDataset.features.length} features in ${loadTime.toFixed(1)}ms`);
-        console.log(`🗂️ SharedDataStore: Attribute map size: ${this.attributeMap.size}`);
-        console.log('💾 SharedDataStore: MEMORY BENEFIT - Single dataset copy instead of 3+ duplicates');
+        console.log(`SharedDataStore: Stored ${this.completeDataset.features.length} features in ${loadTime.toFixed(1)}ms`);
+        console.log(`SharedDataStore: Attribute map size: ${this.attributeMap.size}`);
+        console.log('SharedDataStore: MEMORY BENEFIT - Single dataset copy instead of 3+ duplicates');
         
         return this.completeDataset;
     }
@@ -103,7 +103,7 @@ class SharedDataStore {
     // Get attribute map
     getAttributeMap() {
         if (this.attributeMap.size > 0) {
-            console.log(`🗂️ SharedDataStore: Attribute map accessed (${this.attributeMap.size} parcels)`);
+            console.log(`SharedDataStore: Attribute map accessed (${this.attributeMap.size} parcels)`);
         }
         return this.attributeMap;
     }
@@ -126,7 +126,7 @@ class SharedDataStore {
     debugParcel(parcelId) {
         const attrs = this.attributeMap.get(parcelId);
         if (attrs) {
-            console.log(`🔍 SharedDataStore DEBUG for parcel ${parcelId}:`, {
+            console.log(`SharedDataStore DEBUG for parcel ${parcelId}:`, {
                 qtrmi_cnt: attrs.qtrmi_cnt,
                 hlfmi_wui: attrs.hlfmi_wui,
                 hlfmi_agri: attrs.hlfmi_agri,
@@ -141,7 +141,7 @@ class SharedDataStore {
                 total_keys: Object.keys(attrs).length
             });
         } else {
-            console.log(`❌ SharedDataStore DEBUG: No data found for parcel ${parcelId}`);
+            console.log(`SharedDataStore DEBUG: No data found for parcel ${parcelId}`);
         }
     }
 }

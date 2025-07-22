@@ -11,7 +11,7 @@ class FireRiskScoring {
         this.lastNormalizationSettings = null;
         this.firstCalculationDone = false;
         
-        console.log('🎯 FireRiskScoring: Initialized with shared data store (no duplicate data storage)');
+        console.log('FireRiskScoring: Initialized with shared data store (no duplicate data storage)');
     }
 
     // Store complete dataset from server (attributes only for vector tiles)
@@ -23,7 +23,7 @@ class FireRiskScoring {
         console.log('DEBUG: Data type:', attributeData.type);
         
         // Use shared data store to convert and store data once
-        console.log('🎯 FireRiskScoring: Storing data via shared data store (eliminating duplicates)');
+        console.log('FireRiskScoring: Storing data via shared data store (eliminating duplicates)');
         const featureCollection = this.dataStore.storeCompleteData(attributeData);
         
         if (!featureCollection) {
@@ -32,7 +32,7 @@ class FireRiskScoring {
         }
         
         // Managers now automatically access data from shared store - no manual notification needed
-        console.log('🔄 FireRiskScoring: Data stored in shared store - managers will access automatically');
+        console.log('FireRiskScoring: Data stored in shared store - managers will access automatically');
         
         this.currentDataset = featureCollection;
         
@@ -57,7 +57,7 @@ class FireRiskScoring {
  
     // Process data with filters and calculate scores (comprehensive client-side)
     processData(weights, filters, maxParcels = 500, use_local_normalization = false, use_quantile = false, use_raw_scoring = false) {
-        console.log('🎯 FireRiskScoring: Accessing shared dataset (no duplicate copy)');
+        console.log('FireRiskScoring: Accessing shared dataset (no duplicate copy)');
         const completeDataset = this.dataStore.getCompleteDataset();
         if (!completeDataset) {
             console.error('No complete dataset stored. Call storeCompleteData() first.');
@@ -68,10 +68,10 @@ class FireRiskScoring {
         const isFirstCalculation = !this.firstCalculationDone;
         
         // CRITICAL DEBUG: Check if raw scoring flag is being passed correctly
-        console.log(`🚨 SCORE CALCULATION DEBUG: use_raw_scoring = ${use_raw_scoring}, use_quantile = ${use_quantile}, use_local_normalization = ${use_local_normalization}`);
+        console.log(`SCORE CALCULATION DEBUG: use_raw_scoring = ${use_raw_scoring}, use_quantile = ${use_quantile}, use_local_normalization = ${use_local_normalization}`);
         
         if (isFirstCalculation) {
-            console.log('🔄 FIRST CLIENT-SIDE CALCULATION: Starting complete client-side data processing...');
+            console.log('FIRST CLIENT-SIDE CALCULATION: Starting complete client-side data processing...');
         } else {
             console.log('Starting complete client-side data processing...');
         }
@@ -128,7 +128,7 @@ class FireRiskScoring {
         this.logTiming('Total Processing', totalTime);
         
         if (isFirstCalculation) {
-            console.log(`✅ FIRST CLIENT-SIDE CALCULATION: Complete processing finished in ${totalTime.toFixed(1)}ms`);
+            console.log(`FIRST CLIENT-SIDE CALCULATION: Complete processing finished in ${totalTime.toFixed(1)}ms`);
             this.firstCalculationDone = true;
         } else {
             console.log(`Complete processing finished in ${totalTime.toFixed(1)}ms`);
