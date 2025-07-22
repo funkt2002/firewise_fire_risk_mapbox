@@ -5,6 +5,8 @@ class SharedDataStore {
     constructor() {
         this.completeDataset = null;
         this.attributeMap = new Map();
+        this.vectorToAttributeMap = new Map(); // Vector ID -> Attribute ID mapping
+        this.canonicalIdFormat = null; // Discovered vector tile ID format
         this.baseVariables = [
             'qtrmi', 'hwui', 'hagri', 'hvhsz', 'hfb', 
             'slope', 'neigh1d', 'hbrn', 'par_sl', 'agfb', 'travel'
@@ -37,6 +39,17 @@ class SharedDataStore {
         
         // Build attribute lookup map once
         this.buildAttributeMap(attributeData);
+        
+        // Discover vector tile ID format if map is available
+        if (window.map && window.map.isStyleLoaded()) {
+            console.log('🎯 VECTOR ID INTEGRATION: Map is ready, discovering vector tile ID format...');
+            this.discoverVectorTileIdFormat();
+            if (this.canonicalIdFormat) {
+                this.buildCanonicalMapping();
+            }
+        } else {
+            console.log('🎯 VECTOR ID INTEGRATION: Map not ready, will discover format later');
+        }
         
         const loadTime = performance.now() - start;
         console.log(`✅ SharedDataStore: Stored ${this.completeDataset.features.length} features in ${loadTime.toFixed(1)}ms`);
@@ -175,6 +188,173 @@ class SharedDataStore {
     clear() {
         this.completeDataset = null;
         this.attributeMap.clear();
+        this.vectorToAttributeMap.clear();
+        this.canonicalIdFormat = null;
+    }
+
+    // ===== PHASE 1: Vector Tile ID Discovery =====
+    
+    // Discover the actual ID format used by vector tiles
+    discoverVectorTileIdFormat() {
+        if (!window.map || !window.map.isStyleLoaded()) {
+            console.warn('🔍 VECTOR ID DISCOVERY: Map not ready, skipping discovery');
+            return null;
+        }
+        
+        try {
+            // Query a small area around map center for sample features
+            const center = window.map.getCenter();
+            const bounds = [
+                [center.lng - 0.01, center.lat - 0.01],
+                [center.lng + 0.01, center.lat + 0.01]  
+            ];
+            
+            const features = window.map.queryRenderedFeatures(bounds, {
+                layers: ['parcels-fill']
+            });
+            
+            if (features.length > 0) {
+                const sample = features[0];
+                const vectorId = sample.id || sample.properties.parcel_id;
+                const vectorIdType = typeof vectorId;
+                
+                console.log('🔍 VECTOR TILE ID DISCOVERY:');
+                console.log(`  - Sample vector ID: "${vectorId}" (${vectorIdType})`);
+                console.log(`  - feature.id: "${sample.id}" (${typeof sample.id})`);
+                console.log(`  - feature.properties.parcel_id: "${sample.properties.parcel_id}" (${typeof sample.properties.parcel_id})`);
+                console.log(`  - Other properties:`, Object.keys(sample.properties));
+                
+                this.canonicalIdFormat = {
+                    sample: vectorId,
+                    type: vectorIdType,
+                    hasDecimal: vectorId.toString().includes('.'),
+                    pattern: this.detectIdPattern(vectorId)
+                };
+                
+                console.log('🎯 CANONICAL ID FORMAT DETECTED:', this.canonicalIdFormat);
+                return vectorId;
+            } else {
+                console.warn('🔍 VECTOR ID DISCOVERY: No features found in sample area');
+                return null;
+            }
+        } catch (error) {
+            console.error('🔍 VECTOR ID DISCOVERY ERROR:', error);
+            return null;
+        }
+    }
+    
+    // Detect ID pattern for format analysis
+    detectIdPattern(id) {
+        const idStr = id.toString();
+        if (idStr.match(/^p_\d+\.0$/)) return 'p_XXXXX.0';
+        if (idStr.match(/^p_\d+$/)) return 'p_XXXXX';
+        if (idStr.match(/^\d+\.0$/)) return 'XXXXX.0';
+        if (idStr.match(/^\d+$/)) return 'XXXXX';
+        return 'unknown';
+    }
+
+    // ===== PHASE 2: Vector-to-Attribute Mapping =====
+    
+    // Normalize attribute ID to match vector tile format
+    normalizeToVectorFormat(attributeId, vectorIdFormat) {
+        if (!vectorIdFormat) return attributeId;
+        
+        const idStr = attributeId.toString();
+        const vectorPattern = vectorIdFormat.pattern;
+        
+        // Convert based on detected vector tile pattern
+        switch (vectorPattern) {
+            case 'p_XXXXX.0':
+                // Vector tiles use p_XXXXX.0 format
+                if (idStr.match(/^p_\d+$/)) return idStr + '.0';
+                return idStr;
+                
+            case 'p_XXXXX':
+                // Vector tiles use p_XXXXX format (no decimal)
+                if (idStr.endsWith('.0')) return idStr.slice(0, -2);
+                return idStr;
+                
+            case 'XXXXX.0':
+                // Vector tiles use numeric with decimal
+                if (idStr.startsWith('p_')) {
+                    const numeric = idStr.replace('p_', '');
+                    return numeric.includes('.') ? numeric : numeric + '.0';
+                }
+                return idStr.includes('.') ? idStr : idStr + '.0';
+                
+            case 'XXXXX':
+                // Vector tiles use pure numeric
+                if (idStr.startsWith('p_')) {
+                    return idStr.replace('p_', '').replace('.0', '');
+                }
+                return idStr.replace('.0', '');
+                
+            default:
+                return attributeId;
+        }
+    }
+    
+    // Build canonical ID mapping between vector tiles and attributes
+    buildCanonicalMapping() {
+        if (!this.canonicalIdFormat) {
+            console.warn('🎯 CANONICAL MAPPING: No vector ID format discovered yet');
+            return;
+        }
+        
+        console.log('🎯 CANONICAL MAPPING: Building vector tile to attribute mapping...');
+        this.vectorToAttributeMap.clear();
+        
+        let mappingCount = 0;
+        let conflictCount = 0;
+        
+        // Rebuild attribute map using canonical vector IDs as keys
+        const newAttributeMap = new Map();
+        
+        for (const [attributeId, attributes] of this.attributeMap) {
+            const canonicalId = this.normalizeToVectorFormat(attributeId, this.canonicalIdFormat);
+            
+            // Store mapping from canonical ID to original attribute ID
+            if (this.vectorToAttributeMap.has(canonicalId)) {
+                conflictCount++;
+                console.warn(`⚠️ ID CONFLICT: Multiple attributes map to canonical ID "${canonicalId}"`);
+            }
+            
+            this.vectorToAttributeMap.set(canonicalId, attributeId);
+            newAttributeMap.set(canonicalId, attributes);
+            mappingCount++;
+        }
+        
+        // Replace attribute map with canonical ID version
+        this.attributeMap = newAttributeMap;
+        
+        console.log(`✅ CANONICAL MAPPING COMPLETE:`);
+        console.log(`  - ${mappingCount} mappings created`);
+        console.log(`  - ${conflictCount} conflicts detected`);
+        console.log(`  - Sample canonical IDs:`, Array.from(this.attributeMap.keys()).slice(0, 5));
+    }
+    
+    // Get canonical vector tile ID for an attribute ID
+    getCanonicalId(attributeId) {
+        if (!this.canonicalIdFormat) return attributeId;
+        return this.normalizeToVectorFormat(attributeId, this.canonicalIdFormat);
+    }
+    
+    // Get attributes by canonical vector tile ID
+    getAttributesByCanonicalId(canonicalId) {
+        return this.attributeMap.get(canonicalId);
+    }
+    
+    // Initialize canonical mapping when map becomes available
+    initializeCanonicalMapping() {
+        if (!this.canonicalIdFormat && window.map && window.map.isStyleLoaded()) {
+            console.log('🎯 DEFERRED INITIALIZATION: Discovering vector tile ID format...');
+            this.discoverVectorTileIdFormat();
+            if (this.canonicalIdFormat) {
+                this.buildCanonicalMapping();
+                return true;
+            }
+        }
+        return false;
     }
     
     // Debug method to check what's stored for a parcel

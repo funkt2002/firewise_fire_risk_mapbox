@@ -218,28 +218,50 @@ class ClientFilterManager {
             // Extract parcel IDs from geometrically filtered features
             const visibleParcelIds = new Set();
             geometricallyFilteredFeatures.forEach(feature => {
-                // Check both feature.id and feature.properties.parcel_id
-                const parcelId = feature.id || feature.properties.parcel_id;
-                if (parcelId) {
-                    visibleParcelIds.add(parcelId.toString());
+                // PHASE 3: Use canonical vector tile IDs directly
+                // Vector tiles define the canonical ID format through promoteId: 'parcel_id'
+                const canonicalId = feature.id || feature.properties.parcel_id;
+                if (canonicalId) {
+                    visibleParcelIds.add(canonicalId.toString());
                 }
             });
 
             console.log(`VECTOR TILES: Spatial filter found ${visibleParcelIds.size} parcels actually intersecting drawn shape`);
             console.log(`VECTOR TILES: Current zoom level: ${mapInstance.getZoom().toFixed(1)}`);
             
+            // Initialize canonical mapping if not already done
+            this.dataStore.initializeCanonicalMapping();
+            
             // Filter input features to only those that intersect the drawn polygon
             const filteredFeatures = features.filter(feature => {
-                const parcelId = feature.properties.parcel_id;
-                return parcelId && visibleParcelIds.has(parcelId.toString());
+                const attributeId = feature.properties.parcel_id;
+                
+                // PHASE 3: Convert attribute ID to canonical vector tile ID for lookup
+                const canonicalId = this.dataStore.getCanonicalId(attributeId);
+                const isVisible = canonicalId && visibleParcelIds.has(canonicalId.toString());
+                
+                // Debug problematic parcels
+                if (attributeId && (attributeId.includes('57942') || attributeId.includes('57878') || attributeId.includes('58035'))) {
+                    console.log(`🎯 SPATIAL FILTER DEBUG ${attributeId}:`);
+                    console.log(`  - Attribute ID: "${attributeId}"`);
+                    console.log(`  - Canonical ID: "${canonicalId}"`);
+                    console.log(`  - In visible set: ${isVisible}`);
+                    console.log(`  - Visible set sample:`, Array.from(visibleParcelIds).slice(0, 3));
+                }
+                
+                return isVisible;
             });
 
             console.log(`VECTOR TILES: Spatial filter reduced from ${features.length} to ${filteredFeatures.length} parcels`);
             
-            // Update global spatial filter state for tracking
+            // Update global spatial filter state for tracking (using canonical IDs)
             window.spatialFilterActive = true;
-            window.spatialFilterParcelIds = new Set(filteredFeatures.map(f => f.properties.parcel_id.toString()));
-            console.log(`VECTOR TILES: Spatial filter activated with ${window.spatialFilterParcelIds.size} parcels`);
+            window.spatialFilterParcelIds = new Set(filteredFeatures.map(f => {
+                const attributeId = f.properties.parcel_id;
+                const canonicalId = this.dataStore.getCanonicalId(attributeId);
+                return canonicalId ? canonicalId.toString() : attributeId.toString();
+            }));
+            console.log(`VECTOR TILES: Spatial filter activated with ${window.spatialFilterParcelIds.size} parcels (using canonical IDs)`);
             
             // Note: Map visibility will be updated by updateMapVisibility() method using paint expressions
             
@@ -354,10 +376,14 @@ class ClientFilterManager {
                 // Some parcels filtered out - use paint expressions to make excluded parcels transparent
                 console.log(`VECTOR TILES: Applying transparency to show ${filteredFeatures.length} of ${completeDataset.features.length} parcels`);
                 
-                // Create lookup object for visible parcels (more efficient than arrays)
+                // Create lookup object for visible parcels using canonical IDs
                 const visibleParcelIds = {};
                 filteredFeatures.forEach(f => {
-                    visibleParcelIds[f.properties.parcel_id.toString()] = true;
+                    // PHASE 4: Use canonical IDs for paint expression lookup
+                    const attributeId = f.properties.parcel_id;
+                    const canonicalId = this.dataStore.getCanonicalId(attributeId);
+                    const lookupId = canonicalId || attributeId;
+                    visibleParcelIds[lookupId.toString()] = true;
                 });
                 
                 // Remove any existing filters since we're using paint expressions now
