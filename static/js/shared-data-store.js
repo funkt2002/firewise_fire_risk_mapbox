@@ -133,43 +133,35 @@ class SharedDataStore {
         return this.completeDataset;
     }
 
-    // Convert AttributeCollection to FeatureCollection format (creates views, not copies)
+    // Convert AttributeCollection to FeatureCollection format
     convertToFeatureCollection(attributeData) {
-        // Create feature proxies that read from typed arrays on demand
         const features = [];
         
+        // Create regular feature objects (no proxies for simplicity)
         for (let i = 0; i < this.rowCount; i++) {
-            const rowIndex = i;
-            
-            // Create a proxy object that looks like a feature but reads from typed arrays
-            const feature = {
-                type: "Feature",
-                geometry: null,
-                get properties() {
-                    // Build properties object on demand from typed arrays
-                    const props = {
-                        parcel_id: this.parcelIds[rowIndex]
-                    };
-                    
-                    // Add numeric properties from typed array
-                    for (let j = 0; j < this.numericColumns.length; j++) {
-                        const colName = this.numericColumns[j];
-                        props[colName] = this.numericData[rowIndex * this.numericColumns.length + j];
-                    }
-                    
-                    // Add any string properties from original data
-                    const originalRow = attributeData.attributes[rowIndex];
-                    Object.keys(originalRow).forEach(key => {
-                        if (!props.hasOwnProperty(key) && key !== 'parcel_id') {
-                            props[key] = originalRow[key];
-                        }
-                    });
-                    
-                    return props;
-                }.bind(this)
+            const properties = {
+                parcel_id: this.parcelIds[i]
             };
             
-            features.push(feature);
+            // Add numeric properties from typed array
+            for (let j = 0; j < this.numericColumns.length; j++) {
+                const colName = this.numericColumns[j];
+                properties[colName] = this.numericData[i * this.numericColumns.length + j];
+            }
+            
+            // Add any string properties from original data
+            const originalRow = attributeData.attributes[i];
+            Object.keys(originalRow).forEach(key => {
+                if (typeof originalRow[key] === 'string' && key !== 'parcel_id') {
+                    properties[key] = originalRow[key];
+                }
+            });
+            
+            features.push({
+                type: "Feature",
+                geometry: null,
+                properties: properties
+            });
         }
 
         return {
@@ -191,28 +183,27 @@ class SharedDataStore {
             if (parcelId) {
                 const normalizedId = this.normalizeParcelId(parcelId);
                 
-                // Create a proxy that returns attributes from typed array
-                const attrProxy = {
-                    get parcel_id() { return parcelId; },
-                    get id() { return parcelId; }
+                // Create attribute object
+                const attrs = {
+                    parcel_id: parcelId,
+                    id: parcelId
                 };
                 
-                // Add getters for numeric columns
-                this.numericColumns.forEach((colName, j) => {
-                    Object.defineProperty(attrProxy, colName, {
-                        get: () => this.numericData[i * this.numericColumns.length + j]
-                    });
-                });
+                // Add numeric columns
+                for (let j = 0; j < this.numericColumns.length; j++) {
+                    const colName = this.numericColumns[j];
+                    attrs[colName] = this.numericData[i * this.numericColumns.length + j];
+                }
                 
                 // Add any string properties from original data
                 const originalRow = attributeData.attributes[i];
                 Object.keys(originalRow).forEach(key => {
-                    if (!this.numericColumns.includes(key) && key !== 'parcel_id' && key !== 'id') {
-                        attrProxy[key] = originalRow[key];
+                    if (typeof originalRow[key] === 'string' && key !== 'parcel_id' && key !== 'id') {
+                        attrs[key] = originalRow[key];
                     }
                 });
                 
-                this.attributeMap.set(normalizedId, attrProxy);
+                this.attributeMap.set(normalizedId, attrs);
                 mappedCount++;
             }
         }
