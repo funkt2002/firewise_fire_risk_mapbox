@@ -226,8 +226,9 @@ class FireRiskScoring {
         // Store last weights for comparison
         this.lastWeights = { ...normalizedWeights };
 
-        // Return result object with features array, not FeatureCollection wrapper
+        // Return result object with type for updateMap() compatibility
         return {
+            type: "FeatureCollection",  // Required for updateMap() function
             features: scoredParcels,
             total_parcels: scoredParcels.length,
             selected_count: scoredParcels.filter(p => p.properties.top500).length,
