@@ -528,161 +528,87 @@
             }
         };
 
-        // ========== MEMORY LEAK PREVENTION SYSTEM ==========
-        // Initialize this FIRST to prevent timing issues
+        // ========== SIMPLE MEMORY CLEANUP ON PAGE REFRESH ==========
         
-        // Global cleanup registry to track all resources that need disposal
-        window.cleanupRegistry = {
-            eventListeners: [],
-            intervals: [],
-            mapboxResources: [],
-            plotlyCharts: [],
-            globalObjects: []
-        };
-
-        // Enhanced event listener wrapper that tracks listeners for cleanup
-        function addTrackedEventListener(element, event, handler, options = {}) {
-            element.addEventListener(event, handler, options);
-            
-            // Only track if cleanup system is ready
-            if (window.cleanupRegistry && window.cleanupRegistry.eventListeners) {
-                window.cleanupRegistry.eventListeners.push({
-                    element,
-                    event,
-                    handler,
-                    options
-                });
-            }
-        }
-
-        // Enhanced interval wrapper that tracks intervals for cleanup
-        function setTrackedInterval(callback, delay) {
-            const intervalId = setInterval(callback, delay);
-            
-            // Only track if cleanup system is ready
-            if (window.cleanupRegistry && window.cleanupRegistry.intervals) {
-                window.cleanupRegistry.intervals.push(intervalId);
-            }
-            
-            return intervalId;
-        }
-
-        // Global cleanup function to prevent memory leaks
-        function performGlobalCleanup() {
-            console.log('🧹 MEMORY LEAK PREVENTION: Starting global cleanup...');
+        // Aggressive cleanup function - nuke everything on page refresh
+        function nukeEverythingOnRefresh() {
+            console.log('🧹 MEMORY CLEANUP: Nuking everything on page refresh...');
             const cleanupStart = performance.now();
             
             try {
-                // 1. Remove all tracked event listeners
-                if (window.cleanupRegistry && window.cleanupRegistry.eventListeners) {
-                    window.cleanupRegistry.eventListeners.forEach(({ element, event, handler, options }) => {
-                        try {
-                            element.removeEventListener(event, handler, options);
-                        } catch (e) {
-                            // Element might be gone, ignore
-                        }
-                    });
-                    console.log(`🧹 Removed ${window.cleanupRegistry.eventListeners.length} event listeners`);
+                // 1. Clear all intervals (aggressive approach)
+                const highestId = setInterval(() => {}, 0);
+                for (let i = 0; i <= highestId; i++) {
+                    clearInterval(i);
+                    clearTimeout(i);
                 }
+                console.log(`🧹 Cleared all intervals/timeouts up to ID ${highestId}`);
 
-                // 2. Clear all tracked intervals
-                if (window.cleanupRegistry && window.cleanupRegistry.intervals) {
-                    window.cleanupRegistry.intervals.forEach(intervalId => {
-                        clearInterval(intervalId);
-                    });
-                    console.log(`🧹 Cleared ${window.cleanupRegistry.intervals.length} intervals`);
-                }
-
-                // 3. Destroy Mapbox resources
+                // 2. Destroy Mapbox map completely
                 if (window.map) {
                     try {
-                        // Remove all sources and layers
-                        const style = window.map.getStyle();
-                        if (style && style.sources) {
-                            Object.keys(style.sources).forEach(sourceId => {
-                                try {
-                                    window.map.removeSource(sourceId);
-                                } catch (e) {
-                                    // Source might already be removed
-                                }
-                            });
-                        }
-                        
-                        // Remove drawing controls
-                        if (window.draw) {
-                            window.map.removeControl(window.draw);
-                        }
-                        
-                        // Destroy the map
                         window.map.remove();
-                        console.log('🧹 Destroyed Mapbox map and resources');
+                        console.log('🧹 Destroyed Mapbox map');
                     } catch (e) {
                         console.warn('Mapbox cleanup error:', e);
                     }
                 }
 
-                // 4. Destroy Plotly charts
-                const plotElements = ['dist-plot', 'correlation-plot'];
-                plotElements.forEach(elementId => {
-                    const element = document.getElementById(elementId);
-                    if (element && window.Plotly) {
-                        try {
+                // 3. Destroy all Plotly charts
+                if (window.Plotly) {
+                    try {
+                        const plotElements = document.querySelectorAll('[id*="plot"]');
+                        plotElements.forEach(element => {
                             window.Plotly.purge(element);
-                        } catch (e) {
-                            // Chart might not exist
-                        }
+                        });
+                        console.log('🧹 Destroyed all Plotly charts');
+                    } catch (e) {
+                        console.warn('Plotly cleanup error:', e);
                     }
-                });
-                console.log('🧹 Destroyed Plotly charts');
+                }
 
-                // 5. Clear global data objects
-                if (window.sharedDataStore) {
-                    window.sharedDataStore.clear();
-                }
-                if (window.fireRiskScoring) {
-                    window.fireRiskScoring.clear();
-                }
-                if (window.unifiedDataManager) {
-                    window.unifiedDataManager.destroy();
-                }
+                // 4. Nuke all global data objects
+                if (window.sharedDataStore) window.sharedDataStore.clear();
+                if (window.fireRiskScoring) window.fireRiskScoring.clear();
+                if (window.unifiedDataManager) window.unifiedDataManager.destroy();
                 
-                // Clear global variables
+                // 5. Clear ALL application data
                 window.currentData = null;
                 window.parcelScores = null;
                 window.top500ParcelIds = null;
-                console.log('🧹 Cleared global data objects');
+                window.fireRiskApp = null;
+                
+                // 6. Clear performance trackers
+                if (window.memoryTracker) window.memoryTracker = null;
+                if (window.performanceTracker) window.performanceTracker = null;
+                
+                console.log('🧹 Nuked all global objects');
 
-                // 6. Force garbage collection if available
+                // 7. Force garbage collection if available
                 if (window.gc) {
                     window.gc();
                     console.log('🧹 Forced garbage collection');
                 }
 
                 const cleanupTime = performance.now() - cleanupStart;
-                console.log(`🧹 MEMORY LEAK PREVENTION: Global cleanup completed in ${cleanupTime.toFixed(1)}ms`);
-                
-                // Reset cleanup registry
-                window.cleanupRegistry = {
-                    eventListeners: [],
-                    intervals: [],
-                    mapboxResources: [],
-                    plotlyCharts: [],
-                    globalObjects: []
-                };
+                console.log(`🧹 MEMORY CLEANUP: Complete nuke finished in ${cleanupTime.toFixed(1)}ms`);
                 
             } catch (error) {
-                console.error('🧹 MEMORY LEAK PREVENTION: Cleanup error:', error);
+                console.error('🧹 MEMORY CLEANUP: Error during nuke:', error);
             }
         }
 
-        // Initialize cleanup system immediately
-        console.log('🧹 MEMORY LEAK PREVENTION: Cleanup system initialized EARLY');
-        console.log('🧹 Manual cleanup command: performGlobalCleanup()');
+        // Simple event listeners for page refresh cleanup
+        window.addEventListener('beforeunload', nukeEverythingOnRefresh);
+        window.addEventListener('unload', nukeEverythingOnRefresh);
+        window.addEventListener('pagehide', nukeEverythingOnRefresh);
         
-        // Expose cleanup function for manual testing
-        window.performGlobalCleanup = performGlobalCleanup;
+        console.log('🧹 SIMPLE MEMORY CLEANUP: Installed on page refresh');
+        
+        // Expose for manual testing
+        window.nukeEverythingOnRefresh = nukeEverythingOnRefresh;
 
-        // ========== END MEMORY LEAK PREVENTION SYSTEM ==========
+        // ========== END SIMPLE MEMORY CLEANUP ==========
         
         // Custom rectangle drawing mode
         fireRiskApp.drawModes.DrawRectangle = {
@@ -1750,7 +1676,7 @@
 
         weightSliders.forEach(slider => {
             updateSliderFill(slider);
-            addTrackedEventListener(slider, 'input', () => {
+            slider.addEventListener('input', () => {
                 updateSliderFill(slider);
                 normalizeWeights();
                 // Don't auto-calculate on weight changes - wait for Calculate button
@@ -1758,10 +1684,10 @@
         });
 
         // Calculate button - all processing is now client-side after initial load
-        addTrackedEventListener(document.getElementById('calculate-btn'), 'click', () => {
+        document.getElementById('calculate-btn').addEventListener('click', () => {
             updateScores(); // Always use client-side processing
         });
-        addTrackedEventListener(document.getElementById('max-parcels'), 'change', () => {
+        document.getElementById('max-parcels').addEventListener('change', () => {
             updateMaxParcels();
             updateScores();
         });
@@ -1864,7 +1790,7 @@
         }
 
         // Special handling for score type changes to update distribution buttons
-        addTrackedEventListener(document.getElementById('use-quantile'), 'change', () => {
+        document.getElementById('use-quantile').addEventListener('change', () => {
             updateDistributionButtons(); // Update button onclick attributes
             refreshOpenPopups(); // Refresh any open popups
             updateScores(); // Client-side processing handles all changes
@@ -1875,7 +1801,7 @@
             }
         });
         
-        addTrackedEventListener(document.getElementById('use-raw-scoring'), 'change', () => {
+        document.getElementById('use-raw-scoring').addEventListener('change', () => {
             updateDistributionButtons(); // Update button onclick attributes
             refreshOpenPopups(); // Refresh any open popups
             updateScores(); // Client-side processing handles all changes
@@ -2924,7 +2850,7 @@
 
 
         // Global keyboard handler
-        addTrackedEventListener(document, 'keydown', (e) => {
+        document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape') {
                 // Don't handle Escape if we're in drawing mode - let the drawing tool handle it
                 const currentMode = draw.getMode();
@@ -3024,21 +2950,7 @@
         script.src = 'https://unpkg.com/@turf/turf@6/turf.min.js';
         document.head.appendChild(script);
 
-        // Add cleanup listeners for page unload (at the very end)
-        addTrackedEventListener(window, 'beforeunload', performGlobalCleanup);
-        addTrackedEventListener(window, 'unload', performGlobalCleanup);
-        
-        // Also clean up on page hide (for mobile/tab switching)
-        addTrackedEventListener(document, 'visibilitychange', () => {
-            if (document.visibilityState === 'hidden') {
-                performGlobalCleanup();
-            }
-        });
-
-        // Upgrade UnifiedDataManager to use tracked intervals now that cleanup system is ready
-        if (window.unifiedDataManager && window.unifiedDataManager.upgradeToTrackedInterval) {
-            window.unifiedDataManager.upgradeToTrackedInterval();
-        }
+        // No need for complex cleanup tracking - the simple nuke system handles everything
 
     </script>
 
