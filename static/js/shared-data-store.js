@@ -3,7 +3,8 @@
 
 class SharedDataStore {
     constructor() {
-        // Removed: completeDataset storage - now created on-demand to save memory
+        // Cached on-demand: FeatureCollection created once when first accessed
+        this.completeDataset = null;
         this.attributeMap = new Map();
         this.baseVariables = [
             'qtrmi', 'hwui', 'hagri', 'hvhsz', 'hfb', 
@@ -139,10 +140,11 @@ class SharedDataStore {
         console.log('🗄️ SharedDataStore: Storing complete dataset - SINGLE STORAGE POINT');
         console.log(`📊 SharedDataStore: Input type: ${attributeData.type}, attributes: ${attributeData.attributes?.length || 0}`);
         
+        // Clear any cached FeatureCollection when new data is loaded
+        this.completeDataset = null;
+        
         // Store data in memory-efficient format
         this.storeDataEfficiently(attributeData);
-        
-        // FeatureCollection will be created on-demand to save memory
         
         // Build attribute lookup map using parcel numbers
         this.buildAttributeMap(attributeData);
@@ -150,15 +152,23 @@ class SharedDataStore {
         const loadTime = performance.now() - start;
         const memoryUsed = this.getMemoryUsage();
         console.log(`SharedDataStore: Stored ${this.rowCount} features in ${loadTime.toFixed(1)}ms`);
-        console.log(`Phase 3 optimization: FeatureCollection created on-demand, eliminated stored duplicate`);
-        console.log(`Memory usage: ${memoryUsed.toFixed(2)}MB (Phase 1+3: ~80% reduction vs original)`);
+        console.log(`Memory leak fix: FeatureCollection cached on first access (not created repeatedly)`);
+        console.log(`Memory usage: ${memoryUsed.toFixed(2)}MB typed arrays + on-demand FeatureCollection`);
         
         this.isDataLoaded = true;
         // Return on-demand FeatureCollection to save memory
         return this.getCompleteDataset();
     }
 
-    // Removed: convertToFeatureCollection() - now done on-demand in getCompleteDataset() to save memory
+    // Clear cached FeatureCollection to free memory (keeps typed arrays)
+    clearFeatureCollectionCache() {
+        if (this.completeDataset) {
+            console.log('SharedDataStore: Clearing FeatureCollection cache to free memory');
+            this.completeDataset = null;
+            // Force garbage collection hint
+            if (window.gc) window.gc();
+        }
+    }
 
     // Build attribute lookup map using normalized IDs
     buildAttributeMap(attributeData) {
@@ -202,13 +212,20 @@ class SharedDataStore {
         console.log(`✅ Attribute map built: ${mappedCount} parcels mapped`);
     }
 
-    // Get complete dataset - creates FeatureCollection on-demand to save memory
+    // Get complete dataset - cached on-demand creation to prevent memory leaks
     getCompleteDataset() {
         if (!this.isDataLoaded) {
             return null;
         }
         
-        // Create FeatureCollection on-demand using efficient data
+        // Return cached version if already created
+        if (this.completeDataset) {
+            return this.completeDataset;
+        }
+        
+        console.log('SharedDataStore: Creating FeatureCollection (one-time cache)');
+        
+        // Create FeatureCollection once and cache it
         const features = [];
         for (let i = 0; i < this.rowCount; i++) {
             const properties = { parcel_id: this.parcelIds[i] };
@@ -237,10 +254,13 @@ class SharedDataStore {
             });
         }
         
-        return {
+        this.completeDataset = {
             type: "FeatureCollection",
             features: features
         };
+        
+        console.log(`SharedDataStore: FeatureCollection cached (${features.length} features)`);
+        return this.completeDataset;
     }
 
     // Get attribute map
