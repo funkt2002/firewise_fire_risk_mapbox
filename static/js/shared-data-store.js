@@ -137,18 +137,10 @@ class SharedDataStore {
     // Store the complete dataset and build lookup structures once
     storeCompleteData(attributeData) {
         const start = performance.now();
-        console.log('🗄️ SharedDataStore: Storing complete dataset - SINGLE STORAGE POINT');
-        console.log(`📊 SharedDataStore: Input type: ${attributeData.type}, attributes: ${attributeData.attributes?.length || 0}`);
+        console.log('SharedDataStore: Storing complete dataset');
         
-        // Clear ALL existing data before storing new data to prevent memory accumulation
-        console.log('🧹 SharedDataStore: Clearing existing data to prevent memory leaks');
-        this.clear();
-        
-        // Force garbage collection after clearing
-        if (window.gc) {
-            window.gc();
-            console.log('🗑️ SharedDataStore: Forced garbage collection after clear');
-        }
+        // Clear any cached FeatureCollection when new data is loaded
+        this.completeDataset = null;
         
         // Store data in memory-efficient format
         this.storeDataEfficiently(attributeData);
@@ -219,56 +211,55 @@ class SharedDataStore {
         console.log(`✅ Attribute map built: ${mappedCount} parcels mapped`);
     }
 
-    // Get complete dataset - LAZY LOADING to save memory
+    // Get complete dataset - cached on-demand creation to prevent memory leaks
     getCompleteDataset() {
         if (!this.isDataLoaded) {
             return null;
         }
         
-        // OPTIMIZATION: Don't cache the full FeatureCollection anymore
-        // Instead, create a virtual FeatureCollection that generates features on-demand
-        console.log('SharedDataStore: Creating virtual FeatureCollection (memory optimized)');
+        // Return cached version if already created
+        if (this.completeDataset) {
+            return this.completeDataset;
+        }
         
-        return {
-            type: "FeatureCollection",
-            get features() {
-                console.log('🚀 Lazy-loading features on demand to save memory');
-                const features = [];
-                
-                for (let i = 0; i < this.parent.rowCount; i++) {
-                    const properties = { parcel_id: this.parent.parcelIds[i] };
-                    
-                    // Build properties from numeric data
-                    for (let j = 0; j < this.parent.numericColumns.length; j++) {
-                        const columnName = this.parent.numericColumns[j];
-                        const value = this.parent.numericData[i * this.parent.numericColumns.length + j];
-                        properties[columnName] = value;
-                    }
-                    
-                    // Add string properties from attribute map if needed
-                    const attrs = this.parent.attributeMap.get(this.parent.standardizeParcelId(this.parent.parcelIds[i]));
-                    if (attrs) {
-                        Object.keys(attrs).forEach(key => {
-                            if (typeof attrs[key] === 'string' && key !== 'parcel_id') {
-                                properties[key] = attrs[key];
-                            }
-                        });
-                    }
-                    
-                    features.push({
-                        type: "Feature",
-                        properties: properties,
-                        geometry: null  // No geometry for attribute-only data
-                    });
-                }
-                
-                return features;
-            },
-            parent: this,
-            get length() {
-                return this.parent.rowCount;
+        console.log('SharedDataStore: Creating FeatureCollection (one-time cache)');
+        
+        // Create FeatureCollection once and cache it
+        const features = [];
+        for (let i = 0; i < this.rowCount; i++) {
+            const properties = { parcel_id: this.parcelIds[i] };
+            
+            // Build properties from numeric data
+            for (let j = 0; j < this.numericColumns.length; j++) {
+                const columnName = this.numericColumns[j];
+                const value = this.numericData[i * this.numericColumns.length + j];
+                properties[columnName] = value;
             }
+            
+            // Add string properties from attribute map if needed
+            const attrs = this.attributeMap.get(this.standardizeParcelId(this.parcelIds[i]));
+            if (attrs) {
+                Object.keys(attrs).forEach(key => {
+                    if (typeof attrs[key] === 'string' && key !== 'parcel_id') {
+                        properties[key] = attrs[key];
+                    }
+                });
+            }
+            
+            features.push({
+                type: "Feature",
+                properties: properties,
+                geometry: null  // No geometry for attribute-only data
+            });
+        }
+        
+        this.completeDataset = {
+            type: "FeatureCollection",
+            features: features
         };
+        
+        console.log(`SharedDataStore: FeatureCollection cached (${features.length} features)`);
+        return this.completeDataset;
     }
 
     // Get attribute map
@@ -288,24 +279,15 @@ class SharedDataStore {
         }
     }
 
-    // Clear all data and free memory
+    // Clear all data
     clear() {
-        console.log('🧹 SharedDataStore: Clearing all data structures');
-        
-        // Clear cached FeatureCollection
         this.completeDataset = null;
-        
-        // Clear attribute map
         this.attributeMap.clear();
-        
-        // Clear typed arrays
         this.numericData = null;
         this.numericColumns = [];
         this.parcelIds = [];
         this.rowCount = 0;
         this.isDataLoaded = false;
-        
-        console.log('✅ SharedDataStore: All data cleared, memory ready for GC');
     }
     
     // Get attributes by standardized ID

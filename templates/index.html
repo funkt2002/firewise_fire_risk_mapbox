@@ -1190,16 +1190,9 @@
                     }
                 }
                 
-                // Clear any existing data BEFORE fetching new data to prevent memory doubling
+                // Clear any existing data before fetching new data to prevent memory doubling
                 if (window.unifiedDataManager) {
-                    console.log('Cleaning up existing data before fetch to prevent memory accumulation');
                     window.unifiedDataManager.manualCleanup();
-                }
-                
-                // Force garbage collection after cleanup
-                if (window.gc) {
-                    window.gc();
-                    console.log('Forced garbage collection after cleanup');
                 }
                 
                 // First time load: fetch complete dataset from server
@@ -1230,14 +1223,7 @@
                 );
                 const firstCalcTime = performance.now() - firstCalcStart;
                 
-                // Note: Cleanup moved to BEFORE data fetch to prevent memory doubling
-                
-                // Clear previous currentData before assigning new data
-                if (currentData) {
-                    console.log('🧹 Clearing previous currentData to free memory');
-                    currentData = null;
-                    if (window.gc) window.gc();
-                }
+                // Note: Cleanup already done before fetch to prevent memory doubling
                 
                 // Use client-calculated scores, not server precomputed scores
                 if (clientResult) {
@@ -1246,12 +1232,6 @@
                 } else {
                     console.error(`Client calculation failed after ${firstCalcTime.toFixed(1)}ms, using server data`);
                     currentData = responseData;
-                }
-                
-                // Force garbage collection after data assignment
-                if (window.gc) {
-                    window.gc();
-                    console.log('🗑️ Forced GC after currentData assignment');
                 }
                 
                 // Memory tracking for initial data load
@@ -1660,6 +1640,11 @@
         document.getElementById('use-local-normalization').addEventListener('change', () => {
             refreshOpenPopups(); // Refresh any open popups
             updateScores(); // Client-side processing handles all changes
+            
+            // Immediately refresh score distribution plot if modal is open
+            if (modal.style.display === 'block') {
+                refreshScoreDistributionPlot();
+            }
         });
 
         // Function to refresh any open popups with current scoring settings
@@ -1687,12 +1672,22 @@
             updateDistributionButtons(); // Update button onclick attributes
             refreshOpenPopups(); // Refresh any open popups
             updateScores(); // Client-side processing handles all changes
+            
+            // Immediately refresh score distribution plot if modal is open
+            if (modal.style.display === 'block') {
+                refreshScoreDistributionPlot();
+            }
         });
         
         document.getElementById('use-raw-scoring').addEventListener('change', () => {
             updateDistributionButtons(); // Update button onclick attributes
             refreshOpenPopups(); // Refresh any open popups
             updateScores(); // Client-side processing handles all changes
+            
+            // Immediately refresh score distribution plot if modal is open
+            if (modal.style.display === 'block') {
+                refreshScoreDistributionPlot();
+            }
         });
 
         ['filter-yearbuilt', 'filter-neigh1d', 'filter-strcnt'].forEach(id => {
