@@ -26,9 +26,7 @@ class UnifiedDataManager {
         // Performance tracking
         this.timings = {};
         
-        console.log('🔧 UnifiedDataManager: Initialized with shared data store (ELIMINATES duplicate data storage)');
-        console.log('💾 MEMORY OPTIMIZATION: Eliminated 3 duplicate manager classes with duplicate data storage');
-        console.log('📊 ARCHITECTURE: Single data path - SharedDataStore → UnifiedDataManager → Display');
+        console.log('UnifiedDataManager: Initialized - eliminated 3 duplicate managers, saved ~60MB memory');
         this.init();
     }
 
@@ -39,10 +37,7 @@ class UnifiedDataManager {
         // Start minimal cleanup (no duplicate data to clean)
         this.startPeriodicCleanup();
         
-        console.log('✅ PHASE 1 COMPLETE: UnifiedDataManager active - eliminated 3 duplicate managers');
-        console.log('📈 CODE REDUCTION: 1,277 lines → 933 lines (344 lines eliminated, 27% reduction)');
-        console.log('🚀 MEMORY SAVED: ~60MB+ by eliminating duplicate data storage');
-        console.log('🔄 COMPATIBILITY: Legacy clientFilterManager and clientNormalizationManager references maintained');
+        console.log('UnifiedDataManager: Phase 1 complete - 344 lines removed, single data path active');
     }
 
     // ====================
@@ -93,8 +88,7 @@ class UnifiedDataManager {
         const totalTime = performance.now() - start;
         this.logTiming('Total Filtering', totalTime);
         
-        console.log(`✅ UNIFIED FILTERING: Completed in ${totalTime.toFixed(1)}ms (single manager, no data duplication)`);
-        console.log(`📊 FILTER RESULTS: ${completeDataset.features.length} → ${filteredFeatures.length} parcels using single data source`);
+        console.log(`Unified filtering: ${completeDataset.features.length} -> ${filteredFeatures.length} parcels in ${totalTime.toFixed(1)}ms`);
         
         return this.filteredDataset;
     }
@@ -323,10 +317,8 @@ class UnifiedDataManager {
     // Calculate local normalization on filtered dataset
     calculateLocalNormalization(filteredFeatures, use_quantile, use_raw_scoring = false) {
         const start = performance.now();
-        console.log(`📊 UNIFIED NORMALIZATION: Processing ${filteredFeatures.length} parcels (single manager, eliminated duplicate calculations)`);
-        
         const scoringType = use_raw_scoring ? 'RAW' : 'ROBUST';
-        console.log(`📊 CALCULATING ${scoringType} ${use_quantile ? 'QUANTILE' : 'MIN-MAX'} PARAMETERS`);
+        console.log(`Unified normalization: ${scoringType} ${use_quantile ? 'QUANTILE' : 'MIN-MAX'} for ${filteredFeatures.length} parcels`);
 
         const rawVarMap = {
             'qtrmi': 'qtrmi_cnt',
@@ -509,7 +501,7 @@ class UnifiedDataManager {
         });
 
         const totalTime = performance.now() - start;
-        console.log(`✅ UNIFIED NORMALIZATION: Completed in ${totalTime.toFixed(1)}ms (single manager, no duplicate processing)`);
+        console.log(`Unified normalization: Completed in ${totalTime.toFixed(1)}ms`);
 
         return {
             features: normalizedFeatures,
@@ -530,12 +522,12 @@ class UnifiedDataManager {
         
         // Return cached if available
         if (this.globalNormalizationCache[cacheKey]) {
-            console.log(`🌍 Using cached global normalization parameters for ${cacheKey}`);
+            console.log(`Global normalization: Using cached parameters for ${cacheKey}`);
             return this.globalNormalizationCache[cacheKey];
         }
 
         const start = performance.now();
-        console.log(`🌍 Calculating global normalization parameters for ${completeDataset.features.length} parcels`);
+        console.log(`Global normalization: Calculating parameters for ${completeDataset.features.length} parcels`);
 
         const rawVarMap = {
             'qtrmi': 'qtrmi_cnt',
@@ -630,7 +622,7 @@ class UnifiedDataManager {
         this.globalNormalizationCache[cacheKey] = normData;
         
         const totalTime = performance.now() - start;
-        console.log(`✅ Global normalization parameters calculated in ${totalTime.toFixed(1)}ms`);
+        console.log(`Global normalization: Parameters calculated in ${totalTime.toFixed(1)}ms`);
         
         return normData;
     }
@@ -648,7 +640,7 @@ class UnifiedDataManager {
             
             const scoringType = use_raw_scoring ? "RAW MIN-MAX" : use_quantile ? "QUANTILE" : "MIN-MAX";
             const normalizationType = use_local_normalization ? "LOCAL" : "GLOBAL";
-            console.log(`📊 UnifiedDataManager: ${normalizationType} ${scoringType} normalization`);
+            console.log(`UnifiedDataManager: ${normalizationType} ${scoringType} normalization`);
             
             this.lastLoggedCombination = { local: use_local_normalization, quantile: use_quantile, raw: use_raw_scoring };
         }
@@ -782,7 +774,7 @@ class UnifiedDataManager {
             this.performPeriodicCleanup();
         }, this.cleanupFrequency);
         
-        console.log(`🔄 Minimal cleanup started (no duplicate data to clean)`);
+        console.log('UnifiedDataManager: Minimal cleanup started (no duplicate data to clean)');
     }
 
     performPeriodicCleanup() {
@@ -790,11 +782,7 @@ class UnifiedDataManager {
         let cleanedItems = [];
         
         try {
-            // Clear console if memory high
-            if (beforeMemory && beforeMemory > 500 * 1024 * 1024) {
-                console.clear();
-                cleanedItems.push('console');
-            }
+            // Skip console clearing to preserve important messages
             
             // Clear Mapbox tile cache
             if (window.map) {
@@ -812,7 +800,7 @@ class UnifiedDataManager {
             const saved = beforeMemory && afterMemory ? beforeMemory - afterMemory : 0;
             
             if (cleanedItems.length > 0) {
-                console.log(`🧹 Minimal cleanup: ${cleanedItems.join(', ')} | Saved: ${this.formatMemory(saved)}`);
+                console.log(`UnifiedDataManager cleanup: ${cleanedItems.join(', ')} saved ${this.formatMemory(saved)}`);
             }
             
         } catch (error) {
@@ -897,7 +885,7 @@ class UnifiedDataManager {
 
     // Manual cleanup
     manualCleanup() {
-        console.log('🧹 Manual cleanup...');
+        console.log('UnifiedDataManager: Manual cleanup starting...');
         this.performPeriodicCleanup();
         
         if (window.memoryTracker) {
@@ -929,7 +917,7 @@ class UnifiedDataManager {
             clearInterval(this.cleanupInterval);
             this.cleanupInterval = null;
         }
-        console.log('🔧 UnifiedDataManager destroyed');
+        console.log('UnifiedDataManager: Destroyed');
     }
 }
 
