@@ -14,9 +14,9 @@
             </div>
             <input type="range" class="slider weight-slider" id="{{ variable.id }}" min="0" max="100" value="{{ variable.value }}">
             <div class="dist-buttons">
-                <button class="dist-button" onclick="window.plottingManager.showDistribution('{{ variable.raw_key }}')">Raw</button>
-                <button class="dist-button" onclick="window.plottingManager.showDistribution('{{ variable.id }}')">Score</button>
-                <button class="dist-button" onclick="window.plottingManager.showVariableCorrelation('{{ variable.correlation_key }}')">Correlation</button>
+                <button class="dist-button" onclick="window.enhancedPlottingManager.showDistribution('{{ variable.raw_key }}')">Raw</button>
+                <button class="dist-button" onclick="window.enhancedPlottingManager.showDistribution('{{ variable.id }}')">Score</button>
+                <button class="dist-button" onclick="window.enhancedPlottingManager.showVariableCorrelation('{{ variable.correlation_key }}')">Correlation</button>
             </div>
         </div>
     </div>

@@ -88,7 +88,7 @@
                         </div>
                     </div>
                     <button class="button" id="export-shapefile" style="margin: 8px 0;">Export Shapefile</button>
-                    <button class="button" id="score-distribution-btn" style="margin-bottom: 8px;" onclick="window.plottingManager.showScoreDistribution()">Calculated Risk Score Distribution</button>
+                    <button class="button" id="score-distribution-btn" style="margin-bottom: 8px;" onclick="window.enhancedPlottingManager.showScoreDistribution()">Calculated Risk Score Distribution</button>
                     <button class="button" id="show-correlation-matrix" style="margin-bottom: 8px;">Variable Correlation Matrix</button>
                 </div>
             </div>
@@ -786,17 +786,29 @@
         function updateDistributionButtons() {
             const useQuantile = document.getElementById('use-quantile').checked;
             const useRawScoring = document.getElementById('use-raw-scoring').checked;
-            const suffix = useQuantile ? '_z' : '_s';
             
-            // Update all score distribution buttons
+            // Update all score distribution buttons (those with text "Score")
             document.querySelectorAll('.dist-button').forEach(button => {
                 const onclick = button.getAttribute('onclick');
-                if (onclick && onclick.includes("Score</button>")) {
-                    // Extract base variable name from onclick attribute
-                    const match = onclick.match(/showDistribution\('(.+)_[sz]'\)/);
+                const buttonText = button.textContent.trim();
+                
+                // Only update buttons that show score distributions (button text is "Score")
+                if (buttonText === 'Score' && onclick && onclick.includes('showDistribution')) {
+                    // Extract variable name from onclick attribute
+                    const match = onclick.match(/showDistribution\('([^']+)'\)/);
                     if (match) {
-                        const baseVar = match[1];
-                        button.setAttribute('onclick', `window.plottingManager.showDistribution('${baseVar}${suffix}')`);
+                        const currentVar = match[1];
+                        
+                        // Determine the base variable name by removing any existing suffix
+                        let baseVar = currentVar;
+                        if (currentVar.endsWith('_s') || currentVar.endsWith('_z')) {
+                            baseVar = currentVar.slice(0, -2);
+                        }
+                        
+                        // Always use _s suffix - the plotting manager handles quantile vs min-max internally
+                        // The quantile logic is determined by the use_quantile flag in getCurrentFilters()
+                        const newVar = baseVar + '_s';
+                        button.setAttribute('onclick', `window.enhancedPlottingManager.showDistribution('${newVar}')`);
                     }
                 }
             });
@@ -1280,12 +1292,40 @@
             }
         }
 
+        // Track the currently displayed distribution for refresh purposes
+        let currentDistributionVariable = null;
+
         // Helper function to refresh score distribution plot
         function refreshScoreDistributionPlot() {
             if (window.plottingManager) {
-                window.plottingManager.showScoreDistribution();
+                if (currentDistributionVariable) {
+                    // Refresh individual variable distribution
+                    window.plottingManager.showDistribution(currentDistributionVariable);
+                } else {
+                    // Refresh overall score distribution
+                    window.plottingManager.showScoreDistribution();
+                }
             }
         }
+
+        // Enhanced plotting manager calls that track current variable
+        window.enhancedPlottingManager = {
+            showDistribution: function(variable) {
+                currentDistributionVariable = variable;
+                return window.plottingManager.showDistribution(variable);
+            },
+            showScoreDistribution: function() {
+                currentDistributionVariable = null;
+                return window.plottingManager.showScoreDistribution();
+            },
+            showVariableCorrelation: function(variable) {
+                // Correlation plots don't need refresh tracking
+                return window.plottingManager.showVariableCorrelation(variable);
+            },
+            showCorrelationMatrix: function() {
+                return window.plottingManager.showCorrelationMatrix();
+            }
+        };
 
         // Multi-area selection management
         function updateSelectionCount() {
@@ -2182,7 +2222,10 @@
         });
 
         // Modal controls
-        closeModal.addEventListener('click', () => modal.style.display = "none");
+        closeModal.addEventListener('click', () => {
+            modal.style.display = "none";
+            currentDistributionVariable = null; // Clear tracking when modal closes
+        });
         
         // Close solution modal
         document.getElementById('close-solution-modal').addEventListener('click', () => {
@@ -2191,7 +2234,7 @@
 
         // Show correlation matrix
         document.getElementById('show-correlation-matrix').addEventListener('click', () => {
-            window.plottingManager.showCorrelationMatrix();
+            window.enhancedPlottingManager.showCorrelationMatrix();
         });
 
         // Close correlation modal (if element exists)
@@ -2205,6 +2248,7 @@
         window.onclick = function(event) {
             if (event.target == modal) {
                 modal.style.display = "none";
+                currentDistributionVariable = null; // Clear tracking when modal closes
             }
             // Close solution modal when clicking outside of it
             const solutionModal = document.getElementById('solution-modal');
