@@ -92,7 +92,7 @@ class FireRiskScoring {
             
             currentFeatures = filteredDataset.features;
             
-            // Apply local normalization if needed
+            // Apply local normalization if needed - this updates _s columns in feature properties
             if (use_local_normalization && currentFeatures.length > 0) {
                 const normStart = performance.now();
                 const normalizedResult = window.clientNormalizationManager.calculateLocalNormalization(
@@ -100,6 +100,34 @@ class FireRiskScoring {
                 );
                 currentFeatures = normalizedResult.features;
                 this.logTiming('Local Normalization', performance.now() - normStart);
+            }
+            // BUGFIX: For global normalization, we also need to update _s columns in feature properties
+            // This ensures distribution plots get the correct quantile vs min-max scores
+            else if (!use_local_normalization) {
+                const globalNormStart = performance.now();
+                console.log('🔧 BUGFIX: Updating _s columns for global normalization to fix distribution plots');
+                
+                // Update _s columns in feature properties using global normalization
+                currentFeatures = currentFeatures.map(feature => {
+                    const newFeature = {
+                        ...feature,
+                        properties: { ...feature.properties }
+                    };
+                    
+                    // Calculate and store _s scores for all variables
+                    const weightVarsBase = ['qtrmi', 'hwui', 'hagri', 'hvhsz', 'hfb', 'slope', 'neigh1d', 'hbrn', 'par_sl', 'agfb', 'travel'];
+                    
+                    for (const varBase of weightVarsBase) {
+                        const scoreValue = window.clientNormalizationManager.calculateGlobalScore(
+                            feature, varBase, use_quantile, use_raw_scoring
+                        );
+                        newFeature.properties[varBase + '_s'] = scoreValue;
+                    }
+                    
+                    return newFeature;
+                });
+                
+                this.logTiming('Global Normalization _s Update', performance.now() - globalNormStart);
             }
             
             // Use filtered features directly, no duplicate FeatureCollection creation
@@ -126,13 +154,16 @@ class FireRiskScoring {
         const totalTime = performance.now() - start;
         this.logTiming('Total Processing', totalTime);
         
-        if (isFirstCalculation) {
-            console.log(`✅ FIRST CLIENT-SIDE CALCULATION: Complete processing finished in ${totalTime.toFixed(1)}ms`);
-            this.firstCalculationDone = true;
-        } else {
-            console.log(`Complete processing finished in ${totalTime.toFixed(1)}ms`);
+        // BUGFIX: Ensure currentDataset is updated with the latest processed features
+        // This ensures distribution plots get access to the updated _s columns
+        if (scoringResult) {
+            this.currentDataset = scoringResult;
         }
+
+        const firstCalculationTime = performance.now() - start;
+        this.firstCalculationDone = true;
         
+        console.log(`Client-side data processing completed in ${firstCalculationTime.toFixed(1)}ms`);
         return scoringResult;
     }
 
@@ -226,8 +257,8 @@ class FireRiskScoring {
         // Store last weights for comparison
         this.lastWeights = { ...normalizedWeights };
 
-        // Return result object with type for updateMap() compatibility
-        return {
+        // Store the result as currentDataset property for distribution plots to access
+        const result = {
             type: "FeatureCollection",  // Required for updateMap() function
             features: scoredParcels,
             total_parcels: scoredParcels.length,
@@ -235,6 +266,11 @@ class FireRiskScoring {
             client_calculated: true,
             calculation_time: totalTime
         };
+        
+        // BUGFIX: Store as currentDataset property for distribution plots to access
+        this.currentDataset = result;
+        
+        return result;
     }
 
     // Check if weights have changed significantly
