@@ -553,9 +553,10 @@ class PlottingManager {
             clientData = window.currentData;
         }
         
-        // Always use client-side for local normalization or when we have client data
-        // For score variables with local normalization, we need to force client-side processing
+        // Always use client-side for local normalization, quantile scoring, or when we have client data
+        // For score variables with local normalization or quantile scoring, we need to force client-side processing
         const needsClientSide = filters.use_local_normalization || 
+                               filters.use_quantile ||
                                (variable.endsWith('_s') || variable.endsWith('_z'));
         const useClientSide = needsClientSide && clientData;
         
@@ -564,7 +565,7 @@ class PlottingManager {
         
         if (useClientSide) {
             // Use client-side processed data
-            console.log('Using client-side data for distribution of:', variable);
+            console.log('📊 DISTRIBUTION: Using client-side data for:', variable, 'quantile:', filters.use_quantile);
             
             let values = [];
             
@@ -579,7 +580,10 @@ class PlottingManager {
                 // Check if scores are already calculated
                 const hasScores = clientData.features.some(f => f.properties[scoreKey] !== undefined);
                 
-                if (!hasScores && filters.use_local_normalization && window.fireRiskScoring) {
+                // For quantile scoring, we need to recalculate even if scores exist (database has min-max scores)
+                const needsRecalculation = filters.use_quantile || filters.use_local_normalization;
+                
+                if ((!hasScores || needsRecalculation) && (filters.use_local_normalization || filters.use_quantile) && window.fireRiskScoring) {
                     // Need to calculate scores first
                     console.log('Triggering client-side score calculation for distribution plot');
                     
@@ -653,7 +657,7 @@ class PlottingManager {
             };
         } else {
             // Use server-side data (fallback or when no client data available)
-            console.log('Using server-side data for distribution of:', variable);
+            console.log('📊 DISTRIBUTION: Using server-side data for:', variable, 'quantile:', filters.use_quantile);
             
             // For score variables, always use _s columns
             if (variable.endsWith('_s')) {
@@ -829,20 +833,16 @@ class PlottingManager {
 
             console.log(`📊 SCORE DISTRIBUTION: Found ${dataSource.features.length} parcels`);
 
-            // Extract scores - use sharedDataStore with normalized IDs
+            // Extract scores - look directly in feature properties where client-scoring stores them
             const scores = dataSource.features.map(f => {
-                const attrs = window.sharedDataStore ? 
-                    window.sharedDataStore.getAttributesByParcelNumber(f.properties.parcel_id) :
-                    f.properties;
-                return attrs ? attrs.score : null;
-            }).filter(s => s !== null);
+                // Composite scores are stored directly in feature.properties.score by client-scoring.js
+                return f.properties.score;
+            }).filter(s => s !== null && s !== undefined && !isNaN(s));
             
             const selectedScores = dataSource.features.map(f => {
-                const attrs = window.sharedDataStore ? 
-                    window.sharedDataStore.getAttributesByParcelNumber(f.properties.parcel_id) :
-                    f.properties;
-                return attrs && attrs.top500 ? attrs.score : null;
-            }).filter(s => s !== null);
+                // Check top500 flag directly in feature properties and get the score
+                return f.properties.top500 ? f.properties.score : null;
+            }).filter(s => s !== null && s !== undefined && !isNaN(s));
 
             console.log(`📊 SCORE DISTRIBUTION: Extracted ${scores.length} total scores, ${selectedScores.length} top scores`);
             
