@@ -1190,6 +1190,18 @@
                     }
                 }
                 
+                // Clear any existing data BEFORE fetching new data to prevent memory doubling
+                if (window.unifiedDataManager) {
+                    console.log('Cleaning up existing data before fetch to prevent memory accumulation');
+                    window.unifiedDataManager.manualCleanup();
+                }
+                
+                // Force garbage collection after cleanup
+                if (window.gc) {
+                    window.gc();
+                    console.log('Forced garbage collection after cleanup');
+                }
+                
                 // First time load: fetch complete dataset from server
                 console.log('Cache miss: Loading dataset from server');
                 
@@ -1218,9 +1230,13 @@
                 );
                 const firstCalcTime = performance.now() - firstCalcStart;
                 
-                // Clear any existing data before setting new data
-                if (window.unifiedDataManager) {
-                    window.unifiedDataManager.manualCleanup();
+                // Note: Cleanup moved to BEFORE data fetch to prevent memory doubling
+                
+                // Clear previous currentData before assigning new data
+                if (currentData) {
+                    console.log('🧹 Clearing previous currentData to free memory');
+                    currentData = null;
+                    if (window.gc) window.gc();
                 }
                 
                 // Use client-calculated scores, not server precomputed scores
@@ -1230,6 +1246,12 @@
                 } else {
                     console.error(`Client calculation failed after ${firstCalcTime.toFixed(1)}ms, using server data`);
                     currentData = responseData;
+                }
+                
+                // Force garbage collection after data assignment
+                if (window.gc) {
+                    window.gc();
+                    console.log('🗑️ Forced GC after currentData assignment');
                 }
                 
                 // Memory tracking for initial data load

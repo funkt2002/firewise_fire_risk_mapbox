@@ -4,7 +4,8 @@ class FireRiskScoring {
     constructor(sharedDataStore) {
         this.dataStore = sharedDataStore || window.sharedDataStore;
         this.currentFeatures = null;          // Filtered features array (no wrapper object)
-        this.factorScoresMap = new Map();     // parcel_id -> factor scores lookup for popups
+        this.factorScoresMap = new Map();     // parcel_id -> factor scores lookup for popups (size-limited)
+        this.maxFactorScoresCacheSize = 10000; // Limit cache to prevent unbounded growth
         this.timings = {};
         this.lastWeights = null;
         this.lastFilters = null;
@@ -168,8 +169,16 @@ class FireRiskScoring {
                 parcel, use_local_normalization, use_quantile, use_raw_scoring
             );
             
-            // Store factor scores for popup lookup
+            // Store factor scores for popup lookup (with size limit)
             if (parcel.properties.parcel_id) {
+                // Implement LRU cache to prevent unbounded growth
+                if (this.factorScoresMap.size >= this.maxFactorScoresCacheSize) {
+                    // Remove oldest entries (first in Map iteration order)
+                    const oldestKeys = Array.from(this.factorScoresMap.keys()).slice(0, 1000);
+                    oldestKeys.forEach(key => this.factorScoresMap.delete(key));
+                    console.log(`🧹 Factor scores cache trimmed: removed ${oldestKeys.length} entries`);
+                }
+                
                 this.factorScoresMap.set(parcel.properties.parcel_id, factorScores);
                 // Also update shared attribute map with score data
                 this.dataStore.updateAttributeMapProperty(parcel.properties.parcel_id, 'score', compositeScore);

@@ -815,15 +815,46 @@ class UnifiedDataManager {
         if (!window.map) return;
         
         try {
+            console.log('🧹 Clearing ALL map tile caches (memory optimization)');
             const style = window.map.getStyle();
             if (style && style.sources) {
                 Object.keys(style.sources).forEach(sourceId => {
                     const source = window.map.getSource(sourceId);
-                    if (source && source.type === 'vector' && typeof source.clearTiles === 'function') {
-                        source.clearTiles();
+                    if (source) {
+                        // Clear ALL source types, not just vector
+                        if (typeof source.clearTiles === 'function') {
+                            source.clearTiles();
+                            console.log(`✅ Cleared tiles for ${source.type} source: ${sourceId}`);
+                        }
+                        
+                        // For raster sources, clear cache if available
+                        if (source.type === 'raster' && source._clearCache) {
+                            source._clearCache();
+                        }
+                        
+                        // For geojson sources with clustering, clear cache
+                        if (source.type === 'geojson' && source._options && source._options.cluster) {
+                            source._clearCache && source._clearCache();
+                        }
                     }
                 });
             }
+            
+            // Clear global tile cache if available
+            if (window.map._requestManager && window.map._requestManager._transformRequestManager) {
+                const cache = window.map._requestManager._transformRequestManager._cache;
+                if (cache && cache.clear) {
+                    cache.clear();
+                    console.log('✅ Cleared global transform cache');
+                }
+            }
+            
+            // Force garbage collection after tile cache clearing
+            if (window.gc) {
+                window.gc();
+                console.log('🗑️ Forced GC after tile cache clear');
+            }
+            
         } catch (error) {
             console.warn('Map tile cache clear error:', error);
         }
