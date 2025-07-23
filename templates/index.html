@@ -3018,6 +3018,11 @@
         // Expose cleanup function for manual testing
         window.performGlobalCleanup = performGlobalCleanup;
 
+        // Upgrade UnifiedDataManager to use tracked intervals now that cleanup system is ready
+        if (window.unifiedDataManager && window.unifiedDataManager.upgradeToTrackedInterval) {
+            window.unifiedDataManager.upgradeToTrackedInterval();
+        }
+
         // ========== END MEMORY LEAK PREVENTION SYSTEM ==========
 
     </script>

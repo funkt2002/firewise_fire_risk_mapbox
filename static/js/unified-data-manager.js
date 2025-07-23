@@ -772,18 +772,18 @@ class UnifiedDataManager {
 
     startPeriodicCleanup() {
         // Use tracked interval to prevent memory leaks on page refresh
-        if (window.setTrackedInterval) {
+        if (window.setTrackedInterval && window.cleanupRegistry && window.cleanupRegistry.intervals) {
             this.cleanupInterval = window.setTrackedInterval(() => {
                 this.performPeriodicCleanup();
             }, this.cleanupFrequency);
+            console.log('UnifiedDataManager: Cleanup started with tracked intervals');
         } else {
             // Fallback for cases where cleanup system isn't initialized yet
             this.cleanupInterval = setInterval(() => {
                 this.performPeriodicCleanup();
             }, this.cleanupFrequency);
+            console.log('UnifiedDataManager: Cleanup started with regular intervals (tracking system not ready)');
         }
-        
-        console.log('UnifiedDataManager: Minimal cleanup started (using tracked intervals to prevent leaks)');
     }
 
     performPeriodicCleanup() {
@@ -925,6 +925,21 @@ class UnifiedDataManager {
     formatMemory(bytes) {
         if (!bytes || bytes < 0) return '0 MB';
         return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+    }
+
+    // Convert regular interval to tracked interval once cleanup system is ready
+    upgradeToTrackedInterval() {
+        if (this.cleanupInterval && window.setTrackedInterval && window.cleanupRegistry && window.cleanupRegistry.intervals) {
+            // Stop current interval
+            clearInterval(this.cleanupInterval);
+            
+            // Start tracked interval
+            this.cleanupInterval = window.setTrackedInterval(() => {
+                this.performPeriodicCleanup();
+            }, this.cleanupFrequency);
+            
+            console.log('UnifiedDataManager: Upgraded to tracked interval system');
+        }
     }
 
     // Stop cleanup on destroy
