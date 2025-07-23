@@ -8,7 +8,7 @@ class UnifiedDataManager {
         this.dataStore = sharedDataStore || window.sharedDataStore;
         
         // Filtering state (from ClientFilterManager)
-        this.filteredDataset = null;
+        this.filteredFeatures = null;  // Features array instead of FeatureCollection wrapper
         this.currentFilters = {};
         this.spatialIndex = null;
         
@@ -76,11 +76,8 @@ class UnifiedDataManager {
             }
         }
 
-        // Create filtered dataset - single copy only
-        this.filteredDataset = {
-            type: "FeatureCollection",
-            features: filteredFeatures
-        };
+        // Store filtered features array directly, no FeatureCollection wrapper
+        this.filteredFeatures = filteredFeatures;
 
         // Update map visibility
         this.updateMapVisibility(filteredFeatures);
@@ -90,7 +87,11 @@ class UnifiedDataManager {
         
         console.log(`Unified filtering: ${completeDataset.features.length} -> ${filteredFeatures.length} parcels in ${totalTime.toFixed(1)}ms`);
         
-        return this.filteredDataset;
+        // Return features in expected format for backwards compatibility
+        return {
+            type: "FeatureCollection",
+            features: this.filteredFeatures
+        };
     }
 
     // Check if a feature passes all non-spatial filters
@@ -834,7 +835,14 @@ class UnifiedDataManager {
 
     // Get current filtered dataset
     getFilteredDataset() {
-        return this.filteredDataset || this.dataStore.getCompleteDataset();
+        // Return filtered features or complete dataset in FeatureCollection format
+        if (this.filteredFeatures) {
+            return {
+                type: "FeatureCollection", 
+                features: this.filteredFeatures
+            };
+        }
+        return this.dataStore.getCompleteDataset();
     }
 
     // Get complete unfiltered dataset
@@ -845,14 +853,14 @@ class UnifiedDataManager {
     // Get filter statistics
     getFilterStats() {
         const completeDataset = this.dataStore.getCompleteDataset();
-        if (!completeDataset || !this.filteredDataset) {
+        if (!completeDataset || !this.filteredFeatures) {
             return null;
         }
 
         return {
             total_parcels_before_filter: completeDataset.features.length,
-            total_parcels_after_filter: this.filteredDataset.features.length,
-            filter_ratio: this.filteredDataset.features.length / completeDataset.features.length,
+            total_parcels_after_filter: this.filteredFeatures.length,
+            filter_ratio: this.filteredFeatures.length / completeDataset.features.length,
             current_filters: { ...this.currentFilters }
         };
     }
@@ -875,7 +883,7 @@ class UnifiedDataManager {
 
     // Clear all data
     clear() {
-        this.filteredDataset = null;
+        this.filteredFeatures = null;
         this.currentFilters = {};
         this.timings = {};
         this.normalizationCache = {};

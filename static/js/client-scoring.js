@@ -3,7 +3,7 @@
 class FireRiskScoring {
     constructor(sharedDataStore) {
         this.dataStore = sharedDataStore || window.sharedDataStore;
-        this.currentDataset = null;           // Filtered/scored dataset
+        this.currentFeatures = null;          // Filtered features array (no wrapper object)
         this.factorScoresMap = new Map();     // parcel_id -> factor scores lookup for popups
         this.timings = {};
         this.lastWeights = null;
@@ -11,7 +11,7 @@ class FireRiskScoring {
         this.lastNormalizationSettings = null;
         this.firstCalculationDone = false;
         
-        console.log('🎯 FireRiskScoring: Initialized with shared data store (no duplicate data storage)');
+        console.log('FireRiskScoring: Phase 3 - eliminated FeatureCollection duplication in scoring');
     }
 
     // Store complete dataset from server (attributes only for vector tiles)
@@ -34,7 +34,8 @@ class FireRiskScoring {
         // Managers now automatically access data from shared store - no manual notification needed
         console.log('🔄 FireRiskScoring: Data stored in shared store - managers will access automatically');
         
-        this.currentDataset = featureCollection;
+        // Store features array directly, not FeatureCollection wrapper
+        this.currentFeatures = featureCollection.features;
         
         const loadTime = performance.now() - start;
         this.logTiming('Complete Data Storage', loadTime);
@@ -101,11 +102,8 @@ class FireRiskScoring {
                 this.logTiming('Local Normalization', performance.now() - normStart);
             }
             
-            // Update current dataset
-            this.currentDataset = {
-                type: "FeatureCollection",
-                features: currentFeatures
-            };
+            // Use filtered features directly, no duplicate FeatureCollection creation
+            this.currentFeatures = currentFeatures;
             
             // Cache settings
             this.lastFilters = { ...filters };
@@ -115,9 +113,9 @@ class FireRiskScoring {
                 use_raw_scoring
             };
         } else {
-            // Use cached filtered dataset
-            currentFeatures = this.currentDataset.features;
-            console.log('Using cached filtered dataset');
+            // Use cached filtered features directly
+            currentFeatures = this.currentFeatures;
+            console.log('Using cached filtered features');
         }
 
         // Calculate scores on current (filtered) dataset
@@ -141,7 +139,7 @@ class FireRiskScoring {
     // Calculate composite scores using weights (client-side)
     calculateScores(weights, maxParcels = 500, use_local_normalization = false, use_quantile = false, use_raw_scoring = false, features = null) {
         const completeDataset = this.dataStore.getCompleteDataset();
-        const parcelsToScore = features || this.currentDataset?.features || completeDataset?.features;
+        const parcelsToScore = features || this.currentFeatures || completeDataset?.features;
         
         if (!parcelsToScore) {
             console.error('No data available for scoring.');
@@ -228,8 +226,8 @@ class FireRiskScoring {
         // Store last weights for comparison
         this.lastWeights = { ...normalizedWeights };
 
+        // Return result object with features array, not FeatureCollection wrapper
         return {
-            type: "FeatureCollection",
             features: scoredParcels,
             total_parcels: scoredParcels.length,
             selected_count: scoredParcels.filter(p => p.properties.top500).length,
@@ -273,7 +271,7 @@ class FireRiskScoring {
     // Get current parcel count
     getParcelCount() {
         const completeDataset = this.dataStore.getCompleteDataset();
-        return this.currentDataset ? this.currentDataset.features.length : 
+        return this.currentFeatures ? this.currentFeatures.length : 
                (completeDataset ? completeDataset.features.length : 0);
     }
 
@@ -285,12 +283,12 @@ class FireRiskScoring {
 
     // Get filtered dataset count
     getFilteredDatasetCount() {
-        return this.currentDataset ? this.currentDataset.features.length : 0;
+        return this.currentFeatures ? this.currentFeatures.length : 0;
     }
 
     // Clear stored data
     clear() {
-        this.currentDataset = null;
+        this.currentFeatures = null;
         this.factorScoresMap.clear();
         this.timings = {};
         this.lastWeights = null;
@@ -330,8 +328,8 @@ class FireRiskScoring {
 
     // Apply optimized weights to existing scores to calculate final risk scores
     applyOptimizedWeights(optimizedWeights, includeVars) {
-        if (!this.currentDataset) {
-            console.error('No current dataset available for weight application');
+        if (!this.currentFeatures) {
+            console.error('No current features available for weight application');
             return;
         }
 
@@ -353,8 +351,8 @@ class FireRiskScoring {
 
         let appliedCount = 0;
         
-        // Apply weights to all features in current dataset
-        this.currentDataset.features.forEach(feature => {
+        // Apply weights to all features in current features array
+        this.currentFeatures.forEach(feature => {
             const scores = feature.properties.scores;
             if (!scores) return;
 
