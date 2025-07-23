@@ -1435,15 +1435,13 @@
             
             attributes.forEach(attr => {
                 if (attr.parcel_id && attr.score !== undefined) {
-                    // Use normalized ID for score lookup
-                    const normalizedId = window.sharedDataStore ? 
-                        window.sharedDataStore.normalizeParcelId(attr.parcel_id) : 
-                        attr.parcel_id.toString().replace(/\.0+$/, '');
+                    // Use parcel ID as-is since attributes already have standardized format
+                    const parcelId = attr.parcel_id;
                     
-                    if (normalizedId) {
-                        scoreObject[normalizedId] = attr.score;
+                    if (parcelId) {
+                        scoreObject[parcelId] = attr.score;
                         if (attr.top500) {
-                            top500Ids.push(normalizedId);
+                            top500Ids.push(parcelId);
                         }
                     }
                     
@@ -1458,23 +1456,26 @@
             
 
             
-            // Create lookup for paint expressions with normalized IDs
-            // Add both normalized and .0 versions for mapbox compatibility
+            // Create lookup for paint expressions with standardized IDs
+            // Since attributes always have .0 and we standardize tile IDs to match, create lookup with both formats
             const combinedScoreObject = {};
             const combinedTop500Ids = [];
             
-            // For each normalized ID, add both versions
-            Object.keys(scoreObject).forEach(normalizedId => {
-                const score = scoreObject[normalizedId];
-                const isTop500 = top500Ids.includes(normalizedId);
+            // For each ID in scoreObject, ensure we have both formats for tile compatibility
+            Object.keys(scoreObject).forEach(id => {
+                const score = scoreObject[id];
+                const isTop500 = top500Ids.includes(id);
                 
-                // Add normalized version and .0 version
-                combinedScoreObject[normalizedId] = score;
-                combinedScoreObject[normalizedId + '.0'] = score;
+                // Standardize the ID and also store version without .0 for tile compatibility
+                const standardizedId = id.endsWith('.0') ? id : id + '.0';
+                const tileId = id.endsWith('.0') ? id.slice(0, -2) : id;
+                
+                combinedScoreObject[standardizedId] = score;
+                combinedScoreObject[tileId] = score;
                 
                 if (isTop500) {
-                    combinedTop500Ids.push(normalizedId);
-                    combinedTop500Ids.push(normalizedId + '.0');
+                    combinedTop500Ids.push(standardizedId);
+                    combinedTop500Ids.push(tileId);
                 }
             });
             
@@ -1483,7 +1484,7 @@
             window.top500ParcelIds = combinedTop500Ids;
             window.filteredParcelIds = Object.values(scoreObject).filter(score => score !== undefined).map(score => parseFloat(score)).sort((a, b) => a - b);
             
-            console.log('🔧 NORMALIZED SCORES: Created lookup with', Object.keys(combinedScoreObject).length, 'entries (2x for .0 compatibility)');
+            console.log('🔧 STANDARDIZED SCORES: Created lookup with', Object.keys(combinedScoreObject).length, 'entries (both .0 and tile formats)');
             console.log('🔧 Sample score keys:', Object.keys(combinedScoreObject).slice(0, 6));
             
             // Update map paint properties with new scores
@@ -2365,22 +2366,22 @@
                 return;
             }
             
-            // Use normalized ID for lookup
+            // Use standardized ID for lookup
             const parcelId = e.features[0].id || e.features[0].properties.parcel_id;
-            const normalizedId = window.sharedDataStore ? 
-                window.sharedDataStore.normalizeParcelId(parcelId) : parcelId;
+            const standardizedId = window.sharedDataStore ? 
+                window.sharedDataStore.standardizeParcelId(parcelId) : parcelId;
             
             // DEBUG: Log parcel click details
-            console.log('🔧 PARCEL CLICK DEBUG (NORMALIZED):');
+            console.log('🔧 PARCEL CLICK DEBUG (STANDARDIZED):');
             console.log('  - Feature properties:', e.features[0].properties);
             console.log('  - Feature id:', e.features[0].id);
             console.log('  - Original Parcel ID:', parcelId);
-            console.log('  - Normalized ID:', normalizedId);
+            console.log('  - Standardized ID:', standardizedId);
             console.log('  - Available property keys:', Object.keys(e.features[0].properties));
             
-            // Look up attributes using normalized ID
+            // Look up attributes using standardized ID
             const attributes = window.sharedDataStore ? 
-                window.sharedDataStore.getAttributesByParcelNumber(parcelId) :
+                window.sharedDataStore.getAttributesByParcelNumber(standardizedId) :
                 window.fireRiskScoring.getAttributesByParcelId(parcelId);
                 
             console.log('  - Found attributes:', !!attributes);

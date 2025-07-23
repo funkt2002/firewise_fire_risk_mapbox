@@ -94,19 +94,14 @@ class SharedDataStore {
 
     // ===== UNIVERSAL ID HELPERS =====
     
-    // Normalize parcel ID by removing .0 suffix for consistent matching
-    normalizeParcelId(id) {
+    // Standardize parcel ID by ensuring .0 suffix for consistent matching
+    standardizeParcelId(id) {
         if (!id) return null;
-        // Convert to string and remove .0 suffix if present
-        return id.toString().replace(/\.0+$/, '');
+        const idStr = id.toString().trim();
+        // Add .0 suffix if not already present
+        return idStr.endsWith('.0') ? idStr : idStr + '.0';
     }
     
-    // Extract core parcel number from any ID format (p_57942, p_57942.0, 57942, etc.)
-    extractParcelNumber(id) {
-        if (!id) return null;
-        const match = id.toString().match(/\d+/);
-        return match ? match[0] : id.toString();
-    }
 
     // Store the complete dataset and build lookup structures once
     storeCompleteData(attributeData) {
@@ -181,7 +176,8 @@ class SharedDataStore {
             const parcelId = this.parcelIds[i];
             
             if (parcelId) {
-                const normalizedId = this.normalizeParcelId(parcelId);
+                // Store attributes using the original ID format (which already has .0)
+                // No normalization needed since attributes are consistent
                 
                 // Create attribute object
                 const attrs = {
@@ -203,7 +199,7 @@ class SharedDataStore {
                     }
                 });
                 
-                this.attributeMap.set(normalizedId, attrs);
+                this.attributeMap.set(parcelId, attrs);
                 mappedCount++;
             }
         }
@@ -229,8 +225,8 @@ class SharedDataStore {
 
     // Update attribute map with new properties (e.g., scores)
     updateAttributeMapProperty(parcelId, property, value) {
-        const normalizedId = this.normalizeParcelId(parcelId);
-        const attrs = this.attributeMap.get(normalizedId);
+        const standardizedId = this.standardizeParcelId(parcelId);
+        const attrs = this.attributeMap.get(standardizedId);
         if (attrs) {
             attrs[property] = value;
         }
@@ -242,16 +238,16 @@ class SharedDataStore {
         this.attributeMap.clear();
     }
     
-    // Get attributes by normalized ID
+    // Get attributes by standardized ID
     getAttributesByParcelNumber(id) {
-        const normalizedId = this.normalizeParcelId(id);
-        return this.attributeMap.get(normalizedId);
+        const standardizedId = this.standardizeParcelId(id);
+        return this.attributeMap.get(standardizedId);
     }
     
     // Debug method to check what's stored for a parcel
     debugParcel(parcelId) {
-        const normalizedId = this.normalizeParcelId(parcelId);
-        const attrs = this.attributeMap.get(normalizedId);
+        const standardizedId = this.standardizeParcelId(parcelId);
+        const attrs = this.attributeMap.get(standardizedId);
         if (attrs) {
             console.log(`🔍 SharedDataStore DEBUG for parcel ${parcelId}:`, {
                 qtrmi_cnt: attrs.qtrmi_cnt,

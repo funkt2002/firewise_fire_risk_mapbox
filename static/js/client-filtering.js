@@ -218,12 +218,12 @@ class ClientFilterManager {
             // Extract parcel numbers from geometrically filtered features
             const visibleParcelNumbers = new Set();
             geometricallyFilteredFeatures.forEach(feature => {
-                // NUMBER-BASED: Extract parcel number from any ID format
+                // STANDARDIZED: Standardize parcel ID from any format
                 const parcelId = feature.id || feature.properties.parcel_id;
                 if (parcelId) {
-                    const parcelNumber = this.dataStore.extractParcelNumber(parcelId);
-                    if (parcelNumber) {
-                        visibleParcelNumbers.add(parcelNumber);
+                    const standardizedId = this.dataStore.standardizeParcelId(parcelId);
+                    if (standardizedId) {
+                        visibleParcelNumbers.add(standardizedId);
                     }
                 }
             });
@@ -235,15 +235,15 @@ class ClientFilterManager {
             const filteredFeatures = features.filter(feature => {
                 const attributeId = feature.properties.parcel_id;
                 
-                // NUMBER-BASED: Extract parcel number and check if it's in visible set
-                const parcelNumber = this.dataStore.extractParcelNumber(attributeId);
-                const isVisible = parcelNumber && visibleParcelNumbers.has(parcelNumber);
+                // STANDARDIZED: Standardize parcel ID and check if it's in visible set
+                const standardizedId = this.dataStore.standardizeParcelId(attributeId);
+                const isVisible = standardizedId && visibleParcelNumbers.has(standardizedId);
                 
                 // Debug problematic parcels
                 if (attributeId && (attributeId.includes('57942') || attributeId.includes('57878') || attributeId.includes('58035'))) {
                     console.log(`🔢 SPATIAL FILTER DEBUG ${attributeId}:`);
                     console.log(`  - Attribute ID: "${attributeId}"`);
-                    console.log(`  - Parcel Number: "${parcelNumber}"`);
+                    console.log(`  - Standardized ID: "${standardizedId}"`);
                     console.log(`  - In visible set: ${isVisible}`);
                     console.log(`  - Visible numbers sample:`, Array.from(visibleParcelNumbers).slice(0, 3));
                 }
@@ -256,7 +256,7 @@ class ClientFilterManager {
             // Update global spatial filter state for tracking (using parcel numbers)
             window.spatialFilterActive = true;
             window.spatialFilterParcelIds = new Set(filteredFeatures.map(f => {
-                return this.dataStore.extractParcelNumber(f.properties.parcel_id);
+                return this.dataStore.standardizeParcelId(f.properties.parcel_id);
             }));
             console.log(`VECTOR TILES: Spatial filter activated with ${window.spatialFilterParcelIds.size} parcel numbers`);
             
@@ -384,12 +384,13 @@ class ClientFilterManager {
                 filteredFeatures.forEach(f => {
                     const originalId = f.properties.parcel_id;
                     if (originalId) {
-                        // Normalize the ID (remove .0 if present)
-                        const normalizedId = this.dataStore.normalizeParcelId(originalId);
+                        // Standardize the ID and create both formats for tile compatibility
+                        const standardizedId = this.dataStore.standardizeParcelId(originalId);
+                        const tileId = standardizedId.endsWith('.0') ? standardizedId.slice(0, -2) : standardizedId;
                         
-                        // Add both normalized and .0 version for mapbox compatibility
-                        visibleIds[normalizedId] = true;
-                        visibleIdsWithDotZero[normalizedId + '.0'] = true;
+                        // Add both formats for mapbox compatibility
+                        visibleIds[standardizedId] = true;
+                        visibleIdsWithDotZero[tileId] = true;
                     }
                 });
                 

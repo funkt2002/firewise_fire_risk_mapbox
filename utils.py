@@ -20,22 +20,22 @@ logger = logging.getLogger(__name__)
 # VARIABLE NAME UTILITIES
 # ====================
 
-def normalize_parcel_id(parcel_id: Union[str, float, int]) -> str:
+def standardize_parcel_id(parcel_id: Union[str, float, int]) -> str:
     """
-    Normalize parcel ID by removing .0 suffix to enable consistent matching.
-    This handles the inconsistency where some IDs have .0 suffix and others don't.
+    Standardize parcel ID by ensuring it has .0 suffix for consistent matching.
+    Since attribute data always has .0 suffix, we standardize mapbox tile IDs to match.
     
     Args:
         parcel_id: Parcel ID in any format (with or without .0 suffix)
     
     Returns:
-        Normalized parcel ID without .0 suffix
+        Standardized parcel ID with .0 suffix
     
     Examples:
-        "p_57942.0" -> "p_57942"
-        "p_57942" -> "p_57942"
-        "57942.0" -> "57942"
-        57942.0 -> "57942"
+        "p_57942" -> "p_57942.0"
+        "p_57942.0" -> "p_57942.0"
+        "57942" -> "57942.0"
+        57942.0 -> "57942.0"
     """
     if parcel_id is None:
         return None
@@ -43,10 +43,11 @@ def normalize_parcel_id(parcel_id: Union[str, float, int]) -> str:
     # Convert to string and strip whitespace
     id_str = str(parcel_id).strip()
     
-    # Remove .0 suffix if present (handles .0, .00, .000, etc.)
-    normalized = re.sub(r'\.0+$', '', id_str)
+    # Add .0 suffix if not already present
+    if not id_str.endswith('.0'):
+        id_str += '.0'
     
-    return normalized
+    return id_str
 
 
 def normalize_variable_name(var_name: str) -> str:

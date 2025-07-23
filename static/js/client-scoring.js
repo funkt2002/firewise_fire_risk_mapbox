@@ -46,8 +46,8 @@ class FireRiskScoring {
 
     // Get attributes by parcel ID for vector tile interactions
     getAttributesByParcelId(parcelId) {
-        const parcelNumber = this.dataStore.extractParcelNumber(parcelId);
-        return this.dataStore.getAttributeMap().get(parcelNumber);
+        const standardizedId = this.dataStore.standardizeParcelId(parcelId);
+        return this.dataStore.getAttributeMap().get(standardizedId);
     }
 
 
