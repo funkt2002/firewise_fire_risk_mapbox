@@ -1017,8 +1017,8 @@
             container: 'map',
             style: 'mapbox://styles/mapbox/satellite-streets-v12',
             center: [-119.758714, 34.44195],
-            zoom: 11,
-            maxZoom: 22,  // Increased from 16 to 22 for much closer zoom
+            zoom: 11.5,
+            maxZoom: 16,  // Match parcel tileset zoom range to prevent overzoom performance issues
             pitch: 0,
             bearing: 0
         });
@@ -1611,6 +1611,8 @@
             
             // Update map paint properties with smart ID lookup (no duplication)
             // This expression tries tile ID first, then adds .0 suffix if needed
+            // PERFORMANCE NOTE: Complex expressions can be slow at high zoom with many visible parcels
+            // Consider simplifying to single lookup for better performance if needed
             map.setPaintProperty('parcels-fill', 'fill-color', [
                 'case',
                 // Try direct lookup first
@@ -2628,7 +2630,7 @@
                 source: 'parcel-tiles',
                 'source-layer': 'tmp3nwzuj83', // Correct source layer name from your tileset
                 minzoom: 10, // Start at zoom 10 (no-scores tileset range)
-                maxzoom: 22,
+                maxzoom: 16, // Match tileset's actual zoom range to prevent overzoom
                 layout: {
                     'visibility': 'visible'
                 },
@@ -2644,7 +2646,7 @@
                 source: 'parcel-tiles',
                 'source-layer': 'tmp3nwzuj83', // Correct source layer name from your tileset
                 minzoom: 10, // Show boundaries at zoom 10+ (matches tileset range)
-                maxzoom: 22,
+                maxzoom: 16, // Match tileset's actual zoom range to prevent overzoom
                 layout: {
                     'visibility': 'visible'
                 },
@@ -2661,7 +2663,7 @@
                 source: 'parcel-tiles',
                 'source-layer': 'tmp3nwzuj83', // Correct source layer name from your tileset
                 minzoom: 10, // Start at zoom 10 (matches tileset range)
-                maxzoom: 22,
+                maxzoom: 16, // Match tileset's actual zoom range to prevent overzoom
                 filter: ['in', ['to-string', ['get', 'parcel_id']], ['literal', window.top500ParcelIds]],
                 paint: {
                     'line-color': '#0066ff',
