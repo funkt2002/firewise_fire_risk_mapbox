@@ -771,11 +771,19 @@ class UnifiedDataManager {
     // ====================
 
     startPeriodicCleanup() {
-        this.cleanupInterval = setInterval(() => {
-            this.performPeriodicCleanup();
-        }, this.cleanupFrequency);
+        // Use tracked interval to prevent memory leaks on page refresh
+        if (window.setTrackedInterval) {
+            this.cleanupInterval = window.setTrackedInterval(() => {
+                this.performPeriodicCleanup();
+            }, this.cleanupFrequency);
+        } else {
+            // Fallback for cases where cleanup system isn't initialized yet
+            this.cleanupInterval = setInterval(() => {
+                this.performPeriodicCleanup();
+            }, this.cleanupFrequency);
+        }
         
-        console.log('UnifiedDataManager: Minimal cleanup started (no duplicate data to clean)');
+        console.log('UnifiedDataManager: Minimal cleanup started (using tracked intervals to prevent leaks)');
     }
 
     performPeriodicCleanup() {
