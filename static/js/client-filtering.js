@@ -377,52 +377,56 @@ class ClientFilterManager {
                 window.map.setFilter('parcels-fill', null);
                 window.map.setFilter('parcels-boundary', null);
                 
-                // Create lookup object for visible parcels using normalized IDs
+                // Create single lookup object for visible parcels - no duplication
                 const visibleIds = {};
-                const visibleIdsWithDotZero = {};  // Also track .0 versions for mapbox matching
                 
                 filteredFeatures.forEach(f => {
                     const originalId = f.properties.parcel_id;
                     if (originalId) {
-                        // Standardize the ID and create both formats for tile compatibility
+                        // Store once with standardized .0 format
                         const standardizedId = this.dataStore.standardizeParcelId(originalId);
-                        const tileId = standardizedId.endsWith('.0') ? standardizedId.slice(0, -2) : standardizedId;
-                        
-                        // Add both formats for mapbox compatibility
                         visibleIds[standardizedId] = true;
-                        visibleIdsWithDotZero[tileId] = true;
                     }
                 });
                 
-                // Combine both lookups for mapbox matching
-                const combinedVisibleIds = { ...visibleIds, ...visibleIdsWithDotZero };
-                
-                console.log(`🔧 SPATIAL FILTER: Created combined ID lookup with ${Object.keys(combinedVisibleIds).length} ID variants`);
-                if (Object.keys(combinedVisibleIds).length > 0) {
-                    const sampleIds = Object.keys(combinedVisibleIds).slice(0, 3);
-                    console.log(`🔧 SPATIAL FILTER: Sample combined IDs:`, sampleIds);
+                console.log(`🔧 SPATIAL FILTER: Single storage lookup with ${Object.keys(visibleIds).length} parcels (no duplication)`);
+                if (Object.keys(visibleIds).length > 0) {
+                    const sampleIds = Object.keys(visibleIds).slice(0, 3);
+                    console.log(`🔧 SPATIAL FILTER: Sample IDs:`, sampleIds);
                 }
+                console.log('💾 MEMORY SAVED: Eliminated spatial filter ID duplication');
                 
-                // Update fill opacity using BOTH feature.id (via promoteId) AND parcel_id property
-                // This ensures compatibility with different ID formats
+                // Update fill opacity with smart ID lookup (no duplication)
                 window.map.setPaintProperty('parcels-fill', 'fill-opacity', [
                     'case',
                     [
                         'any',
-                        ['has', ['to-string', ['id']], ['literal', combinedVisibleIds]],
-                        ['has', ['to-string', ['get', 'parcel_id']], ['literal', combinedVisibleIds]]
+                        // Try direct match with feature.id
+                        ['has', ['to-string', ['id']], ['literal', visibleIds]],
+                        // Try direct match with parcel_id
+                        ['has', ['to-string', ['get', 'parcel_id']], ['literal', visibleIds]],
+                        // Try adding .0 to feature.id
+                        ['has', ['concat', ['to-string', ['id']], '.0'], ['literal', visibleIds]],
+                        // Try adding .0 to parcel_id
+                        ['has', ['concat', ['to-string', ['get', 'parcel_id']], '.0'], ['literal', visibleIds]]
                     ],
                     0.8,  // Normal opacity for included parcels
                     0.05  // Very faint for excluded parcels (so we can see it working)
                 ]);
                 
-                // Update boundary opacity using BOTH feature.id (via promoteId) AND parcel_id property
+                // Update boundary opacity with smart ID lookup (no duplication)
                 window.map.setPaintProperty('parcels-boundary', 'line-opacity', [
                     'case',
                     [
                         'any',
-                        ['has', ['to-string', ['id']], ['literal', combinedVisibleIds]],
-                        ['has', ['to-string', ['get', 'parcel_id']], ['literal', combinedVisibleIds]]
+                        // Try direct match with feature.id
+                        ['has', ['to-string', ['id']], ['literal', visibleIds]],
+                        // Try direct match with parcel_id
+                        ['has', ['to-string', ['get', 'parcel_id']], ['literal', visibleIds]],
+                        // Try adding .0 to feature.id
+                        ['has', ['concat', ['to-string', ['id']], '.0'], ['literal', visibleIds]],
+                        // Try adding .0 to parcel_id
+                        ['has', ['concat', ['to-string', ['get', 'parcel_id']], '.0'], ['literal', visibleIds]]
                     ],
                     0.3,   // Normal opacity for included parcels  
                     0.1    // Very faint outline for excluded parcels

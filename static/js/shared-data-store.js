@@ -101,6 +101,36 @@ class SharedDataStore {
         // Add .0 suffix if not already present
         return idStr.endsWith('.0') ? idStr : idStr + '.0';
     }
+
+    // Smart lookup that converts Mapbox tile IDs to attribute format at query time
+    // This eliminates the need to store duplicate data
+    getScoreForMapboxId(scoreObject, mapboxId) {
+        if (!mapboxId || !scoreObject) return undefined;
+        
+        // Convert mapbox ID to standardized .0 format for lookup
+        const standardizedId = this.standardizeParcelId(mapboxId);
+        return scoreObject[standardizedId];
+    }
+
+    // Helper for paint expressions - returns lookup function that converts IDs
+    createMapboxLookupExpression(scoreObject) {
+        // Instead of duplicating data, create expression that converts IDs at lookup time
+        return [
+            'case',
+            ['has', ['to-string', ['get', 'parcel_id']], ['literal', scoreObject]],
+            ['get', ['to-string', ['get', 'parcel_id']], ['literal', scoreObject]],
+            // Try with .0 suffix if not found
+            ['has', 
+                ['concat', ['to-string', ['get', 'parcel_id']], '.0'], 
+                ['literal', scoreObject]
+            ],
+            ['get', 
+                ['concat', ['to-string', ['get', 'parcel_id']], '.0'], 
+                ['literal', scoreObject]
+            ],
+            0 // Default value
+        ];
+    }
     
 
     // Store the complete dataset and build lookup structures once
