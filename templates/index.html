@@ -13,11 +13,10 @@
     <script src="{{ url_for('static', filename='welcome-popup.js') }}"></script>
     <script src="{{ url_for('static', filename='js/float32-converter.js') }}"></script>
     <script src="{{ url_for('static', filename='js/shared-data-store.js') }}"></script>
-    <script src="{{ url_for('static', filename='js/client-filtering.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/unified-data-manager.js') }}"></script>
     <script src="{{ url_for('static', filename='js/client-scoring.js') }}"></script>
     <script src="{{ url_for('static', filename='js/plotting.js') }}"></script>
     <script src="{{ url_for('static', filename='js/memory-tracker.js') }}"></script>
-    <script src="{{ url_for('static', filename='js/cache-manager.js') }}"></script>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
 </head>
 <body>
@@ -392,8 +391,7 @@
                 sharedDataStore: null,
                 performanceTracker: null,
                 apiClient: null,
-                clientFilterManager: null,
-                clientNormalizationManager: null,
+                unifiedDataManager: null,
                 fireRiskScoring: null
             },
             
@@ -997,16 +995,17 @@
         fireRiskApp.services.apiClient = new TimedAPIClient();
         
         // Initialize all managers with shared data store
-        fireRiskApp.services.clientFilterManager = new ClientFilterManager(fireRiskApp.services.sharedDataStore);
-        fireRiskApp.services.clientNormalizationManager = new ClientNormalizationManager(fireRiskApp.services.sharedDataStore);
+        fireRiskApp.services.unifiedDataManager = new UnifiedDataManager(fireRiskApp.services.sharedDataStore);
         fireRiskApp.services.fireRiskScoring = new FireRiskScoring(fireRiskApp.services.sharedDataStore);
         
         // Keep backward compatibility
         window.sharedDataStore = fireRiskApp.services.sharedDataStore;
         window.performanceTracker = fireRiskApp.services.performanceTracker;
         window.apiClient = fireRiskApp.services.apiClient;
-        window.clientFilterManager = fireRiskApp.services.clientFilterManager;
-        window.clientNormalizationManager = fireRiskApp.services.clientNormalizationManager;
+        window.unifiedDataManager = fireRiskApp.services.unifiedDataManager;
+        // Legacy references for compatibility
+        window.clientFilterManager = fireRiskApp.services.unifiedDataManager;
+        window.clientNormalizationManager = fireRiskApp.services.unifiedDataManager;
         window.fireRiskScoring = fireRiskApp.services.fireRiskScoring;
 
         // Create local references for easier access (these still update the namespace)
@@ -1163,8 +1162,8 @@
                     
                     if (clientResult) {
                         // Clear old data before setting new data
-                        if (window.cacheManager) {
-                            window.cacheManager.clearBeforeUpdate();
+                        if (window.unifiedDataManager) {
+                            window.unifiedDataManager.manualCleanup();
                         }
                         
                         // Memory tracking for client-side processing
@@ -1220,8 +1219,8 @@
                 const firstCalcTime = performance.now() - firstCalcStart;
                 
                 // Clear any existing data before setting new data
-                if (window.cacheManager) {
-                    window.cacheManager.clearBeforeUpdate();
+                if (window.unifiedDataManager) {
+                    window.unifiedDataManager.manualCleanup();
                 }
                 
                 // Use client-calculated scores, not server precomputed scores
