@@ -653,7 +653,7 @@
         }
 
         // Initialize map
-        mapboxgl.accessToken = '{{ mapbox_token }}' || 'YOUR_MAPBOX_TOKEN';
+        mapboxgl.accessToken = window.APP_CONFIG.mapboxToken || 'YOUR_MAPBOX_TOKEN';
         
         fireRiskApp.map = new mapboxgl.Map({
             container: 'map',

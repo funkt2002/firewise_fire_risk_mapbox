@@ -355,6 +355,15 @@
         </div>
     </div>
 
+    <!-- Configuration for external JavaScript files -->
+    <script>
+        window.APP_CONFIG = {
+            mapboxToken: '{{ mapbox_token }}',
+            baseUrl: '{{ url_for("index") }}',
+            staticUrl: '{{ url_for("static", filename="") }}'
+        };
+    </script>
+    
     <script src="{{ url_for('static', filename='js/main-app.js') }}"></script>
 
     <!-- Correlation Plot Modal -->
