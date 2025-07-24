@@ -158,7 +158,7 @@ class PlottingManager {
         if (window.fireRiskScoring && window.fireRiskScoring.currentDataset && window.fireRiskScoring.currentDataset.features) {
             features = window.fireRiskScoring.currentDataset.features;
         } else if (window.fireRiskApp.services.sharedDataStore) {
-            const dataset = window.fireRiskApp.services.sharedDataStore.getCompleteDataset();
+            const dataset = window.fireRiskApp.services.sharedDataStore.buildFeatureCollection();
             if (dataset && dataset.features) {
                 features = dataset.features;
             }
@@ -363,7 +363,7 @@ class PlottingManager {
         if (window.fireRiskScoring && window.fireRiskScoring.currentDataset && window.fireRiskScoring.currentDataset.features) {
             features = window.fireRiskScoring.currentDataset.features;
         } else if (window.fireRiskApp.services.sharedDataStore) {
-            const dataset = window.fireRiskApp.services.sharedDataStore.getCompleteDataset();
+            const dataset = window.fireRiskApp.services.sharedDataStore.buildFeatureCollection();
             if (dataset && dataset.features) {
                 features = dataset.features;
             }
@@ -553,7 +553,7 @@ class PlottingManager {
         if (window.fireRiskScoring && window.fireRiskScoring.currentDataset) {
             clientData = window.fireRiskScoring.currentDataset;
         } else if (window.fireRiskApp.services.sharedDataStore) {
-            clientData = window.fireRiskApp.services.sharedDataStore.getCompleteDataset();
+            clientData = window.fireRiskApp.services.sharedDataStore.buildFeatureCollection();
         }
         
         // Always use client-side for local normalization, quantile scoring, or when we have client data
@@ -824,7 +824,7 @@ class PlottingManager {
                 dataSource = window.fireRiskScoring.currentDataset;
                 console.log('📊 SCORE DISTRIBUTION: Using fireRiskScoring dataset');
             } else if (window.fireRiskApp.services.sharedDataStore) {
-                dataSource = window.fireRiskApp.services.sharedDataStore.getCompleteDataset();
+                dataSource = window.fireRiskApp.services.sharedDataStore.buildFeatureCollection();
                 if (dataSource && dataSource.features) {
                     console.log('📊 SCORE DISTRIBUTION: Using SharedDataStore dataset');
                 }

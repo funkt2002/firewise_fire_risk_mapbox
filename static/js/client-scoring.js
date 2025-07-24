@@ -59,10 +59,9 @@ class FireRiskScoring {
  
     // Process data with filters and calculate scores (comprehensive client-side)
     processData(weights, filters, maxParcels = 500, use_local_normalization = false, use_quantile = false, use_raw_scoring = false) {
-        console.log('🎯 FireRiskScoring: Accessing shared dataset (no duplicate copy)');
-        const completeDataset = this.dataStore.getCompleteDataset();
-        if (!completeDataset) {
-            console.error('No complete dataset stored. Call storeCompleteData() first.');
+        console.log('🎯 FireRiskScoring: Using direct typed array access (no FeatureCollection needed)');
+        if (!this.dataStore.isDataLoaded) {
+            console.error('No data loaded in shared store. Call storeCompleteData() first.');
             return null;
         }
 
@@ -169,16 +168,21 @@ class FireRiskScoring {
 
     // Calculate composite scores using weights (client-side)
     calculateScores(weights, maxParcels = 500, use_local_normalization = false, use_quantile = false, use_raw_scoring = false, features = null) {
-        const completeDataset = this.dataStore.getCompleteDataset();
-        const parcelsToScore = features || this.currentFeatures || completeDataset?.features;
+        const parcelsToScore = features || this.currentFeatures;
         
-        if (!parcelsToScore) {
+        if (!parcelsToScore && !this.dataStore.isDataLoaded) {
             console.error('No data available for scoring.');
             return null;
         }
+        
+        // If no specific features provided, use all data via direct access
+        if (!parcelsToScore) {
+            console.log('🎯 Using direct typed array access for scoring (no FeatureCollection needed)');
+        }
 
         const start = performance.now();
-        console.log(`Starting client-side scoring for ${parcelsToScore.length} parcels...`);
+        const parcelCount = parcelsToScore ? parcelsToScore.length : this.dataStore.getRowCount();
+        console.log(`Starting client-side scoring for ${parcelCount} parcels...`);
 
         // Normalize weights
         const weightStart = performance.now();
@@ -307,15 +311,12 @@ class FireRiskScoring {
 
     // Get current parcel count
     getParcelCount() {
-        const completeDataset = this.dataStore.getCompleteDataset();
-        return this.currentFeatures ? this.currentFeatures.length : 
-               (completeDataset ? completeDataset.features.length : 0);
+        return this.currentFeatures ? this.currentFeatures.length : this.dataStore.getRowCount();
     }
 
     // Get complete dataset count
     getCompleteDatasetCount() {
-        const completeDataset = this.dataStore.getCompleteDataset();
-        return completeDataset ? completeDataset.features.length : 0;
+        return this.dataStore.getRowCount();
     }
 
     // Get filtered dataset count

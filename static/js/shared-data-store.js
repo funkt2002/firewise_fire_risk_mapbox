@@ -3,8 +3,7 @@
 
 class SharedDataStore {
     constructor() {
-        // Cached on-demand: FeatureCollection created once when first accessed
-        this.completeDataset = null;
+        // No cached FeatureCollection - created on-demand only when needed
         this.attributeMap = new Map();
         this.baseVariables = [
             'qtrmi', 'hwui', 'hagri', 'hvhsz', 'hfb', 
@@ -259,8 +258,7 @@ class SharedDataStore {
         const start = performance.now();
         console.log('SharedDataStore: Storing complete dataset');
         
-        // Clear any cached FeatureCollection when new data is loaded
-        this.completeDataset = null;
+        // No cached FeatureCollection - will be created on-demand only
         
         // Store data in memory-efficient format
         this.storeDataEfficiently(attributeData);
@@ -271,22 +269,17 @@ class SharedDataStore {
         const loadTime = performance.now() - start;
         const memoryUsed = this.getMemoryUsage();
         console.log(`SharedDataStore: Stored ${this.rowCount} features in ${loadTime.toFixed(1)}ms`);
-        console.log(`Memory leak fix: FeatureCollection cached on first access (not created repeatedly)`);
-        console.log(`Memory usage: ${memoryUsed.toFixed(2)}MB typed arrays + on-demand FeatureCollection`);
+        console.log(`Memory optimization: No cached FeatureCollection - created on-demand only when needed`);
+        console.log(`Memory usage: ${memoryUsed.toFixed(2)}MB typed arrays (no FeatureCollection cache)`);
         
         this.isDataLoaded = true;
-        // Return on-demand FeatureCollection to save memory
-        return this.getCompleteDataset();
+        // Build FeatureCollection on-demand for legacy compatibility
+        return this.buildFeatureCollection();
     }
 
-    // Clear cached FeatureCollection to free memory (keeps typed arrays)
+    // No longer needed - FeatureCollection is not cached
     clearFeatureCollectionCache() {
-        if (this.completeDataset) {
-            console.log('SharedDataStore: Clearing FeatureCollection cache to free memory');
-            this.completeDataset = null;
-            // Force garbage collection hint
-            if (window.gc) window.gc();
-        }
+        console.log('SharedDataStore: No FeatureCollection cache to clear - using on-demand creation');
     }
 
     // Build attribute lookup map using normalized IDs
@@ -351,49 +344,94 @@ class SharedDataStore {
         console.log(`✅ Attribute map built: ${mappedCount} parcels mapped`);
     }
 
-    // Get complete dataset - cached on-demand creation to prevent memory leaks
-    getCompleteDataset() {
+    // DIRECT ACCESS METHODS - No FeatureCollection needed
+    
+    // Get total row count
+    getRowCount() {
+        return this.rowCount;
+    }
+    
+    // Get parcel ID by index
+    getParcelId(index) {
+        return this.parcelIds[index];
+    }
+    
+    // Get property value by index and column name
+    getPropertyValue(index, columnName) {
+        if (columnName === 'parcel_id' || columnName === 'id') {
+            return this.parcelIds[index];
+        }
+        return this.getNumericValue(index, columnName);
+    }
+    
+    // Efficient row iteration without FeatureCollection creation
+    iterateRows(callback) {
+        for (let i = 0; i < this.rowCount; i++) {
+            const rowData = {
+                parcel_id: this.parcelIds[i],
+                index: i
+            };
+            
+            // Add all numeric properties
+            for (let j = 0; j < this.numericColumns.length; j++) {
+                const columnName = this.numericColumns[j];
+                rowData[columnName] = this.numericData[i * this.numericColumns.length + j];
+            }
+            
+            for (let j = 0; j < this.scoreColumns.length; j++) {
+                const columnName = this.scoreColumns[j];
+                const encodedValue = this.scoreData[i * this.scoreColumns.length + j];
+                rowData[columnName] = encodedValue / 65535;
+            }
+            
+            for (let j = 0; j < this.countColumns.length; j++) {
+                const columnName = this.countColumns[j];
+                rowData[columnName] = this.countData[i * this.countColumns.length + j];
+            }
+            
+            for (let j = 0; j < this.percentColumns.length; j++) {
+                const columnName = this.percentColumns[j];
+                const encodedValue = this.percentData[i * this.percentColumns.length + j];
+                rowData[columnName] = encodedValue / 255;
+            }
+            
+            callback(rowData, i);
+        }
+    }
+    
+    // Create FeatureCollection on-demand (not cached) - only for consumers that need it
+    buildFeatureCollection() {
         if (!this.isDataLoaded) {
             return null;
         }
         
-        // Return cached version if already created
-        if (this.completeDataset) {
-            return this.completeDataset;
-        }
+        console.log('SharedDataStore: Building FeatureCollection on-demand (no cache)');
         
-        console.log('SharedDataStore: Creating FeatureCollection (one-time cache)');
-        
-        // Create FeatureCollection once and cache it
         const features = [];
         for (let i = 0; i < this.rowCount; i++) {
             const properties = { parcel_id: this.parcelIds[i] };
             
-            // Build properties from numeric data (Float32)
+            // Build properties from typed arrays
             for (let j = 0; j < this.numericColumns.length; j++) {
                 const columnName = this.numericColumns[j];
-                const value = this.numericData[i * this.numericColumns.length + j];
-                properties[columnName] = value;
+                properties[columnName] = this.numericData[i * this.numericColumns.length + j];
             }
             
-            // Build properties from score data (Uint16 with decoding)
             for (let j = 0; j < this.scoreColumns.length; j++) {
                 const columnName = this.scoreColumns[j];
                 const encodedValue = this.scoreData[i * this.scoreColumns.length + j];
-                properties[columnName] = encodedValue / 65535; // Convert back to 0-1 range
+                properties[columnName] = encodedValue / 65535;
             }
             
-            // Build properties from count data (Uint16 without scaling)
             for (let j = 0; j < this.countColumns.length; j++) {
                 const columnName = this.countColumns[j];
                 properties[columnName] = this.countData[i * this.countColumns.length + j];
             }
             
-            // Build properties from percent data (Uint8 with decoding)
             for (let j = 0; j < this.percentColumns.length; j++) {
                 const columnName = this.percentColumns[j];
                 const encodedValue = this.percentData[i * this.percentColumns.length + j];
-                properties[columnName] = encodedValue / 255; // Convert back to 0-1 range
+                properties[columnName] = encodedValue / 255;
             }
             
             // Add string properties from attribute map if needed
@@ -409,17 +447,20 @@ class SharedDataStore {
             features.push({
                 type: "Feature",
                 properties: properties,
-                geometry: null  // No geometry for attribute-only data
+                geometry: null
             });
         }
         
-        this.completeDataset = {
+        console.log(`SharedDataStore: FeatureCollection built on-demand (${features.length} features, not cached)`);
+        return {
             type: "FeatureCollection",
             features: features
         };
-        
-        console.log(`SharedDataStore: FeatureCollection cached (${features.length} features)`);
-        return this.completeDataset;
+    }
+    
+    // Legacy method for backward compatibility - now uses on-demand creation
+    getCompleteDataset() {
+        return this.buildFeatureCollection();
     }
 
     // Get attribute map
@@ -441,7 +482,7 @@ class SharedDataStore {
 
     // Clear all data
     clear() {
-        this.completeDataset = null;
+        // No cached FeatureCollection to clear
         this.attributeMap.clear();
         this.numericData = null;
         this.scoreData = null;
