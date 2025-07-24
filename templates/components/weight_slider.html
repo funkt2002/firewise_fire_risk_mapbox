@@ -1,4 +1,6 @@
-<!-- Weight Slider Component -->
+<!-- Weight Slider Component - Conditional Rendering for Phase 2A Lazy Loading -->
+{% if variable.enabled %}
+<!-- Full Weight Slider for Enabled Variables -->
 <div class="variable-container" data-variable="{{ variable.id }}">
     <div class="variable-header">
         <input type="checkbox" class="variable-enable-checkbox" id="enable-{{ variable.id }}" {{ 'checked' if variable.enabled else '' }}>
@@ -21,3 +23,7 @@
         </div>
     </div>
 </div>
+{% else %}
+<!-- Placeholder for Disabled Variables - Phase 2A Lazy Loading -->
+{% include 'components/weight_slider_placeholder.html' %}
+{% endif %}

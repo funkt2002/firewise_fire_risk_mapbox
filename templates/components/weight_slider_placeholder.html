@@ -1,0 +1,92 @@
+<!-- Weight Slider Placeholder for Lazy Loading -->
+<div class="variable-container variable-placeholder" data-variable="{{ variable.id }}" data-lazy-load="true">
+    <div class="variable-header">
+        <input type="checkbox" class="variable-enable-checkbox" id="enable-{{ variable.id }}" disabled>
+        <span class="variable-name">{{ variable.name }}</span>
+    </div>
+    <div class="variable-placeholder-content">
+        <div class="placeholder-message">
+            <div class="placeholder-icon">⚙️</div>
+            <div class="placeholder-text">Click to enable {{ variable.name }}</div>
+            <div class="placeholder-subtitle">{% if variable.subtitle %}{{ variable.subtitle }}{% endif %}</div>
+        </div>
+        <button class="enable-slider-btn" onclick="window.componentLazyLoader.loadWeightSlider('{{ variable.id }}')">
+            Enable Slider
+        </button>
+    </div>
+</div>
+
+<style>
+.variable-placeholder {
+    border: 2px dashed #ddd;
+    border-radius: 8px;
+    margin-bottom: 15px;
+    transition: all 0.3s ease;
+}
+
+.variable-placeholder:hover {
+    border-color: #007bff;
+    background-color: #f8f9fa;
+}
+
+.variable-placeholder .variable-header {
+    padding: 10px 15px;
+    background-color: #f5f5f5;
+    border-radius: 6px 6px 0 0;
+}
+
+.variable-placeholder .variable-header input[type="checkbox"] {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.variable-placeholder-content {
+    padding: 20px;
+    text-align: center;
+}
+
+.placeholder-message {
+    margin-bottom: 15px;
+}
+
+.placeholder-icon {
+    font-size: 24px;
+    margin-bottom: 8px;
+}
+
+.placeholder-text {
+    font-weight: 500;
+    color: #333;
+    margin-bottom: 4px;
+}
+
+.placeholder-subtitle {
+    font-size: 11px;
+    color: #666;
+    font-style: italic;
+}
+
+.enable-slider-btn {
+    background-color: #007bff;
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    transition: background-color 0.2s;
+}
+
+.enable-slider-btn:hover {
+    background-color: #0056b3;
+}
+
+.loading .enable-slider-btn {
+    background-color: #6c757d;
+    cursor: not-allowed;
+}
+
+.loading .enable-slider-btn:after {
+    content: " Loading...";
+}
+</style>
