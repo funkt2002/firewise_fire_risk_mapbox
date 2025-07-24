@@ -41,22 +41,31 @@ class SharedDataStore {
         
         if (this.rowCount === 0) return;
         
-        // Identify numeric columns
+        // Identify numeric columns and separate score columns (0-1 range) for optimization
         const firstRow = attributes[0];
         this.numericColumns = [];
+        this.scoreColumns = [];
         const stringColumns = [];
         
         Object.keys(firstRow).forEach(key => {
             if (typeof firstRow[key] === 'number' && key !== 'parcel_id') {
-                this.numericColumns.push(key);
+                // Score columns (0-1 range) can use Uint16 for 50% memory reduction
+                if (key.endsWith('_s') || key === 'score') {
+                    this.scoreColumns.push(key);
+                } else {
+                    this.numericColumns.push(key);
+                }
             } else {
                 stringColumns.push(key);
             }
         });
         
-        // Allocate Float32Array for all numeric data
+        // Allocate optimized arrays
         const totalNumericValues = this.rowCount * this.numericColumns.length;
-        this.numericData = new Float32Array(totalNumericValues);
+        const totalScoreValues = this.rowCount * this.scoreColumns.length;
+        
+        this.numericData = new Float32Array(totalNumericValues);  // Regular numeric data
+        this.scoreData = new Uint16Array(totalScoreValues);       // Score data (0-1) with 50% memory savings
         
         // Store parcel IDs in original format
         this.parcelIds = new Array(this.rowCount);
@@ -68,29 +77,58 @@ class SharedDataStore {
             // Store parcel ID as-is
             this.parcelIds[i] = row.parcel_id || row.id;
             
-            // Store numeric values
+            // Store regular numeric values (Float32)
             for (let j = 0; j < this.numericColumns.length; j++) {
                 const value = row[this.numericColumns[j]] || 0;
                 this.numericData[i * this.numericColumns.length + j] = value;
             }
+            
+            // Store score values (Uint16 with scaling for 50% memory reduction)
+            for (let j = 0; j < this.scoreColumns.length; j++) {
+                const value = row[this.scoreColumns[j]] || 0;
+                // Scale 0-1 values to 0-65535 for Uint16 storage
+                this.scoreData[i * this.scoreColumns.length + j] = Math.round(value * 65535);
+            }
         }
         
-        console.log(`📊 Stored ${this.rowCount} rows with ${this.numericColumns.length} numeric columns`);
+        console.log(`📊 Stored ${this.rowCount} rows: ${this.numericColumns.length} numeric + ${this.scoreColumns.length} score columns (Uint16 optimized)`);
     }
     
-    // Get numeric value from typed array
+    // Get numeric value from typed array (handles both Float32 and Uint16 score data)
     getNumericValue(rowIndex, columnName) {
+        // Check if it's a score column (Uint16 with scaling)
+        const scoreIndex = this.scoreColumns.indexOf(columnName);
+        if (scoreIndex !== -1) {
+            const encodedValue = this.scoreData[rowIndex * this.scoreColumns.length + scoreIndex];
+            return encodedValue / 65535; // Convert back to 0-1 range
+        }
+        
+        // Check if it's a regular numeric column (Float32)
         const colIndex = this.numericColumns.indexOf(columnName);
-        if (colIndex === -1) return null;
-        return this.numericData[rowIndex * this.numericColumns.length + colIndex];
+        if (colIndex !== -1) {
+            return this.numericData[rowIndex * this.numericColumns.length + colIndex];
+        }
+        
+        return null;
     }
     
-    // Calculate memory usage
+    // Calculate memory usage (includes both Float32 and optimized Uint16 arrays)
     getMemoryUsage() {
-        if (!this.numericData) return 0;
-        const numericBytes = this.numericData.byteLength;
+        if (!this.numericData && !this.scoreData) return 0;
+        
+        const numericBytes = this.numericData ? this.numericData.byteLength : 0;
+        const scoreBytes = this.scoreData ? this.scoreData.byteLength : 0;
         const idBytes = this.parcelIds.length * 50; // Estimate 50 bytes per ID string
-        return (numericBytes + idBytes) / (1024 * 1024); // Convert to MB
+        const totalBytes = numericBytes + scoreBytes + idBytes;
+        
+        // Calculate savings from Uint16 optimization
+        const float32EquivalentScoreBytes = this.scoreColumns.length * this.rowCount * 4;
+        const actualScoreBytes = scoreBytes;
+        const scoreSavings = float32EquivalentScoreBytes - actualScoreBytes;
+        
+        console.log(`💾 Memory optimization: Score columns saved ${(scoreSavings / (1024 * 1024)).toFixed(2)}MB (${this.scoreColumns.length} columns using Uint16)`);
+        
+        return totalBytes / (1024 * 1024); // Convert to MB
     }
 
     // ===== UNIVERSAL ID HELPERS =====
@@ -189,10 +227,17 @@ class SharedDataStore {
                     id: parcelId
                 };
                 
-                // Add numeric columns
+                // Add numeric columns (Float32)
                 for (let j = 0; j < this.numericColumns.length; j++) {
                     const colName = this.numericColumns[j];
                     attrs[colName] = this.numericData[i * this.numericColumns.length + j];
+                }
+                
+                // Add score columns (Uint16 with decoding)
+                for (let j = 0; j < this.scoreColumns.length; j++) {
+                    const colName = this.scoreColumns[j];
+                    const encodedValue = this.scoreData[i * this.scoreColumns.length + j];
+                    attrs[colName] = encodedValue / 65535; // Convert back to 0-1 range
                 }
                 
                 // Add any string properties from original data
@@ -229,11 +274,18 @@ class SharedDataStore {
         for (let i = 0; i < this.rowCount; i++) {
             const properties = { parcel_id: this.parcelIds[i] };
             
-            // Build properties from numeric data
+            // Build properties from numeric data (Float32)
             for (let j = 0; j < this.numericColumns.length; j++) {
                 const columnName = this.numericColumns[j];
                 const value = this.numericData[i * this.numericColumns.length + j];
                 properties[columnName] = value;
+            }
+            
+            // Build properties from score data (Uint16 with decoding)
+            for (let j = 0; j < this.scoreColumns.length; j++) {
+                const columnName = this.scoreColumns[j];
+                const encodedValue = this.scoreData[i * this.scoreColumns.length + j];
+                properties[columnName] = encodedValue / 65535; // Convert back to 0-1 range
             }
             
             // Add string properties from attribute map if needed
@@ -284,7 +336,9 @@ class SharedDataStore {
         this.completeDataset = null;
         this.attributeMap.clear();
         this.numericData = null;
+        this.scoreData = null;
         this.numericColumns = [];
+        this.scoreColumns = [];
         this.parcelIds = [];
         this.rowCount = 0;
         this.isDataLoaded = false;
