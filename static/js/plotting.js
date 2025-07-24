@@ -157,8 +157,11 @@ class PlottingManager {
         
         if (window.fireRiskScoring && window.fireRiskScoring.currentDataset && window.fireRiskScoring.currentDataset.features) {
             features = window.fireRiskScoring.currentDataset.features;
-        } else if (window.currentData && window.currentData.features) {
-            features = window.currentData.features;
+        } else if (window.fireRiskApp.services.sharedDataStore) {
+            const dataset = window.fireRiskApp.services.sharedDataStore.getCompleteDataset();
+            if (dataset && dataset.features) {
+                features = dataset.features;
+            }
         }
         
         if (!features || features.length === 0) {
@@ -356,14 +359,14 @@ class PlottingManager {
         let features = null;
         let attributes = null;
         
-        // Check for AttributeCollection format first
-        if (window.currentData && window.currentData.type === "AttributeCollection") {
-            attributes = window.currentData.attributes;
-            console.log('Using AttributeCollection format');
-        } else if (window.fireRiskScoring && window.fireRiskScoring.currentDataset && window.fireRiskScoring.currentDataset.features) {
+        // Try to get data from multiple sources
+        if (window.fireRiskScoring && window.fireRiskScoring.currentDataset && window.fireRiskScoring.currentDataset.features) {
             features = window.fireRiskScoring.currentDataset.features;
-        } else if (window.currentData && window.currentData.features) {
-            features = window.currentData.features;
+        } else if (window.fireRiskApp.services.sharedDataStore) {
+            const dataset = window.fireRiskApp.services.sharedDataStore.getCompleteDataset();
+            if (dataset && dataset.features) {
+                features = dataset.features;
+            }
         }
         
         // Convert attributes to features format if needed
@@ -549,8 +552,8 @@ class PlottingManager {
         let clientData = null;
         if (window.fireRiskScoring && window.fireRiskScoring.currentDataset) {
             clientData = window.fireRiskScoring.currentDataset;
-        } else if (window.currentData) {
-            clientData = window.currentData;
+        } else if (window.fireRiskApp.services.sharedDataStore) {
+            clientData = window.fireRiskApp.services.sharedDataStore.getCompleteDataset();
         }
         
         // Always use client-side for local normalization, quantile scoring, or when we have client data
@@ -815,14 +818,16 @@ class PlottingManager {
         try {
             console.log('📊 SCORE DISTRIBUTION: Starting...');
             
-            // Check both client-side scoring data and legacy currentData
+            // Check both client-side scoring data and SharedDataStore
             let dataSource = null;
             if (window.fireRiskScoring && window.fireRiskScoring.currentDataset && window.fireRiskScoring.currentDataset.features) {
                 dataSource = window.fireRiskScoring.currentDataset;
                 console.log('📊 SCORE DISTRIBUTION: Using fireRiskScoring dataset');
-            } else if (window.currentData && window.currentData.features) {
-                dataSource = window.currentData;
-                console.log('📊 SCORE DISTRIBUTION: Using legacy currentData dataset');
+            } else if (window.fireRiskApp.services.sharedDataStore) {
+                dataSource = window.fireRiskApp.services.sharedDataStore.getCompleteDataset();
+                if (dataSource && dataSource.features) {
+                    console.log('📊 SCORE DISTRIBUTION: Using SharedDataStore dataset');
+                }
             }
             
             if (!dataSource) {

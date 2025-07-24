@@ -12,7 +12,6 @@ class MemoryTracker {
         this.trackedObjects = {
             'SharedDataStore.completeDataset': () => window.sharedDataStore?.completeDataset,
             'SharedDataStore.attributeMap': () => window.sharedDataStore?.attributeMap,
-            'currentData': () => window.currentData,
             'fireRiskScoring.currentDataset': () => window.fireRiskScoring?.currentDataset,
             'fireRiskScoring.factorScoresMap': () => window.fireRiskScoring?.factorScoresMap,
             'clientNormalizationManager.globalNormData': () => window.clientNormalizationManager?.globalNormData,

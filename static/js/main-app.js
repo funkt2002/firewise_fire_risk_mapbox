@@ -215,7 +215,6 @@
                 if (window.unifiedDataManager) window.unifiedDataManager.destroy();
                 
                 // 5. Clear ALL application data
-                window.currentData = null;
                 window.parcelScores = null;
                 window.top500ParcelIds = null;
                 window.fireRiskApp = null;
