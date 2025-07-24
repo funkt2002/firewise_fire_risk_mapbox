@@ -41,31 +41,75 @@ class SharedDataStore {
         
         if (this.rowCount === 0) return;
         
-        // Identify numeric columns and separate score columns (0-1 range) for optimization
+        // Analyze all numeric columns to determine optimal storage types
         const firstRow = attributes[0];
-        this.numericColumns = [];
-        this.scoreColumns = [];
+        this.numericColumns = [];      // Float32 - high precision needed
+        this.scoreColumns = [];        // Uint16 - 0-1 range with scaling
+        this.countColumns = [];        // Uint16 - integer counts
+        this.percentColumns = [];      // Uint8 - 0-1 range as percentages  
         const stringColumns = [];
+        
+        // Analyze value ranges for optimization (sample first 1000 rows)
+        const sampleSize = Math.min(1000, attributes.length);
+        const columnStats = {};
         
         Object.keys(firstRow).forEach(key => {
             if (typeof firstRow[key] === 'number' && key !== 'parcel_id') {
-                // Score columns (0-1 range) can use Uint16 for 50% memory reduction
-                if (key.endsWith('_s') || key === 'score') {
-                    this.scoreColumns.push(key);
-                } else {
-                    this.numericColumns.push(key);
-                }
-            } else {
-                stringColumns.push(key);
+                columnStats[key] = { min: Infinity, max: -Infinity, isInteger: true };
             }
         });
         
-        // Allocate optimized arrays
+        // Sample data to determine ranges
+        for (let i = 0; i < sampleSize; i++) {
+            const row = attributes[i];
+            Object.keys(columnStats).forEach(key => {
+                const value = row[key];
+                if (typeof value === 'number') {
+                    columnStats[key].min = Math.min(columnStats[key].min, value);
+                    columnStats[key].max = Math.max(columnStats[key].max, value);
+                    if (columnStats[key].isInteger && !Number.isInteger(value)) {
+                        columnStats[key].isInteger = false;
+                    }
+                }
+            });
+        }
+        
+        // Categorize columns based on analysis
+        Object.keys(columnStats).forEach(key => {
+            const stats = columnStats[key];
+            const range = stats.max - stats.min;
+            
+            if (key.endsWith('_s') || key === 'score') {
+                // Score columns (0-1 range) → Uint16 with scaling  
+                this.scoreColumns.push(key);
+            } else if (stats.isInteger && stats.min >= 0 && stats.max <= 65535) {
+                // Integer counts that fit in Uint16 → Uint16
+                this.countColumns.push(key);
+            } else if (!stats.isInteger && stats.min >= 0 && stats.max <= 1 && range > 0.01) {
+                // Decimal percentages/fractions (0-1) → Uint8 with scaling
+                this.percentColumns.push(key);
+            } else {
+                // Everything else → Float32 (high precision needed)
+                this.numericColumns.push(key);
+            }
+        });
+        
+        console.log(`🔍 Column optimization analysis:`);
+        console.log(`  Float32 (${this.numericColumns.length}): ${this.numericColumns.join(', ')}`);
+        console.log(`  Uint16 scores (${this.scoreColumns.length}): ${this.scoreColumns.join(', ')}`);
+        console.log(`  Uint16 counts (${this.countColumns.length}): ${this.countColumns.join(', ')}`);
+        console.log(`  Uint8 percents (${this.percentColumns.length}): ${this.percentColumns.join(', ')}`);
+        
+        // Allocate optimized arrays based on data types
         const totalNumericValues = this.rowCount * this.numericColumns.length;
         const totalScoreValues = this.rowCount * this.scoreColumns.length;
+        const totalCountValues = this.rowCount * this.countColumns.length;
+        const totalPercentValues = this.rowCount * this.percentColumns.length;
         
-        this.numericData = new Float32Array(totalNumericValues);  // Regular numeric data
-        this.scoreData = new Uint16Array(totalScoreValues);       // Score data (0-1) with 50% memory savings
+        this.numericData = new Float32Array(totalNumericValues);   // High precision data
+        this.scoreData = new Uint16Array(totalScoreValues);        // 0-1 scores (50% savings)
+        this.countData = new Uint16Array(totalCountValues);        // Integer counts (50% savings)
+        this.percentData = new Uint8Array(totalPercentValues);     // 0-1 percents (75% savings)
         
         // Store parcel IDs in original format
         this.parcelIds = new Array(this.rowCount);
@@ -89,18 +133,44 @@ class SharedDataStore {
                 // Scale 0-1 values to 0-65535 for Uint16 storage
                 this.scoreData[i * this.scoreColumns.length + j] = Math.round(value * 65535);
             }
+            
+            // Store count values (Uint16 for integer counts)
+            for (let j = 0; j < this.countColumns.length; j++) {
+                const value = row[this.countColumns[j]] || 0;
+                this.countData[i * this.countColumns.length + j] = value;
+            }
+            
+            // Store percent values (Uint8 with scaling for 75% memory reduction)
+            for (let j = 0; j < this.percentColumns.length; j++) {
+                const value = row[this.percentColumns[j]] || 0;
+                // Scale 0-1 values to 0-255 for Uint8 storage
+                this.percentData[i * this.percentColumns.length + j] = Math.round(value * 255);
+            }
         }
         
-        console.log(`📊 Stored ${this.rowCount} rows: ${this.numericColumns.length} numeric + ${this.scoreColumns.length} score columns (Uint16 optimized)`);
+        console.log(`📊 Stored ${this.rowCount} rows with comprehensive data type optimization:`);
     }
     
-    // Get numeric value from typed array (handles both Float32 and Uint16 score data)
+    // Get numeric value from typed array (handles Float32, Uint16, and Uint8 data types)
     getNumericValue(rowIndex, columnName) {
         // Check if it's a score column (Uint16 with scaling)
         const scoreIndex = this.scoreColumns.indexOf(columnName);
         if (scoreIndex !== -1) {
             const encodedValue = this.scoreData[rowIndex * this.scoreColumns.length + scoreIndex];
             return encodedValue / 65535; // Convert back to 0-1 range
+        }
+        
+        // Check if it's a count column (Uint16 without scaling)
+        const countIndex = this.countColumns.indexOf(columnName);
+        if (countIndex !== -1) {
+            return this.countData[rowIndex * this.countColumns.length + countIndex];
+        }
+        
+        // Check if it's a percent column (Uint8 with scaling)
+        const percentIndex = this.percentColumns.indexOf(columnName);
+        if (percentIndex !== -1) {
+            const encodedValue = this.percentData[rowIndex * this.percentColumns.length + percentIndex];
+            return encodedValue / 255; // Convert back to 0-1 range
         }
         
         // Check if it's a regular numeric column (Float32)
@@ -112,21 +182,33 @@ class SharedDataStore {
         return null;
     }
     
-    // Calculate memory usage (includes both Float32 and optimized Uint16 arrays)
+    // Calculate memory usage (includes Float32, Uint16, and Uint8 arrays)
     getMemoryUsage() {
-        if (!this.numericData && !this.scoreData) return 0;
+        if (!this.numericData && !this.scoreData && !this.countData && !this.percentData) return 0;
         
         const numericBytes = this.numericData ? this.numericData.byteLength : 0;
         const scoreBytes = this.scoreData ? this.scoreData.byteLength : 0;
+        const countBytes = this.countData ? this.countData.byteLength : 0;
+        const percentBytes = this.percentData ? this.percentData.byteLength : 0;
         const idBytes = this.parcelIds.length * 50; // Estimate 50 bytes per ID string
-        const totalBytes = numericBytes + scoreBytes + idBytes;
+        const totalBytes = numericBytes + scoreBytes + countBytes + percentBytes + idBytes;
         
-        // Calculate savings from Uint16 optimization
+        // Calculate total savings from optimizations
         const float32EquivalentScoreBytes = this.scoreColumns.length * this.rowCount * 4;
-        const actualScoreBytes = scoreBytes;
-        const scoreSavings = float32EquivalentScoreBytes - actualScoreBytes;
+        const float32EquivalentCountBytes = this.countColumns.length * this.rowCount * 4;
+        const float32EquivalentPercentBytes = this.percentColumns.length * this.rowCount * 4;
         
-        console.log(`💾 Memory optimization: Score columns saved ${(scoreSavings / (1024 * 1024)).toFixed(2)}MB (${this.scoreColumns.length} columns using Uint16)`);
+        const scoreSavings = float32EquivalentScoreBytes - scoreBytes;
+        const countSavings = float32EquivalentCountBytes - countBytes;
+        const percentSavings = float32EquivalentPercentBytes - percentBytes;
+        const totalSavings = scoreSavings + countSavings + percentSavings;
+        
+        console.log(`💾 Memory optimization summary:`);
+        console.log(`  Float32: ${this.numericColumns.length} cols = ${(numericBytes / (1024 * 1024)).toFixed(2)}MB`);
+        console.log(`  Uint16 scores: ${this.scoreColumns.length} cols = ${(scoreBytes / (1024 * 1024)).toFixed(2)}MB (saved ${(scoreSavings / (1024 * 1024)).toFixed(2)}MB)`);
+        console.log(`  Uint16 counts: ${this.countColumns.length} cols = ${(countBytes / (1024 * 1024)).toFixed(2)}MB (saved ${(countSavings / (1024 * 1024)).toFixed(2)}MB)`);
+        console.log(`  Uint8 percents: ${this.percentColumns.length} cols = ${(percentBytes / (1024 * 1024)).toFixed(2)}MB (saved ${(percentSavings / (1024 * 1024)).toFixed(2)}MB)`);
+        console.log(`  Total optimization: ${(totalSavings / (1024 * 1024)).toFixed(2)}MB saved vs Float32-only`);
         
         return totalBytes / (1024 * 1024); // Convert to MB
     }
@@ -240,6 +322,19 @@ class SharedDataStore {
                     attrs[colName] = encodedValue / 65535; // Convert back to 0-1 range
                 }
                 
+                // Add count columns (Uint16 without scaling)
+                for (let j = 0; j < this.countColumns.length; j++) {
+                    const colName = this.countColumns[j];
+                    attrs[colName] = this.countData[i * this.countColumns.length + j];
+                }
+                
+                // Add percent columns (Uint8 with decoding)
+                for (let j = 0; j < this.percentColumns.length; j++) {
+                    const colName = this.percentColumns[j];
+                    const encodedValue = this.percentData[i * this.percentColumns.length + j];
+                    attrs[colName] = encodedValue / 255; // Convert back to 0-1 range
+                }
+                
                 // Add any string properties from original data
                 const originalRow = attributeData.attributes[i];
                 Object.keys(originalRow).forEach(key => {
@@ -286,6 +381,19 @@ class SharedDataStore {
                 const columnName = this.scoreColumns[j];
                 const encodedValue = this.scoreData[i * this.scoreColumns.length + j];
                 properties[columnName] = encodedValue / 65535; // Convert back to 0-1 range
+            }
+            
+            // Build properties from count data (Uint16 without scaling)
+            for (let j = 0; j < this.countColumns.length; j++) {
+                const columnName = this.countColumns[j];
+                properties[columnName] = this.countData[i * this.countColumns.length + j];
+            }
+            
+            // Build properties from percent data (Uint8 with decoding)
+            for (let j = 0; j < this.percentColumns.length; j++) {
+                const columnName = this.percentColumns[j];
+                const encodedValue = this.percentData[i * this.percentColumns.length + j];
+                properties[columnName] = encodedValue / 255; // Convert back to 0-1 range
             }
             
             // Add string properties from attribute map if needed
@@ -337,8 +445,12 @@ class SharedDataStore {
         this.attributeMap.clear();
         this.numericData = null;
         this.scoreData = null;
+        this.countData = null;
+        this.percentData = null;
         this.numericColumns = [];
         this.scoreColumns = [];
+        this.countColumns = [];
+        this.percentColumns = [];
         this.parcelIds = [];
         this.rowCount = 0;
         this.isDataLoaded = false;
