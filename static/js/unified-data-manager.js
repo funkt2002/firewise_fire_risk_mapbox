@@ -46,35 +46,21 @@ class UnifiedDataManager {
 
     // Apply all filters client-side
     applyFilters(filters) {
-        console.log('🔍 UnifiedDataManager: Filtering using direct typed array access (no FeatureCollection needed)');
-        if (!this.dataStore.isDataLoaded) {
-            console.error('No data loaded in shared store. Call storeCompleteData() first.');
+        console.log('🔍 UnifiedDataManager: Filtering using shared dataset (no duplicate copy)');
+        const completeDataset = this.dataStore.getCompleteDataset();
+        if (!completeDataset) {
+            console.error('No complete dataset in shared store. Call storeCompleteData() first.');
             return null;
         }
 
         const start = performance.now();
         this.currentFilters = { ...filters };
         
-        // Filter parcels using direct typed array access
+        // Filter parcels
         const filterStart = performance.now();
-        let filteredFeatures = [];
-        
-        this.dataStore.iterateRows((rowData, index) => {
-            // Create feature-like object for compatibility with passesAllFilters
-            const feature = {
-                properties: rowData
-            };
-            
-            if (this.passesAllFilters(feature, filters)) {
-                // Build full feature object for filtered results
-                filteredFeatures.push({
-                    type: "Feature",
-                    properties: rowData,
-                    geometry: null
-                });
-            }
-        });
-        
+        let filteredFeatures = completeDataset.features.filter(feature => 
+            this.passesAllFilters(feature, filters)
+        );
         this.logTiming('Basic Filtering', performance.now() - filterStart);
 
         // Apply spatial filter if present
@@ -99,7 +85,7 @@ class UnifiedDataManager {
         const totalTime = performance.now() - start;
         this.logTiming('Total Filtering', totalTime);
         
-        console.log(`Unified filtering: ${this.dataStore.getRowCount()} -> ${filteredFeatures.length} parcels in ${totalTime.toFixed(1)}ms`);
+        console.log(`Unified filtering: ${completeDataset.features.length} -> ${filteredFeatures.length} parcels in ${totalTime.toFixed(1)}ms`);
         
         // Return features in expected format for backwards compatibility
         return {
@@ -271,8 +257,8 @@ class UnifiedDataManager {
         }
 
         try {
-            const totalRowCount = this.dataStore.getRowCount();
-            if (filteredFeatures.length === totalRowCount) {
+            const completeDataset = this.dataStore.getCompleteDataset();
+            if (filteredFeatures.length === completeDataset.features.length) {
                 // All parcels pass filters - show all normally
                 window.map.setFilter('parcels-fill', null);
                 window.map.setFilter('parcels-boundary', null);
@@ -455,7 +441,7 @@ class UnifiedDataManager {
                         if (varBase === 'neigh1d') {
                             if (rawValue === 0) {
                                 newFeature.properties[varBase + '_s'] = 0.0;
-                                return; // continue equivalent in callback
+                                continue;
                             }
                             const cappedValue = Math.min(rawValue, 5280);
                             rawValue = Math.log(1 + cappedValue);
@@ -527,8 +513,9 @@ class UnifiedDataManager {
 
     // Calculate global normalization parameters
     calculateGlobalNormalization(use_quantile, use_raw_scoring = false) {
-        if (!this.dataStore.isDataLoaded) {
-            console.error('No data loaded for global normalization');
+        const completeDataset = this.dataStore.getCompleteDataset();
+        if (!completeDataset) {
+            console.error('No complete dataset available for global normalization');
             return null;
         }
 
@@ -541,7 +528,7 @@ class UnifiedDataManager {
         }
 
         const start = performance.now();
-        console.log(`Global normalization: Calculating parameters for ${this.dataStore.getRowCount()} parcels`);
+        console.log(`Global normalization: Calculating parameters for ${completeDataset.features.length} parcels`);
 
         const rawVarMap = {
             'qtrmi': 'qtrmi_cnt',
@@ -564,15 +551,15 @@ class UnifiedDataManager {
             const rawVar = rawVarMap[varBase];
             const values = [];
 
-            this.dataStore.iterateRows((rowData, index) => {
-                let rawValue = rowData[rawVar];
+            for (const feature of completeDataset.features) {
+                let rawValue = feature.properties[rawVar];
                 if (rawValue !== null && rawValue !== undefined) {
                     const originalValue = parseFloat(rawValue);
                     rawValue = originalValue;
                     
                     // Special handling for neigh1d
                     if (varBase === 'neigh1d' && rawValue < 2) {
-                        const neigh2Value = rowData['neigh2_d'];
+                        const neigh2Value = feature.properties['neigh2_d'];
                         if (neigh2Value !== null && neigh2Value !== undefined) {
                             rawValue = parseFloat(neigh2Value);
                         }
@@ -581,19 +568,19 @@ class UnifiedDataManager {
                     // Apply log transformations (skip for Raw Min-Max scoring)
                     if (!use_raw_scoring) {
                         if (varBase === 'neigh1d') {
-                            if (rawValue === 0) return; // continue equivalent in callback
+                            if (rawValue === 0) continue;
                             const cappedValue = Math.min(rawValue, 5280);
                             rawValue = Math.log(1 + cappedValue);
                         } else if (varBase === 'hagri' || varBase === 'hfb' || varBase === 'agfb') {
                             rawValue = Math.log(1 + rawValue);
                         }
                     } else if (varBase === 'neigh1d' && rawValue === 0) {
-                        return; // continue equivalent in callback
+                        continue;
                     }
                     
                     values.push(rawValue);
                 }
-            });
+            }
 
             if (values.length > 0) {
                 if (use_quantile) {
@@ -855,25 +842,25 @@ class UnifiedDataManager {
                 features: this.filteredFeatures
             };
         }
-        return this.dataStore.buildFeatureCollection();
+        return this.dataStore.getCompleteDataset();
     }
 
     // Get complete unfiltered dataset
     getCompleteDataset() {
-        return this.dataStore.buildFeatureCollection();
+        return this.dataStore.getCompleteDataset();
     }
 
     // Get filter statistics
     getFilterStats() {
-        const totalRowCount = this.dataStore.getRowCount();
-        if (totalRowCount === 0 || !this.filteredFeatures) {
+        const completeDataset = this.dataStore.getCompleteDataset();
+        if (!completeDataset || !this.filteredFeatures) {
             return null;
         }
 
         return {
-            total_parcels_before_filter: totalRowCount,
+            total_parcels_before_filter: completeDataset.features.length,
             total_parcels_after_filter: this.filteredFeatures.length,
-            filter_ratio: this.filteredFeatures.length / totalRowCount,
+            filter_ratio: this.filteredFeatures.length / completeDataset.features.length,
             current_filters: { ...this.currentFilters }
         };
     }
