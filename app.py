@@ -1377,14 +1377,89 @@ def solve_promethee_optimization(parcel_data, include_vars, all_parcels_data):
     
     logger.info(f"Factor advantages: {dict(zip(include_vars_base, advantages))}")
     
-    # Convert advantages to optimal weights
+    # Step 1: Get analytical starting point (fast heuristic)
     if np.sum(advantages) > 0:
-        optimal_weights = {var_base: adv / np.sum(advantages) 
-                          for var_base, adv in zip(include_vars_base, advantages)}
+        starting_weights = advantages / np.sum(advantages)
     else:
-        # Fallback: equal weights if no advantages found
-        logger.warning("No factor advantages found, using equal weights")
-        optimal_weights = {var_base: 1.0/len(include_vars_base) for var_base in include_vars_base}
+        logger.warning("No factor advantages found, using equal weights as starting point")
+        starting_weights = np.ones(len(include_vars_base)) / len(include_vars_base)
+    
+    logger.info(f"Starting weights: {dict(zip(include_vars_base, starting_weights))}")
+    
+    # Step 2: Hill climbing optimization to find true optimum
+    def calculate_ranking_objective(weights_array):
+        """Calculate average rank of selected parcels (lower is better)"""
+        if np.sum(weights_array) <= 0:
+            return 1000000  # Invalid weights penalty
+        normalized_weights = weights_array / np.sum(weights_array)
+        
+        # Calculate composite scores for all parcels
+        all_composite = np.dot(all_scores, normalized_weights)
+        
+        # Get ranks (0 = best, 1 = second best, etc.)
+        sorted_indices = np.argsort(all_composite)[::-1]
+        ranks = np.empty_like(sorted_indices)
+        ranks[sorted_indices] = np.arange(len(sorted_indices))
+        
+        # Get ranks of selected parcels using parcel IDs
+        selected_ids_set = set()
+        for parcel in parcel_data:
+            parcel_id = parcel.get('parcel_id') or parcel.get('id')
+            if parcel_id:
+                selected_ids_set.add(parcel_id)
+        
+        selected_ranks = []
+        for i, parcel in enumerate(all_parcels_data):
+            parcel_id = parcel.get('parcel_id') or parcel.get('id')
+            if parcel_id and parcel_id in selected_ids_set:
+                selected_ranks.append(ranks[i])
+        
+        if len(selected_ranks) == 0:
+            return 1000000  # No selected parcels found
+            
+        return np.mean(selected_ranks)
+    
+    # Hill climbing with limited iterations for web app performance
+    current_weights = starting_weights.copy()
+    current_objective = calculate_ranking_objective(current_weights)
+    best_weights = current_weights.copy()
+    best_objective = current_objective
+    
+    max_iterations = min(200, len(parcel_data) // 2)  # Scale with selection size
+    improvements = 0
+    
+    logger.info(f"Starting hill climbing optimization (max {max_iterations} iterations)...")
+    
+    for iteration in range(max_iterations):
+        # Generate neighbor with small random perturbations
+        perturbation = np.random.normal(0, 0.03, len(include_vars_base))
+        neighbor_weights = current_weights + perturbation
+        neighbor_weights = np.maximum(0.001, neighbor_weights)  # Keep positive
+        
+        # Calculate objective for neighbor
+        neighbor_objective = calculate_ranking_objective(neighbor_weights)
+        
+        # Accept if better (lower average rank)
+        if neighbor_objective < current_objective:
+            current_weights = neighbor_weights
+            current_objective = neighbor_objective
+            improvements += 1
+            
+            # Track best ever found
+            if neighbor_objective < best_objective:
+                best_weights = neighbor_weights.copy()
+                best_objective = neighbor_objective
+        
+        # Early stopping if no recent improvements (for speed)
+        if iteration > 50 and improvements == 0:
+            break
+    
+    # Normalize final weights
+    optimal_weights_array = best_weights / np.sum(best_weights)
+    optimal_weights = {var_base: float(weight) for var_base, weight in zip(include_vars_base, optimal_weights_array)}
+    
+    logger.info(f"Hill climbing completed: {improvements} improvements found")
+    logger.info(f"Ranking improvement: {current_objective:.1f} → {best_objective:.1f} average rank")
     
     weights_pct = {var: weight * 100 for var, weight in optimal_weights.items()}
     
