@@ -1336,18 +1336,19 @@ def solve_weight_optimization(parcel_data, include_vars):
 
 
 
-def solve_separation_optimization(parcel_data, include_vars, all_parcels_data):
+def solve_promethee_optimization(parcel_data, include_vars, all_parcels_data):
     """
-    HYBRID SEPARATION + RANK-DOMINANCE LP optimization that:
-    1. Maximizes the gap between minimum selected and maximum non-selected scores (separation)
-    2. Adds rank-dominance constraints for top problematic non-selected parcels
+    PROMETHEE (Preference Ranking Organization METHod for Enrichment Evaluations) optimization that:
+    1. Uses pairwise comparisons between selected and non-selected parcels
+    2. Finds weights that maximize the preference of selected parcels over non-selected ones
     """
     import gc
+    import numpy as np
     
     # Process variable names efficiently
     include_vars_base = [var[:-2] if var.endswith('_s') else var for var in include_vars]
     
-    logger.info(f"HYBRID SEPARATION+RANKING LP: {len(parcel_data):,} selected parcels, {len(all_parcels_data):,} total parcels, {len(include_vars_base)} variables")
+    logger.info(f"PROMETHEE OPTIMIZATION: {len(parcel_data):,} selected parcels, {len(all_parcels_data):,} total parcels, {len(include_vars_base)} variables")
     
     # Get selected parcel IDs
     selected_ids = set()
@@ -1356,90 +1357,66 @@ def solve_separation_optimization(parcel_data, include_vars, all_parcels_data):
         if parcel_id:
             selected_ids.add(parcel_id)
     
-    # Separate non-selected parcels and calculate their potential threat level
+    # Separate non-selected parcels
     non_selected_parcels = []
     for parcel in all_parcels_data:
         parcel_id = parcel.get('parcel_id') or parcel.get('id')
         if parcel_id and parcel_id not in selected_ids:
-            # Calculate equal-weight score for initial ranking
-            equal_weight_score = sum(parcel['scores'].get(var_base, 0) for var_base in include_vars_base) / len(include_vars_base)
-            parcel['threat_score'] = equal_weight_score
             non_selected_parcels.append(parcel)
     
-    # Identify top problematic parcels (adaptive sample size based on dataset)
+    # Sample non-selected parcels for computational efficiency
     total_non_selected = len(non_selected_parcels)
-    if total_non_selected <= 1000:
-        # Small dataset: use top 10% or minimum 50
-        sample_size = max(50, int(total_non_selected * 0.1))
-    elif total_non_selected <= 10000:
-        # Medium dataset: use 500-1000 top parcels
-        sample_size = min(1000, max(500, int(total_non_selected * 0.05)))
+    if total_non_selected > 2000:
+        # For large datasets, sample non-selected parcels
+        sample_size = min(2000, max(1000, int(total_non_selected * 0.1)))
+        import random
+        random.seed(42)  # For reproducible results
+        non_selected_sample = random.sample(non_selected_parcels, sample_size)
+        logger.info(f"Sampled {sample_size} non-selected parcels from {total_non_selected} for analysis")
     else:
-        # Large dataset: cap at 1500 for computational efficiency
-        sample_size = min(1500, int(total_non_selected * 0.02))
+        non_selected_sample = non_selected_parcels
     
-    # Sort by threat score and take top problematic parcels
-    non_selected_parcels.sort(key=lambda x: x['threat_score'], reverse=True)
-    problematic_parcels = non_selected_parcels[:sample_size]
-    remaining_parcels = non_selected_parcels[sample_size:]
+    # PROMETHEE preference calculation using linear programming
+    prob = LpProblem("PROMETHEE_Optimization", LpMaximize)
     
-    logger.info(f"Rank-dominance analysis: {sample_size} problematic parcels, {len(remaining_parcels)} standard constraints")
-    
-    # Create LP problem
-    prob = LpProblem("Fire_Risk_Hybrid_Separation_Ranking", LpMaximize)
-    
-    # Decision variables
+    # Decision variables for weights
     w_vars = LpVariable.dicts('w', include_vars_base, lowBound=0.0)
-    min_selected_score = LpVariable('min_selected', lowBound=0)
-    max_other_score = LpVariable('max_other', upBound=100)
     
     # Constraint: weights sum to 1
     prob += lpSum([w_vars[var_base] for var_base in include_vars_base]) == 1
     
-    # PHASE 1: Traditional separation constraints for selected parcels
-    logger.info(f"Adding separation constraints for {len(parcel_data)} selected parcels...")
-    for parcel in parcel_data:
-        score = lpSum([w_vars[var_base] * parcel['scores'][var_base] 
-                      for var_base in include_vars_base if var_base in parcel['scores']])
-        prob += score >= min_selected_score
+    # PROMETHEE objective: maximize preference flows
+    # For each selected parcel, calculate how much it's preferred over non-selected parcels
+    preference_terms = []
+    pairwise_comparisons = 0
     
-    # PHASE 2: Traditional separation constraints for remaining non-selected parcels
-    logger.info(f"Adding separation constraints for {len(remaining_parcels)} standard non-selected parcels...")
-    for parcel in remaining_parcels:
-        score = lpSum([w_vars[var_base] * parcel['scores'][var_base] 
-                      for var_base in include_vars_base if var_base in parcel['scores']])
-        prob += score <= max_other_score
+    for selected_parcel in parcel_data:
+        for non_selected_parcel in non_selected_sample:
+            # Calculate preference difference for each criterion
+            for var_base in include_vars_base:
+                selected_score = selected_parcel['scores'].get(var_base, 0)
+                non_selected_score = non_selected_parcel['scores'].get(var_base, 0)
+                
+                # Preference function: linear preference (selected - non_selected)
+                preference_diff = selected_score - non_selected_score
+                if preference_diff > 0:  # Only count positive preferences
+                    preference_terms.append(w_vars[var_base] * preference_diff)
+                    pairwise_comparisons += 1
     
-    # PHASE 3: RANK-DOMINANCE constraints for problematic parcels
-    logger.info(f"Adding rank-dominance constraints for {len(problematic_parcels)} problematic parcels...")
-    rank_constraints_added = 0
+    logger.info(f"Created {len(preference_terms)} preference terms from {pairwise_comparisons} pairwise comparisons")
     
-    for parcel in problematic_parcels:
-        problematic_score = lpSum([w_vars[var_base] * parcel['scores'][var_base] 
-                                  for var_base in include_vars_base if var_base in parcel['scores']])
-        
-        # Each selected parcel must beat this problematic parcel
-        for selected_parcel in parcel_data:
-            selected_score = lpSum([w_vars[var_base] * selected_parcel['scores'][var_base] 
-                                   for var_base in include_vars_base if var_base in selected_parcel['scores']])
-            
-            # Add small epsilon for strict dominance (0.001 = 0.1% score difference)
-            prob += selected_score >= problematic_score + 0.001
-            rank_constraints_added += 1
+    # Objective: maximize total preference flow
+    if preference_terms:
+        prob += lpSum(preference_terms)
+    else:
+        # Fallback: equal weights if no preferences found
+        logger.warning("No positive preferences found, using equal weights")
+        for var_base in include_vars_base:
+            prob += w_vars[var_base] * 1.0
     
-    logger.info(f"Added {rank_constraints_added:,} rank-dominance constraints")
-    
-    # Objective: maximize the separation gap (primary) with slight preference for rank dominance
-    separation_gap = min_selected_score - max_other_score
-    prob += separation_gap
-    
-    # Calculate total constraints for reporting
-    total_constraints = len(parcel_data) + len(remaining_parcels) + rank_constraints_added + 1  # +1 for weight sum
-    
-    # Solve the problem with extended timeout for complex problems
-    timeout = min(300, max(120, total_constraints // 1000))  # Scale timeout with problem size
-    logger.info(f"Solving hybrid LP with {total_constraints:,} constraints (timeout: {timeout}s)...")
-    solver = COIN_CMD(msg=0, timeLimit=timeout)
+    # Solve the problem
+    logger.info("Solving PROMETHEE optimization...")
+    solver = COIN_CMD(msg=0, timeLimit=120)
     solver_result = prob.solve(solver)
     logger.info(f"Solver finished with status: {LpStatus[prob.status]}")
     
@@ -1450,42 +1427,40 @@ def solve_separation_optimization(parcel_data, include_vars, all_parcels_data):
             optimal_weights[var_base] = value(w_vars[var_base]) if var_base in w_vars else 0
         
         weights_pct = {var: weight * 100 for var, weight in optimal_weights.items()}
-        separation_gap_value = value(separation_gap)
-        min_selected_value = value(min_selected_score)
-        max_other_value = value(max_other_score)
         
         # Count non-zero weights and find dominant variable
         nonzero_weights = sum(1 for w in optimal_weights.values() if w > 0.01)
         dominant_var = max(optimal_weights, key=optimal_weights.get)
         
-        # Validate rank dominance by checking how many problematic parcels are properly dominated
-        dominated_count = 0
-        rank_violations = []
+        # Calculate ranking quality metrics
+        selected_scores = []
+        non_selected_scores = []
         
-        for parcel in problematic_parcels:
-            problematic_final_score = sum(optimal_weights[var_base] * parcel['scores'].get(var_base, 0) 
-                                        for var_base in include_vars_base)
-            
-            # Check if ALL selected parcels dominate this problematic parcel
-            all_dominate = True
-            for selected_parcel in parcel_data:
-                selected_final_score = sum(optimal_weights[var_base] * selected_parcel['scores'].get(var_base, 0) 
-                                         for var_base in include_vars_base)
-                if selected_final_score <= problematic_final_score:
-                    all_dominate = False
-                    break
-            
-            if all_dominate:
-                dominated_count += 1
-            else:
-                rank_violations.append(problematic_final_score)
+        # Calculate final scores for selected parcels
+        for parcel in parcel_data:
+            final_score = sum(optimal_weights[var_base] * parcel['scores'].get(var_base, 0) 
+                            for var_base in include_vars_base)
+            selected_scores.append(final_score)
         
-        dominance_rate = (dominated_count / len(problematic_parcels)) * 100 if problematic_parcels else 100
+        # Calculate final scores for sample of non-selected parcels
+        for parcel in non_selected_sample:
+            final_score = sum(optimal_weights[var_base] * parcel['scores'].get(var_base, 0) 
+                            for var_base in include_vars_base)
+            non_selected_scores.append(final_score)
         
-        logger.info(f"Hybrid optimization completed successfully")
-        logger.info(f"Separation gap: {separation_gap_value:.3f}")
-        logger.info(f"Min selected score: {min_selected_value:.3f}, Max other score: {max_other_value:.3f}")
-        logger.info(f"Rank dominance: {dominated_count}/{len(problematic_parcels)} problematic parcels dominated ({dominance_rate:.1f}%)")
+        # Calculate preference flow metrics
+        avg_selected_score = np.mean(selected_scores) if selected_scores else 0
+        avg_non_selected_score = np.mean(non_selected_scores) if non_selected_scores else 0
+        preference_gap = avg_selected_score - avg_non_selected_score
+        
+        # Count how many selected parcels rank higher than non-selected average
+        above_average_count = sum(1 for score in selected_scores if score > avg_non_selected_score)
+        ranking_quality = (above_average_count / len(selected_scores)) * 100 if selected_scores else 0
+        
+        logger.info(f"PROMETHEE optimization completed successfully")
+        logger.info(f"Preference gap: {preference_gap:.3f}")
+        logger.info(f"Avg selected score: {avg_selected_score:.3f}, Avg non-selected score: {avg_non_selected_score:.3f}")
+        logger.info(f"Ranking quality: {ranking_quality:.1f}% of selected parcels above non-selected average")
         logger.info(f"VARIABLE WEIGHTS: {[(var, f'{weight:.1%}') for var, weight in optimal_weights.items() if weight > 0.001]}")
         
         # Calculate total score using the optimal weights (for consistency with other methods)
@@ -1497,28 +1472,25 @@ def solve_separation_optimization(parcel_data, include_vars, all_parcels_data):
                     weight = optimal_weights[var_base]
                     total_score += weight * score
         
-        # Enhanced separation metrics including rank dominance info
-        separation_metrics = {
-            'separation_gap': separation_gap_value,
-            'min_selected_score': min_selected_value,
-            'max_other_score': max_other_value,
+        # PROMETHEE metrics
+        promethee_metrics = {
+            'preference_gap': preference_gap,
+            'avg_selected_score': avg_selected_score,
+            'avg_non_selected_score': avg_non_selected_score,
+            'ranking_quality': ranking_quality,
             'nonzero_weights': nonzero_weights,
             'dominant_var': dominant_var,
             'is_mixed': nonzero_weights > 1,
-            # New rank-dominance metrics
-            'problematic_parcels_analyzed': len(problematic_parcels),
-            'problematic_parcels_dominated': dominated_count,
-            'dominance_rate': dominance_rate,
-            'rank_constraints_added': rank_constraints_added,
-            'total_constraints': total_constraints,
-            'optimization_type': 'hybrid_separation_ranking'
+            'parcels_analyzed': len(non_selected_sample),
+            'pairwise_comparisons': pairwise_comparisons,
+            'optimization_type': 'promethee'
         }
         
         gc.collect()
-        return optimal_weights, weights_pct, total_score, True, separation_metrics
+        return optimal_weights, weights_pct, total_score, True, promethee_metrics
         
     else:
-        logger.error(f"Hybrid optimization failed with status: {LpStatus[prob.status]} - Selection may be infeasible for rank dominance")
+        logger.error(f"PROMETHEE optimization failed with status: {LpStatus[prob.status]}")
         gc.collect()
         return None, None, None, False, None
 
@@ -1590,7 +1562,7 @@ def generate_solution_files(include_vars, best_weights, weights_pct, total_score
     # Detect optimization type from request data
     optimization_type = request_data.get('optimization_type', 'absolute')
     
-    if optimization_type == 'separation':
+    if optimization_type == 'promethee':
         optimization_title = "HYBRID SEPARATION + RANK-DOMINANCE OPTIMIZATION RESULTS"
     else:
         optimization_title = "ABSOLUTE OPTIMIZATION RESULTS (LP Maximum Score)"
@@ -1607,7 +1579,7 @@ def generate_solution_files(include_vars, best_weights, weights_pct, total_score
         f"Scoring Method: {scoring_method}",
     ])
     
-    if optimization_type == 'separation':
+    if optimization_type == 'promethee':
         txt_lines.extend([
             "",
             "OPTIMIZATION TYPE: Hybrid Separation + Rank-Dominance Maximization (LP)",
@@ -1668,7 +1640,7 @@ def generate_solution_files(include_vars, best_weights, weights_pct, total_score
     
     return lp_content, txt_content
 
-def generate_enhanced_solution_html(txt_content, lp_content, parcel_data, weights, session_id='unknown', separation_metrics=None, optimization_type='absolute'):
+def generate_enhanced_solution_html(txt_content, lp_content, parcel_data, weights, session_id='unknown', promethee_metrics=None, optimization_type='absolute'):
     """Generate enhanced HTML solution report with LP file and parcel table"""
     
     # Factor names for display
@@ -1740,63 +1712,44 @@ def generate_enhanced_solution_html(txt_content, lp_content, parcel_data, weight
     html_parts.append(f'<pre>{txt_content}</pre>')
     html_parts.append('</div>')
     
-    # Separation metrics section (if applicable)
-    if optimization_type == 'separation' and separation_metrics:
+    # PROMETHEE metrics section (if applicable)
+    if optimization_type == 'promethee' and promethee_metrics:
         html_parts.append('<div class="section">')
-        html_parts.append('<h2>Hybrid Separation + Rank-Dominance Analysis</h2>')
+        html_parts.append('<h2>PROMETHEE Analysis</h2>')
         
-        # Basic separation metrics
-        html_parts.append('<h3>Separation Metrics</h3>')
+        # Basic PROMETHEE metrics
+        html_parts.append('<h3>Preference Metrics</h3>')
         html_parts.append('<table style="border-collapse: collapse; margin: 10px 0;">')
-        html_parts.append('<tr><td style="padding: 5px; border: 1px solid #ddd;"><strong>Separation Gap:</strong></td>')
-        html_parts.append(f'<td style="padding: 5px; border: 1px solid #ddd;">{separation_metrics["separation_gap"]:.3f}</td></tr>')
-        html_parts.append('<tr><td style="padding: 5px; border: 1px solid #ddd;"><strong>Min Selected Score:</strong></td>')
-        html_parts.append(f'<td style="padding: 5px; border: 1px solid #ddd;">{separation_metrics["min_selected_score"]:.3f}</td></tr>')
-        html_parts.append('<tr><td style="padding: 5px; border: 1px solid #ddd;"><strong>Max Other Score:</strong></td>')
-        html_parts.append(f'<td style="padding: 5px; border: 1px solid #ddd;">{separation_metrics["max_other_score"]:.3f}</td></tr>')
+        html_parts.append('<tr><td style="padding: 5px; border: 1px solid #ddd;"><strong>Preference Gap:</strong></td>')
+        html_parts.append(f'<td style="padding: 5px; border: 1px solid #ddd;">{promethee_metrics["preference_gap"]:.3f}</td></tr>')
+        html_parts.append('<tr><td style="padding: 5px; border: 1px solid #ddd;"><strong>Avg Selected Score:</strong></td>')
+        html_parts.append(f'<td style="padding: 5px; border: 1px solid #ddd;">{promethee_metrics["avg_selected_score"]:.3f}</td></tr>')
+        html_parts.append('<tr><td style="padding: 5px; border: 1px solid #ddd;"><strong>Avg Non-Selected Score:</strong></td>')
+        html_parts.append(f'<td style="padding: 5px; border: 1px solid #ddd;">{promethee_metrics["avg_non_selected_score"]:.3f}</td></tr>')
+        html_parts.append('<tr><td style="padding: 5px; border: 1px solid #ddd;"><strong>Ranking Quality:</strong></td>')
+        html_parts.append(f'<td style="padding: 5px; border: 1px solid #ddd;">{promethee_metrics["ranking_quality"]:.1f}%</td></tr>')
         html_parts.append('</table>')
         
-        # Rank-dominance metrics (if available)
-        if 'optimization_type' in separation_metrics and separation_metrics['optimization_type'] == 'hybrid_separation_ranking':
-            html_parts.append('<h3>Rank-Dominance Metrics</h3>')
-            html_parts.append('<table style="border-collapse: collapse; margin: 10px 0;">')
-            html_parts.append('<tr><td style="padding: 5px; border: 1px solid #ddd;"><strong>Problematic Parcels Analyzed:</strong></td>')
-            html_parts.append(f'<td style="padding: 5px; border: 1px solid #ddd;">{separation_metrics["problematic_parcels_analyzed"]:,}</td></tr>')
-            html_parts.append('<tr><td style="padding: 5px; border: 1px solid #ddd;"><strong>Problematic Parcels Dominated:</strong></td>')
-            html_parts.append(f'<td style="padding: 5px; border: 1px solid #ddd;">{separation_metrics["problematic_parcels_dominated"]:,}</td></tr>')
-            html_parts.append('<tr><td style="padding: 5px; border: 1px solid #ddd;"><strong>Dominance Success Rate:</strong></td>')
-            
-            dominance_rate = separation_metrics["dominance_rate"]
-            if dominance_rate >= 95:
-                dominance_color = "green"
-                dominance_status = "Excellent"
-            elif dominance_rate >= 85:
-                dominance_color = "orange"
-                dominance_status = "Good"
-            else:
-                dominance_color = "red"
-                dominance_status = "Needs Improvement"
-                
-            html_parts.append(f'<td style="padding: 5px; border: 1px solid #ddd; color: {dominance_color}; font-weight: bold;">{dominance_rate:.1f}% ({dominance_status})</td></tr>')
-            html_parts.append('<tr><td style="padding: 5px; border: 1px solid #ddd;"><strong>Rank Constraints Added:</strong></td>')
-            html_parts.append(f'<td style="padding: 5px; border: 1px solid #ddd;">{separation_metrics["rank_constraints_added"]:,}</td></tr>')
-            html_parts.append('<tr><td style="padding: 5px; border: 1px solid #ddd;"><strong>Total LP Constraints:</strong></td>')
-            html_parts.append(f'<td style="padding: 5px; border: 1px solid #ddd;">{separation_metrics["total_constraints"]:,}</td></tr>')
-            html_parts.append('</table>')
-            
-            html_parts.append('<p><em><strong>Rank-Dominance Explanation:</strong> This optimization ensures your selected parcels rank above the highest-scoring non-selected parcels. ')
-            html_parts.append(f'We identified the top {separation_metrics["problematic_parcels_analyzed"]:,} "problematic" non-selected parcels (those most likely to outrank your selection) ')
-            html_parts.append(f'and added constraints requiring each selected parcel to score higher than each problematic parcel. ')
-            html_parts.append(f'Success rate of {dominance_rate:.1f}% means your selection truly represents the top-ranked parcels.</em></p>')
+        # PROMETHEE analysis details
+        html_parts.append('<h3>Analysis Details</h3>')
+        html_parts.append('<table style="border-collapse: collapse; margin: 10px 0;">')
+        html_parts.append('<tr><td style="padding: 5px; border: 1px solid #ddd;"><strong>Parcels Analyzed:</strong></td>')
+        html_parts.append(f'<td style="padding: 5px; border: 1px solid #ddd;">{promethee_metrics["parcels_analyzed"]:,}</td></tr>')
+        html_parts.append('<tr><td style="padding: 5px; border: 1px solid #ddd;"><strong>Pairwise Comparisons:</strong></td>')
+        html_parts.append(f'<td style="padding: 5px; border: 1px solid #ddd;">{promethee_metrics["pairwise_comparisons"]:,}</td></tr>')
+        html_parts.append('</table>')
+        
+        html_parts.append('<p><em><strong>PROMETHEE Explanation:</strong> This method uses pairwise comparisons between your selected parcels and non-selected ones to find weights that maximize the preference for your selection. ')
+        html_parts.append(f'The ranking quality of {promethee_metrics["ranking_quality"]:.1f}% indicates how well your selected parcels rank above the average non-selected parcel.</em></p>')
         
         # Weight distribution
         html_parts.append('<h3>Weight Distribution</h3>')
         html_parts.append('<table style="border-collapse: collapse; margin: 10px 0;">')
         html_parts.append('<tr><td style="padding: 5px; border: 1px solid #ddd;"><strong>Strategy:</strong></td>')
-        if separation_metrics["is_mixed"]:
-            html_parts.append(f'<td style="padding: 5px; border: 1px solid #ddd;">Mixed approach using {separation_metrics["nonzero_weights"]} variables</td></tr>')
+        if promethee_metrics["is_mixed"]:
+            html_parts.append(f'<td style="padding: 5px; border: 1px solid #ddd;">Mixed approach using {promethee_metrics["nonzero_weights"]} variables</td></tr>')
         else:
-            html_parts.append(f'<td style="padding: 5px; border: 1px solid #ddd;">Single-variable focus on {separation_metrics["dominant_var"]}</td></tr>')
+            html_parts.append(f'<td style="padding: 5px; border: 1px solid #ddd;">Single-variable focus on {promethee_metrics["dominant_var"]}</td></tr>')
         html_parts.append('</table>')
         
         html_parts.append('</div>')
@@ -2084,22 +2037,22 @@ def infer_weights():
         
         # Check optimization type
         optimization_type = data.get('optimization_type', 'absolute')
-        separation_metrics = None
+        promethee_metrics = None
         
-        if optimization_type == 'separation':
+        if optimization_type == 'promethee':
             # Separation optimization: maximize gap between selected and non-selected
             logger.info(f"SEPARATION OPTIMIZATION: selected parcels={len(parcel_data)}")
             
             # Get all parcels currently in memory/view for constraints
             all_parcels_data = data.get('parcel_scores', [])
             if not all_parcels_data:
-                return jsonify({"error": "No parcel scores provided for separation optimization"}), 400
+                return jsonify({"error": "No parcel scores provided for PROMETHEE optimization"}), 400
             
-            logger.info(f"SEPARATION OPTIMIZATION: total parcels in view={len(all_parcels_data)}")
+            logger.info(f"PROMETHEE OPTIMIZATION: total parcels in view={len(all_parcels_data)}")
             
-            result = solve_separation_optimization(parcel_data, include_vars, all_parcels_data)
-            if len(result) == 5:  # New format with separation metrics
-                best_weights, weights_pct, total_score, success, separation_metrics = result
+            result = solve_promethee_optimization(parcel_data, include_vars, all_parcels_data)
+            if len(result) == 5:  # New format with PROMETHEE metrics
+                best_weights, weights_pct, total_score, success, promethee_metrics = result
             else:  # Fallback for compatibility
                 best_weights, weights_pct, total_score, success = result
                 
@@ -2110,7 +2063,7 @@ def infer_weights():
             )
         
         if not success:
-            if optimization_type == 'separation':
+            if optimization_type == 'promethee':
                 return jsonify({"error": "Selection area infeasible, please select another"}), 400
             else:
                 return jsonify({"error": "Absolute optimization failed"}), 500
@@ -2160,8 +2113,8 @@ def infer_weights():
                 'timestamp': time.time(),
                 'ttl': time.time() + 3600  # 1 hour expiry
             }
-            if optimization_type == 'separation' and separation_metrics:
-                metadata['separation_metrics'] = separation_metrics
+            if optimization_type == 'promethee' and promethee_metrics:
+                metadata['promethee_metrics'] = promethee_metrics
             json.dump(metadata, f)
         
         logger.info(f"Saved optimization files to: {session_dir}")
@@ -2170,8 +2123,8 @@ def infer_weights():
         
         # Return minimal response - NO BULK DATA (memory optimized!)
         timing_log = f"{optimization_type.title()} optimization completed in {total_time:.2f}s for {num_parcels} parcels."
-        if optimization_type == 'separation' and separation_metrics:
-            timing_log += f" Gap: {separation_metrics['separation_gap']:.3f}"
+        if optimization_type == 'promethee' and promethee_metrics:
+            timing_log += f" Gap: {promethee_metrics['preference_gap']:.3f}"
         
         response_data = {
             "weights": weights_pct,           # ~200 bytes
@@ -2184,8 +2137,8 @@ def infer_weights():
             "files_available": True           # Files stored on disk, not in memory
         }
         
-        if optimization_type == 'separation' and separation_metrics:
-            response_data['separation_gap'] = separation_metrics['separation_gap']
+        if optimization_type == 'promethee' and promethee_metrics:
+            response_data['preference_gap'] = promethee_metrics['preference_gap']
         
         logger.info(f"Sending response: {len(str(response_data))} characters")
         
@@ -2311,19 +2264,19 @@ def view_solution(session_id):
             with open(parcel_data_path, 'r') as f:
                 parcel_data = json.load(f)
         
-        # Read metadata for weights and separation metrics
+        # Read metadata for weights and PROMETHEE metrics
         weights = {}
-        separation_metrics = None
+        promethee_metrics = None
         optimization_type = 'absolute'
         if os.path.exists(metadata_path):
             with open(metadata_path, 'r') as f:
                 metadata = json.load(f)
                 weights = metadata.get('weights', {})
-                separation_metrics = metadata.get('separation_metrics', None)
+                promethee_metrics = metadata.get('promethee_metrics', None)
                 optimization_type = metadata.get('optimization_type', 'absolute')
         
         # Generate enhanced HTML report
-        html_content = generate_enhanced_solution_html(txt_content, lp_content, parcel_data, weights, session_id, separation_metrics, optimization_type)
+        html_content = generate_enhanced_solution_html(txt_content, lp_content, parcel_data, weights, session_id, promethee_metrics, optimization_type)
         
         response = make_response(html_content)
         response.headers['Content-Type'] = 'text/html'

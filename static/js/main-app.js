@@ -1737,7 +1737,7 @@
 
             // Check optimization type from radio buttons
             const optimizationType = document.querySelector('input[name="optimization-type"]:checked').value;
-            const isSeparation = optimizationType === 'separation';
+            const isPromethee = optimizationType === 'promethee';
 
             document.getElementById('spinner').style.display = 'block';
 
@@ -1755,8 +1755,8 @@
                     ...getCurrentFilters()
                 };
 
-                // For separation optimization, we need all parcel scores for constraints
-                if (isSeparation) {
+                // For PROMETHEE optimization, we need all parcel scores for constraints
+                if (isPromethee) {
                     const allParcelScores = [];
                     if (currentData && currentData.features) {
                         currentData.features.forEach(feature => {
