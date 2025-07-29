@@ -1338,10 +1338,10 @@ def solve_weight_optimization(parcel_data, include_vars):
 
 def solve_promethee_optimization(parcel_data, include_vars, all_parcels_data):
     """
-    Fast analytical ranking optimization (replaces slow LP-based PROMETHEE):
-    1. Calculate factor advantages using vectorized operations
-    2. Maximize how much selected parcels exceed overall population
-    3. Optimized for web app performance (<1 second vs 30+ seconds)
+    Fast simulated annealing ranking optimization (replaces slow LP-based PROMETHEE):
+    1. Calculate factor advantages using vectorized operations for starting point
+    2. Use simulated annealing to find globally optimal weights that minimize selected parcel ranks
+    3. Optimized for web app performance with adaptive cooling schedule
     """
     import gc
     import numpy as np
@@ -1419,7 +1419,7 @@ def solve_promethee_optimization(parcel_data, include_vars, all_parcels_data):
             
         return np.mean(selected_ranks)
     
-    # Hill climbing with limited iterations for web app performance
+    # Simulated annealing optimization for global optimum search
     current_weights = starting_weights.copy()
     current_objective = calculate_ranking_objective(current_weights)
     best_weights = current_weights.copy()
@@ -1427,38 +1427,59 @@ def solve_promethee_optimization(parcel_data, include_vars, all_parcels_data):
     
     max_iterations = min(200, len(parcel_data) // 2)  # Scale with selection size
     improvements = 0
+    acceptances = 0
     
-    logger.info(f"Starting hill climbing optimization (max {max_iterations} iterations)...")
+    # Simulated annealing parameters
+    initial_temp = best_objective * 0.1  # Initial temperature based on problem scale
+    cooling_rate = 0.95  # Exponential cooling
+    min_temp = 0.001
+    
+    logger.info(f"Starting simulated annealing optimization (max {max_iterations} iterations, T0={initial_temp:.3f})...")
+    
+    def acceptance_probability(old_cost, new_cost, temperature):
+        """Calculate probability of accepting worse solution"""
+        if new_cost < old_cost:
+            return 1.0
+        if temperature <= 0:
+            return 0.0
+        return np.exp((old_cost - new_cost) / temperature)
     
     for iteration in range(max_iterations):
-        # Generate neighbor with small random perturbations
-        perturbation = np.random.normal(0, 0.03, len(include_vars_base))
+        # Calculate current temperature with exponential cooling
+        temperature = max(min_temp, initial_temp * (cooling_rate ** iteration))
+        
+        # Generate neighbor with adaptive perturbation size
+        step_size = 0.05 * (temperature / initial_temp) + 0.01  # Larger steps at high temp
+        perturbation = np.random.normal(0, step_size, len(include_vars_base))
         neighbor_weights = current_weights + perturbation
         neighbor_weights = np.maximum(0.001, neighbor_weights)  # Keep positive
         
         # Calculate objective for neighbor
         neighbor_objective = calculate_ranking_objective(neighbor_weights)
         
-        # Accept if better (lower average rank)
-        if neighbor_objective < current_objective:
+        # Calculate acceptance probability
+        accept_prob = acceptance_probability(current_objective, neighbor_objective, temperature)
+        
+        # Accept or reject based on probability
+        if np.random.random() < accept_prob:
             current_weights = neighbor_weights
             current_objective = neighbor_objective
-            improvements += 1
+            acceptances += 1
+            
+            # Track improvements
+            if neighbor_objective < current_objective:
+                improvements += 1
             
             # Track best ever found
             if neighbor_objective < best_objective:
                 best_weights = neighbor_weights.copy()
                 best_objective = neighbor_objective
-        
-        # Early stopping if no recent improvements (for speed)
-        if iteration > 50 and improvements == 0:
-            break
     
     # Normalize final weights
     optimal_weights_array = best_weights / np.sum(best_weights)
     optimal_weights = {var_base: float(weight) for var_base, weight in zip(include_vars_base, optimal_weights_array)}
     
-    logger.info(f"Hill climbing completed: {improvements} improvements found")
+    logger.info(f"Simulated annealing completed: {improvements} improvements, {acceptances} total acceptances")
     logger.info(f"Ranking improvement: {current_objective:.1f} → {best_objective:.1f} average rank")
     
     weights_pct = {var: weight * 100 for var, weight in optimal_weights.items()}
