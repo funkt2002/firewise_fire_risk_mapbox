@@ -1336,9 +1336,9 @@ def solve_weight_optimization(parcel_data, include_vars):
 
 
 
-def solve_promethee_optimization(parcel_data, include_vars, all_parcels_data):
+def solve_simulated_annealing_optimization(parcel_data, include_vars, all_parcels_data):
     """
-    Fast simulated annealing ranking optimization (replaces slow LP-based PROMETHEE):
+    Fast simulated annealing ranking optimization:
     1. Calculate factor advantages using vectorized operations for starting point
     2. Use simulated annealing to find globally optimal weights that minimize selected parcel ranks
     3. Optimized for web app performance with adaptive cooling schedule
@@ -1710,7 +1710,7 @@ def generate_solution_files(include_vars, best_weights, weights_pct, total_score
     
     return lp_content, txt_content
 
-def generate_enhanced_solution_html(txt_content, lp_content, parcel_data, weights, session_id='unknown', promethee_metrics=None, optimization_type='absolute'):
+def generate_enhanced_solution_html(txt_content, lp_content, parcel_data, weights, session_id='unknown', sa_metrics=None, optimization_type='absolute'):
     """Generate enhanced HTML solution report with LP file and parcel table"""
     
     # Factor names for display
@@ -1782,44 +1782,44 @@ def generate_enhanced_solution_html(txt_content, lp_content, parcel_data, weight
     html_parts.append(f'<pre>{txt_content}</pre>')
     html_parts.append('</div>')
     
-    # PROMETHEE metrics section (if applicable)
-    if optimization_type == 'promethee' and promethee_metrics:
+    # SA metrics section (if applicable)
+    if optimization_type == 'promethee' and sa_metrics:
         html_parts.append('<div class="section">')
-        html_parts.append('<h2>PROMETHEE Analysis</h2>')
+        html_parts.append('<h2>Simulated Annealing Analysis</h2>')
         
-        # Basic PROMETHEE metrics
+        # Basic SA metrics
         html_parts.append('<h3>Preference Metrics</h3>')
         html_parts.append('<table style="border-collapse: collapse; margin: 10px 0;">')
         html_parts.append('<tr><td style="padding: 5px; border: 1px solid #ddd;"><strong>Preference Gap:</strong></td>')
-        html_parts.append(f'<td style="padding: 5px; border: 1px solid #ddd;">{promethee_metrics["preference_gap"]:.3f}</td></tr>')
+        html_parts.append(f'<td style="padding: 5px; border: 1px solid #ddd;">{sa_metrics["preference_gap"]:.3f}</td></tr>')
         html_parts.append('<tr><td style="padding: 5px; border: 1px solid #ddd;"><strong>Avg Selected Score:</strong></td>')
-        html_parts.append(f'<td style="padding: 5px; border: 1px solid #ddd;">{promethee_metrics["avg_selected_score"]:.3f}</td></tr>')
+        html_parts.append(f'<td style="padding: 5px; border: 1px solid #ddd;">{sa_metrics["avg_selected_score"]:.3f}</td></tr>')
         html_parts.append('<tr><td style="padding: 5px; border: 1px solid #ddd;"><strong>Avg Non-Selected Score:</strong></td>')
-        html_parts.append(f'<td style="padding: 5px; border: 1px solid #ddd;">{promethee_metrics["avg_non_selected_score"]:.3f}</td></tr>')
+        html_parts.append(f'<td style="padding: 5px; border: 1px solid #ddd;">{sa_metrics["avg_non_selected_score"]:.3f}</td></tr>')
         html_parts.append('<tr><td style="padding: 5px; border: 1px solid #ddd;"><strong>Ranking Quality:</strong></td>')
-        html_parts.append(f'<td style="padding: 5px; border: 1px solid #ddd;">{promethee_metrics["ranking_quality"]:.1f}%</td></tr>')
+        html_parts.append(f'<td style="padding: 5px; border: 1px solid #ddd;">{sa_metrics["ranking_quality"]:.1f}%</td></tr>')
         html_parts.append('</table>')
         
-        # PROMETHEE analysis details
+        # SA analysis details
         html_parts.append('<h3>Analysis Details</h3>')
         html_parts.append('<table style="border-collapse: collapse; margin: 10px 0;">')
         html_parts.append('<tr><td style="padding: 5px; border: 1px solid #ddd;"><strong>Parcels Analyzed:</strong></td>')
-        html_parts.append(f'<td style="padding: 5px; border: 1px solid #ddd;">{promethee_metrics["parcels_analyzed"]:,}</td></tr>')
+        html_parts.append(f'<td style="padding: 5px; border: 1px solid #ddd;">{sa_metrics["parcels_analyzed"]:,}</td></tr>')
         html_parts.append('<tr><td style="padding: 5px; border: 1px solid #ddd;"><strong>Pairwise Comparisons:</strong></td>')
-        html_parts.append(f'<td style="padding: 5px; border: 1px solid #ddd;">{promethee_metrics["pairwise_comparisons"]:,}</td></tr>')
+        html_parts.append(f'<td style="padding: 5px; border: 1px solid #ddd;">{sa_metrics["pairwise_comparisons"]:,}</td></tr>')
         html_parts.append('</table>')
         
-        html_parts.append('<p><em><strong>PROMETHEE Explanation:</strong> This method uses pairwise comparisons between your selected parcels and non-selected ones to find weights that maximize the preference for your selection. ')
-        html_parts.append(f'The ranking quality of {promethee_metrics["ranking_quality"]:.1f}% indicates how well your selected parcels rank above the average non-selected parcel.</em></p>')
+        html_parts.append('<p><em><strong>Simulated Annealing Explanation:</strong> This method uses a probabilistic optimization algorithm to find weights that minimize the average rank of your selected parcels. ')
+        html_parts.append(f'The ranking quality of {sa_metrics["ranking_quality"]:.1f}% indicates how well your selected parcels rank above the average non-selected parcel.</em></p>')
         
         # Weight distribution
         html_parts.append('<h3>Weight Distribution</h3>')
         html_parts.append('<table style="border-collapse: collapse; margin: 10px 0;">')
         html_parts.append('<tr><td style="padding: 5px; border: 1px solid #ddd;"><strong>Strategy:</strong></td>')
-        if promethee_metrics["is_mixed"]:
-            html_parts.append(f'<td style="padding: 5px; border: 1px solid #ddd;">Mixed approach using {promethee_metrics["nonzero_weights"]} variables</td></tr>')
+        if sa_metrics["is_mixed"]:
+            html_parts.append(f'<td style="padding: 5px; border: 1px solid #ddd;">Mixed approach using {sa_metrics["nonzero_weights"]} variables</td></tr>')
         else:
-            html_parts.append(f'<td style="padding: 5px; border: 1px solid #ddd;">Single-variable focus on {promethee_metrics["dominant_var"]}</td></tr>')
+            html_parts.append(f'<td style="padding: 5px; border: 1px solid #ddd;">Single-variable focus on {sa_metrics["dominant_var"]}</td></tr>')
         html_parts.append('</table>')
         
         html_parts.append('</div>')
@@ -2107,7 +2107,7 @@ def infer_weights():
         
         # Check optimization type
         optimization_type = data.get('optimization_type', 'absolute')
-        promethee_metrics = None
+        sa_metrics = None
         
         if optimization_type == 'promethee':
             # Separation optimization: maximize gap between selected and non-selected
@@ -2116,13 +2116,13 @@ def infer_weights():
             # Get all parcels currently in memory/view for constraints
             all_parcels_data = data.get('parcel_scores', [])
             if not all_parcels_data:
-                return jsonify({"error": "No parcel scores provided for PROMETHEE optimization"}), 400
+                return jsonify({"error": "No parcel scores provided for SA optimization"}), 400
             
-            logger.info(f"PROMETHEE OPTIMIZATION: total parcels in view={len(all_parcels_data)}")
+            logger.info(f"SA OPTIMIZATION: total parcels in view={len(all_parcels_data)}")
             
-            result = solve_promethee_optimization(parcel_data, include_vars, all_parcels_data)
-            if len(result) == 5:  # New format with PROMETHEE metrics
-                best_weights, weights_pct, total_score, success, promethee_metrics = result
+            result = solve_simulated_annealing_optimization(parcel_data, include_vars, all_parcels_data)
+            if len(result) == 5:  # New format with SA metrics
+                best_weights, weights_pct, total_score, success, sa_metrics = result
             else:  # Fallback for compatibility
                 best_weights, weights_pct, total_score, success = result
                 
@@ -2183,8 +2183,8 @@ def infer_weights():
                 'timestamp': time.time(),
                 'ttl': time.time() + 3600  # 1 hour expiry
             }
-            if optimization_type == 'promethee' and promethee_metrics:
-                metadata['promethee_metrics'] = promethee_metrics
+            if optimization_type == 'promethee' and sa_metrics:
+                metadata['sa_metrics'] = sa_metrics
             json.dump(metadata, f)
         
         logger.info(f"Saved optimization files to: {session_dir}")
@@ -2193,8 +2193,8 @@ def infer_weights():
         
         # Return minimal response - NO BULK DATA (memory optimized!)
         timing_log = f"{optimization_type.title()} optimization completed in {total_time:.2f}s for {num_parcels} parcels."
-        if optimization_type == 'promethee' and promethee_metrics:
-            timing_log += f" Gap: {promethee_metrics['preference_gap']:.3f}"
+        if optimization_type == 'promethee' and sa_metrics:
+            timing_log += f" Gap: {sa_metrics['preference_gap']:.3f}"
         
         response_data = {
             "weights": weights_pct,           # ~200 bytes
@@ -2207,8 +2207,8 @@ def infer_weights():
             "files_available": True           # Files stored on disk, not in memory
         }
         
-        if optimization_type == 'promethee' and promethee_metrics:
-            response_data['preference_gap'] = promethee_metrics['preference_gap']
+        if optimization_type == 'promethee' and sa_metrics:
+            response_data['preference_gap'] = sa_metrics['preference_gap']
         
         logger.info(f"Sending response: {len(str(response_data))} characters")
         
@@ -2334,19 +2334,19 @@ def view_solution(session_id):
             with open(parcel_data_path, 'r') as f:
                 parcel_data = json.load(f)
         
-        # Read metadata for weights and PROMETHEE metrics
+        # Read metadata for weights and SA metrics
         weights = {}
-        promethee_metrics = None
+        sa_metrics = None
         optimization_type = 'absolute'
         if os.path.exists(metadata_path):
             with open(metadata_path, 'r') as f:
                 metadata = json.load(f)
                 weights = metadata.get('weights', {})
-                promethee_metrics = metadata.get('promethee_metrics', None)
+                sa_metrics = metadata.get('sa_metrics', None)
                 optimization_type = metadata.get('optimization_type', 'absolute')
         
         # Generate enhanced HTML report
-        html_content = generate_enhanced_solution_html(txt_content, lp_content, parcel_data, weights, session_id, promethee_metrics, optimization_type)
+        html_content = generate_enhanced_solution_html(txt_content, lp_content, parcel_data, weights, session_id, sa_metrics, optimization_type)
         
         response = make_response(html_content)
         response.headers['Content-Type'] = 'text/html'
