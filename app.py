@@ -1338,10 +1338,11 @@ def solve_weight_optimization(parcel_data, include_vars):
 
 def solve_simulated_annealing_optimization(parcel_data, include_vars, all_parcels_data):
     """
-    Fast simulated annealing ranking optimization:
-    1. Calculate factor advantages using vectorized operations for starting point
-    2. Use simulated annealing to find globally optimal weights that minimize selected parcel ranks
-    3. Optimized for web app performance with adaptive cooling schedule
+    Multi-start simulated annealing ranking optimization:
+    1. Calculate factor advantages using vectorized operations 
+    2. Run multiple SA instances with different starting points (literature-based approach)
+    3. Return globally optimal weights that minimize selected parcel ranks
+    4. Optimized for web app performance with adaptive cooling schedule
     """
     import gc
     import numpy as np
@@ -1352,7 +1353,7 @@ def solve_simulated_annealing_optimization(parcel_data, include_vars, all_parcel
     # Process variable names efficiently
     include_vars_base = [var[:-2] if var.endswith('_s') else var for var in include_vars]
     
-    logger.info(f"FAST RANKING OPTIMIZATION: {len(parcel_data):,} selected parcels, {len(all_parcels_data):,} total parcels, {len(include_vars_base)} variables")
+    logger.info(f"MULTI-START SA OPTIMIZATION: {len(parcel_data):,} selected parcels, {len(all_parcels_data):,} total parcels, {len(include_vars_base)} variables")
     
     # Convert to numpy arrays for vectorized operations (100x faster than loops)
     selected_scores = np.zeros((len(parcel_data), len(include_vars_base)))
@@ -1377,16 +1378,16 @@ def solve_simulated_annealing_optimization(parcel_data, include_vars, all_parcel
     
     logger.info(f"Factor advantages: {dict(zip(include_vars_base, advantages))}")
     
-    # Step 1: Get analytical starting point (fast heuristic)
+    # Calculate analytical starting point (for informed initialization)
     if np.sum(advantages) > 0:
-        starting_weights = advantages / np.sum(advantages)
+        analytical_weights = advantages / np.sum(advantages)
     else:
-        logger.warning("No factor advantages found, using equal weights as starting point")
-        starting_weights = np.ones(len(include_vars_base)) / len(include_vars_base)
+        logger.warning("No factor advantages found, using equal weights as analytical starting point")
+        analytical_weights = np.ones(len(include_vars_base)) / len(include_vars_base)
     
-    logger.info(f"Starting weights: {dict(zip(include_vars_base, starting_weights))}")
+    logger.info(f"Analytical weights: {dict(zip(include_vars_base, analytical_weights))}")
     
-    # Step 2: Hill climbing optimization to find true optimum
+    # Multi-start SA optimization (literature-based approach)
     def calculate_ranking_objective(weights_array):
         """Calculate average rank of selected parcels (lower is better)"""
         if np.sum(weights_array) <= 0:
@@ -1419,68 +1420,122 @@ def solve_simulated_annealing_optimization(parcel_data, include_vars, all_parcel
             
         return np.mean(selected_ranks)
     
-    # Simulated annealing optimization for global optimum search
-    current_weights = starting_weights.copy()
-    current_objective = calculate_ranking_objective(current_weights)
-    best_weights = current_weights.copy()
-    best_objective = current_objective
-    
-    max_iterations = min(200, len(parcel_data) // 2)  # Scale with selection size
-    improvements = 0
-    acceptances = 0
-    
-    # Simulated annealing parameters
-    initial_temp = best_objective * 0.1  # Initial temperature based on problem scale
-    cooling_rate = 0.95  # Exponential cooling
-    min_temp = 0.001
-    
-    logger.info(f"Starting simulated annealing optimization (max {max_iterations} iterations, T0={initial_temp:.3f})...")
-    
-    def acceptance_probability(old_cost, new_cost, temperature):
-        """Calculate probability of accepting worse solution"""
-        if new_cost < old_cost:
-            return 1.0
-        if temperature <= 0:
-            return 0.0
-        return np.exp((old_cost - new_cost) / temperature)
-    
-    for iteration in range(max_iterations):
-        # Calculate current temperature with exponential cooling
-        temperature = max(min_temp, initial_temp * (cooling_rate ** iteration))
+    def run_single_sa(starting_weights, run_id):
+        """Run single SA optimization from given starting point"""
+        current_weights = starting_weights.copy()
+        current_objective = calculate_ranking_objective(current_weights)
+        best_weights = current_weights.copy()
+        best_objective = current_objective
         
-        # Generate neighbor with adaptive perturbation size
-        step_size = 0.05 * (temperature / initial_temp) + 0.01  # Larger steps at high temp
-        perturbation = np.random.normal(0, step_size, len(include_vars_base))
-        neighbor_weights = current_weights + perturbation
-        neighbor_weights = np.maximum(0.001, neighbor_weights)  # Keep positive
+        max_iterations = min(150, len(parcel_data) // 3)  # Reduced per run for multi-start
+        improvements = 0
+        acceptances = 0
         
-        # Calculate objective for neighbor
-        neighbor_objective = calculate_ranking_objective(neighbor_weights)
+        # SA parameters
+        initial_temp = best_objective * 0.1
+        cooling_rate = 0.95
+        min_temp = 0.001
         
-        # Calculate acceptance probability
-        accept_prob = acceptance_probability(current_objective, neighbor_objective, temperature)
+        def acceptance_probability(old_cost, new_cost, temperature):
+            """Calculate probability of accepting worse solution"""
+            if new_cost < old_cost:
+                return 1.0
+            if temperature <= 0:
+                return 0.0
+            return np.exp((old_cost - new_cost) / temperature)
         
-        # Accept or reject based on probability
-        if np.random.random() < accept_prob:
-            current_weights = neighbor_weights
-            current_objective = neighbor_objective
-            acceptances += 1
+        for iteration in range(max_iterations):
+            # Calculate current temperature with exponential cooling
+            temperature = max(min_temp, initial_temp * (cooling_rate ** iteration))
             
-            # Track improvements
-            if neighbor_objective < current_objective:
-                improvements += 1
+            # Generate neighbor with adaptive perturbation size
+            step_size = 0.05 * (temperature / initial_temp) + 0.01
+            perturbation = np.random.normal(0, step_size, len(include_vars_base))
+            neighbor_weights = current_weights + perturbation
+            neighbor_weights = np.maximum(0.001, neighbor_weights)  # Keep positive
             
-            # Track best ever found
-            if neighbor_objective < best_objective:
-                best_weights = neighbor_weights.copy()
-                best_objective = neighbor_objective
+            # Calculate objective for neighbor
+            neighbor_objective = calculate_ranking_objective(neighbor_weights)
+            
+            # Calculate acceptance probability
+            accept_prob = acceptance_probability(current_objective, neighbor_objective, temperature)
+            
+            # Accept or reject based on probability
+            if np.random.random() < accept_prob:
+                current_weights = neighbor_weights
+                current_objective = neighbor_objective
+                acceptances += 1
+                
+                # Track improvements
+                if neighbor_objective < current_objective:
+                    improvements += 1
+                
+                # Track best ever found
+                if neighbor_objective < best_objective:
+                    best_weights = neighbor_weights.copy()
+                    best_objective = neighbor_objective
+        
+        return best_weights, best_objective, improvements, acceptances
     
-    # Normalize final weights
-    optimal_weights_array = best_weights / np.sum(best_weights)
+    # Multi-start SA with literature-based initialization (9 starts)
+    num_starts = 9
+    results = []
+    
+    logger.info(f"Running multi-start SA with {num_starts} different initializations...")
+    
+    for i in range(num_starts):
+        if i == 0:
+            # Informed start: analytical advantage-based weights
+            initial_weights = analytical_weights.copy()
+            start_type = "analytical"
+        elif i <= 4:
+            # Semi-random starts: analytical + perturbations
+            perturbation = np.random.normal(0, 0.3, len(include_vars_base))
+            initial_weights = np.maximum(0.01, analytical_weights + perturbation)
+            initial_weights = initial_weights / np.sum(initial_weights)
+            start_type = "semi-random"
+        else:
+            # Pure random starts: uniform random weights
+            initial_weights = np.random.uniform(0.1, 1.0, len(include_vars_base))
+            initial_weights = initial_weights / np.sum(initial_weights)
+            start_type = "random"
+        
+        # Run SA from this starting point
+        weights, objective, improvements, acceptances = run_single_sa(initial_weights, i)
+        results.append({
+            'weights': weights,
+            'objective': objective,
+            'improvements': improvements,
+            'acceptances': acceptances,
+            'start_type': start_type,
+            'run_id': i
+        })
+        
+        logger.info(f"  Run {i+1} ({start_type}): avg_rank={objective:.1f}, improvements={improvements}")
+    
+    # Find best result across all starts
+    best_result = min(results, key=lambda x: x['objective'])
+    
+    # Calculate statistics
+    all_objectives = [r['objective'] for r in results]
+    total_improvements = sum(r['improvements'] for r in results)
+    total_acceptances = sum(r['acceptances'] for r in results)
+    
+    logger.info(f"Multi-start SA completed:")
+    logger.info(f"  Best objective: {best_result['objective']:.1f} (from {best_result['start_type']} start)")
+    logger.info(f"  Objective range: {min(all_objectives):.1f} - {max(all_objectives):.1f}")
+    logger.info(f"  Total improvements: {total_improvements}, acceptances: {total_acceptances}")
+    
+    # Use best weights found
+    optimal_weights_array = best_result['weights'] / np.sum(best_result['weights'])
     optimal_weights = {var_base: float(weight) for var_base, weight in zip(include_vars_base, optimal_weights_array)}
     
-    logger.info(f"Simulated annealing completed: {improvements} improvements, {acceptances} total acceptances")
-    logger.info(f"Ranking improvement: {current_objective:.1f} → {best_objective:.1f} average rank")
+    # Get analytical baseline for comparison
+    analytical_objective = calculate_ranking_objective(analytical_weights)
+    improvement = analytical_objective - best_result['objective']
+    improvement_pct = (improvement / analytical_objective) * 100 if analytical_objective > 0 else 0
+    
+    logger.info(f"Multi-start SA improvement: {analytical_objective:.1f} → {best_result['objective']:.1f} average rank ({improvement_pct:+.1f}%)")
     
     weights_pct = {var: weight * 100 for var, weight in optimal_weights.items()}
     
@@ -1537,13 +1592,13 @@ def solve_simulated_annealing_optimization(parcel_data, include_vars, all_parcel
     
     optimization_time = time.time() - start_time
     
-    logger.info(f"Fast ranking optimization completed in {optimization_time:.3f}s")
+    logger.info(f"Multi-start SA optimization completed in {optimization_time:.3f}s")
     logger.info(f"Preference gap: {preference_gap:.3f}")
     logger.info(f"Average rank: {avg_rank:.1f} ({avg_rank/total_parcels:.1%} percentile)")
     logger.info(f"Top 10% rate: {top_10_pct:.1f}% | Top 25% rate: {top_25_pct:.1f}%")
     logger.info(f"OPTIMAL WEIGHTS: {[(var, f'{weight:.1%}') for var, weight in optimal_weights.items() if weight > 0.001]}")
     
-    # Enhanced metrics for new method
+    # Enhanced metrics for multi-start SA method
     ranking_metrics = {
         'preference_gap': preference_gap,
         'avg_selected_score': avg_selected_score,
@@ -1558,7 +1613,13 @@ def solve_simulated_annealing_optimization(parcel_data, include_vars, all_parcel
         'is_mixed': nonzero_weights > 1,
         'parcels_analyzed': len(all_parcels_data),
         'optimization_time': optimization_time,
-        'optimization_type': 'fast_ranking'
+        'optimization_type': 'multi_start_sa',
+        'num_starts': num_starts,
+        'best_start_type': best_result['start_type'],
+        'analytical_baseline': analytical_objective,
+        'improvement_pct': improvement_pct,
+        'total_improvements': total_improvements,
+        'total_acceptances': total_acceptances
     }
     
     gc.collect()
