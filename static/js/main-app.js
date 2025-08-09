@@ -2401,7 +2401,7 @@
                 {
                     id: 'dins',
                     url: 'mapbox://theo1158.72s8pi1h',
-                    sourceLayer: 'DINS_incidents',
+                    sourceLayer: 'DINS_incidents-dqqif1',
                     type: 'symbol',
                     paint: {},
                     layout: {
