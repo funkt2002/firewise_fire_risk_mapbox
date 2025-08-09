@@ -2545,6 +2545,32 @@
                 `,
                 cursor: 'pointer'
             });
+            
+            // Add interactivity for DINS incidents
+            addLayerInteraction('dins', {
+                popupContent: (properties) => {
+                    // Build popup content based on available DINS properties
+                    let content = '<div style="font-family: Arial, sans-serif; font-size: 12px;">';
+                    content += '<strong>🔥 DINS Incident</strong><br><br>';
+                    
+                    // Key properties to display
+                    if (properties.DAMAGE) content += `<strong>Damage:</strong> ${properties.DAMAGE}<br>`;
+                    if (properties.INCIDENTNA) content += `<strong>Incident Name:</strong> ${properties.INCIDENTNA}<br>`;
+                    if (properties.FIRENAME) content += `<strong>Fire Name:</strong> ${properties.FIRENAME}<br>`;
+                    if (properties.STRUCTURET) content += `<strong>Structure Type:</strong> ${properties.STRUCTURET}<br>`;
+                    if (properties.CITY) content += `<strong>City:</strong> ${properties.CITY}<br>`;
+                    if (properties.COUNTY) content += `<strong>County:</strong> ${properties.COUNTY}<br>`;
+                    if (properties.SITEADDRES) content += `<strong>Address:</strong> ${properties.SITEADDRES}<br>`;
+                    if (properties.YEARBUILT) content += `<strong>Year Built:</strong> ${properties.YEARBUILT}<br>`;
+                    if (properties.HAZARDTYPE) content += `<strong>Hazard Type:</strong> ${properties.HAZARDTYPE}<br>`;
+                    if (properties.DEFENSIVEA) content += `<strong>Defensive Actions:</strong> ${properties.DEFENSIVEA}<br>`;
+                    
+                    content += '</div>';
+                    return content;
+                },
+                cursor: 'pointer',
+                popupOffset: [0, -10]  // Offset popup slightly above the circle
+            });
 
             if (currentData) {
                 updateMap();
@@ -2581,6 +2607,7 @@
                             console.log(`📊 DINS features found: ${features.length}`);
                             if (features.length > 0) {
                                 console.log('Sample DINS feature:', features[0]);
+                                console.log('DINS properties:', features[0].properties);
                             }
                         }
                     });
