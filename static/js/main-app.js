@@ -1905,6 +1905,13 @@
                                 if (map.getLayer('fire-stations-symbols')) {
                                     map.setLayoutProperty('fire-stations-symbols', 'visibility', visibility);
                                 }
+                            } else if (layerId === 'dins') {
+                                if (map.getLayer('dins')) {
+                                    map.setLayoutProperty('dins', 'visibility', visibility);
+                                }
+                                if (map.getLayer('dins-symbols')) {
+                                    map.setLayoutProperty('dins-symbols', 'visibility', visibility);
+                                }
                             } else if (map.getLayer(layerId)) {
                                 map.setLayoutProperty(layerId, 'visibility', visibility);
                             }
@@ -1945,9 +1952,14 @@
                     console.log(`🔥 Toggling DINS layer visibility to: ${visibility}`);
                     if (map.getLayer('dins')) {
                         map.setLayoutProperty('dins', 'visibility', visibility);
-                        console.log(`✅ DINS layer visibility set to: ${visibility}`);
-                    } else {
-                        console.error(`❌ DINS layer not found on map!`);
+                        console.log(`✅ DINS circle layer visibility set to: ${visibility}`);
+                    }
+                    if (map.getLayer('dins-symbols')) {
+                        map.setLayoutProperty('dins-symbols', 'visibility', visibility);
+                        console.log(`✅ DINS symbol layer visibility set to: ${visibility}`);
+                    }
+                    if (!map.getLayer('dins') && !map.getLayer('dins-symbols')) {
+                        console.error(`❌ DINS layers not found on map!`);
                         // Try to debug what layers exist
                         const style = map.getStyle();
                         const dinsLayers = style.layers.filter(l => l.id.includes('dins'));
@@ -2415,14 +2427,13 @@
                     id: 'dins',
                     url: 'mapbox://theo1158.72s8pi1h',
                     sourceLayer: 'DINS_incidents-dqqif1',
-                    type: 'symbol',
-                    paint: {},
-                    layout: {
-                        'text-field': '🔥',
-                        'text-size': 16,
-                        'text-anchor': 'center',
-                        'text-allow-overlap': true,
-                        'text-ignore-placement': true
+                    type: 'circle',
+                    paint: {
+                        'circle-color': '#ff4500',  // Orange-red color
+                        'circle-radius': 6,
+                        'circle-stroke-color': '#ff0000',
+                        'circle-stroke-width': 2,
+                        'circle-opacity': 0.8
                     }
                 }
             ];
@@ -2498,6 +2509,26 @@
                             'text-color': '#ffffff'
                         }
                     });
+                }
+                
+                // Add symbol layer for DINS with flame emoji
+                if (layer.id === 'dins') {
+                    map.addLayer({
+                        id: 'dins-symbols',
+                        type: 'symbol',
+                        source: layer.id,
+                        'source-layer': layer.sourceLayer,
+                        layout: { 
+                            'visibility': 'none',
+                            'text-field': '🔥',
+                            'text-size': 12,
+                            'text-anchor': 'center',
+                            'text-allow-overlap': true,
+                            'text-ignore-placement': true
+                        },
+                        paint: {}
+                    });
+                    console.log('✅ Added DINS symbol overlay layer');
                 }
             });
 
