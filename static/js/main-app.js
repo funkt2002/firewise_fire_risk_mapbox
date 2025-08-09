@@ -1918,6 +1918,7 @@
             toggle.addEventListener('change', (e) => {
                 const layerId = e.target.dataset.layer;
                 const visibility = e.target.checked ? 'visible' : 'none';
+                console.log(`🎚️ Layer toggle: ${layerId} -> ${visibility}`);
                 
                 if (layerId === 'parcels') {
                     if (map.getLayer('parcels-fill')) {
@@ -1939,6 +1940,18 @@
                     }
                     if (map.getLayer('fire-stations-symbols')) {
                         map.setLayoutProperty('fire-stations-symbols', 'visibility', visibility);
+                    }
+                } else if (layerId === 'dins') {
+                    console.log(`🔥 Toggling DINS layer visibility to: ${visibility}`);
+                    if (map.getLayer('dins')) {
+                        map.setLayoutProperty('dins', 'visibility', visibility);
+                        console.log(`✅ DINS layer visibility set to: ${visibility}`);
+                    } else {
+                        console.error(`❌ DINS layer not found on map!`);
+                        // Try to debug what layers exist
+                        const style = map.getStyle();
+                        const dinsLayers = style.layers.filter(l => l.id.includes('dins'));
+                        console.log('DINS-related layers:', dinsLayers);
                     }
                 } else if (map.getLayer(layerId)) {
                     map.setLayoutProperty(layerId, 'visibility', visibility);
@@ -2415,11 +2428,18 @@
             ];
 
             auxiliaryVectorLayers.forEach(layer => {
+                console.log(`🗺️ Adding layer: ${layer.id}, type: ${layer.type}, source-layer: ${layer.sourceLayer}`);
+                
                 // Add vector tile source
-                map.addSource(layer.id, {
-                    type: 'vector',
-                    url: layer.url
-                });
+                try {
+                    map.addSource(layer.id, {
+                        type: 'vector',
+                        url: layer.url
+                    });
+                    console.log(`✅ Source added for ${layer.id}: ${layer.url}`);
+                } catch (e) {
+                    console.error(`❌ Error adding source for ${layer.id}:`, e);
+                }
                 
                 // Add main layer
                 const layerConfig = {
@@ -2434,9 +2454,15 @@
                 // Handle symbol layers with layout properties
                 if (layer.type === 'symbol' && layer.layout) {
                     layerConfig.layout = { ...layer.layout, 'visibility': 'none' };
+                    console.log(`🔥 Symbol layer ${layer.id} with layout:`, layerConfig.layout);
                 }
                 
-                map.addLayer(layerConfig);
+                try {
+                    map.addLayer(layerConfig);
+                    console.log(`✅ Layer added: ${layer.id}`);
+                } catch (e) {
+                    console.error(`❌ Error adding layer ${layer.id}:`, e);
+                }
                 
                 // Add outline layer for burn scars
                 if (layer.id === 'burnscars') {
@@ -2509,6 +2535,28 @@
             document.querySelectorAll('input[type="range"]').forEach(slider => {
                 updateSliderFill(slider);
             });
+            
+            // Debug DINS layer after everything is loaded
+            setTimeout(() => {
+                console.log('🔍 Debugging DINS layer...');
+                if (map.getSource('dins')) {
+                    console.log('✅ DINS source exists');
+                    map.on('sourcedata', (e) => {
+                        if (e.sourceId === 'dins' && e.isSourceLoaded) {
+                            console.log('📍 DINS source loaded, checking features...');
+                            const features = map.querySourceFeatures('dins', {
+                                sourceLayer: 'DINS_incidents-dqqif1'
+                            });
+                            console.log(`📊 DINS features found: ${features.length}`);
+                            if (features.length > 0) {
+                                console.log('Sample DINS feature:', features[0]);
+                            }
+                        }
+                    });
+                } else {
+                    console.error('❌ DINS source not found');
+                }
+            }, 2000);
         });
 
 
