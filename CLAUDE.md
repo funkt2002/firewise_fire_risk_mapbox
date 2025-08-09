@@ -1,5 +1,8 @@
 # Claude Development Rules for Fire Risk Calculator
 
+## Critical Rule
+NEVER LIE TO APPEASE ME OR MAKE MY IDEAS/METHODS work. if something i propose is not a good idea, we should not do it
+
 ## Development Rules
 1. First think through the problem, read the codebase for relevant files, and write a plan to extras/documentation/todo.md
 2. The plan should have a list of todo items that you can check off as you complete them
@@ -16,6 +19,8 @@
 - Do not include any reference to claude in git commits 
 - If I ask you to make a new script, just make one, not several. Always put outputs or new files in subdirectories unless I say otherwise
 - Always organize outputs in subfolders and do not spit out files in root
+- ALWAYS use real data from parcels.shp when available, NEVER use synthetic data unless explicitly requested
+- When creating test scripts, always load real data first and only fall back to synthetic if real data is unavailable or if I specifically ask for synthetic data
 
 ## Project Directory Structure
 

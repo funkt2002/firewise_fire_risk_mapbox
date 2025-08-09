@@ -2397,6 +2397,20 @@
                         'circle-stroke-width': 2,
                         'circle-opacity': 0.9
                     }
+                },
+                {
+                    id: 'dins',
+                    url: 'mapbox://theo1158.72s8pi1h',
+                    sourceLayer: 'DINS_incidents',
+                    type: 'symbol',
+                    paint: {},
+                    layout: {
+                        'text-field': '🔥',
+                        'text-size': 16,
+                        'text-anchor': 'center',
+                        'text-allow-overlap': true,
+                        'text-ignore-placement': true
+                    }
                 }
             ];
 
@@ -2408,14 +2422,21 @@
                 });
                 
                 // Add main layer
-                map.addLayer({
+                const layerConfig = {
                     id: layer.id,
                     type: layer.type,
                     source: layer.id,
                     'source-layer': layer.sourceLayer,
                     layout: { 'visibility': 'none' },
                     paint: layer.paint
-                });
+                };
+                
+                // Handle symbol layers with layout properties
+                if (layer.type === 'symbol' && layer.layout) {
+                    layerConfig.layout = { ...layer.layout, 'visibility': 'none' };
+                }
+                
+                map.addLayer(layerConfig);
                 
                 // Add outline layer for burn scars
                 if (layer.id === 'burnscars') {

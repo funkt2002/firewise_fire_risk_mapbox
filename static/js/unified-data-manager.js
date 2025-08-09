@@ -39,7 +39,6 @@ class UnifiedDataManager {
         
         console.log('UnifiedDataManager: Phase 1 complete - 344 lines removed, single data path active');
     }
-
     // ====================
     // FILTERING FUNCTIONALITY (from ClientFilterManager)
     // ====================
