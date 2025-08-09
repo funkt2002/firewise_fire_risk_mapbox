@@ -2549,21 +2549,21 @@
             // Add interactivity for DINS incidents
             addLayerInteraction('dins', {
                 popupContent: (properties) => {
+                    // Debug: log actual properties to see what's available
+                    console.log('DINS popup properties:', properties);
+                    
                     // Build popup content based on available DINS properties
                     let content = '<div style="font-family: Arial, sans-serif; font-size: 12px;">';
                     content += '<strong>🔥 DINS Incident</strong><br><br>';
                     
-                    // Key properties to display
-                    if (properties.DAMAGE) content += `<strong>Damage:</strong> ${properties.DAMAGE}<br>`;
-                    if (properties.INCIDENTNA) content += `<strong>Incident Name:</strong> ${properties.INCIDENTNA}<br>`;
-                    if (properties.FIRENAME) content += `<strong>Fire Name:</strong> ${properties.FIRENAME}<br>`;
-                    if (properties.STRUCTURET) content += `<strong>Structure Type:</strong> ${properties.STRUCTURET}<br>`;
-                    if (properties.CITY) content += `<strong>City:</strong> ${properties.CITY}<br>`;
-                    if (properties.COUNTY) content += `<strong>County:</strong> ${properties.COUNTY}<br>`;
-                    if (properties.SITEADDRES) content += `<strong>Address:</strong> ${properties.SITEADDRES}<br>`;
-                    if (properties.YEARBUILT) content += `<strong>Year Built:</strong> ${properties.YEARBUILT}<br>`;
-                    if (properties.HAZARDTYPE) content += `<strong>Hazard Type:</strong> ${properties.HAZARDTYPE}<br>`;
-                    if (properties.DEFENSIVEA) content += `<strong>Defensive Actions:</strong> ${properties.DEFENSIVEA}<br>`;
+                    // Display all available properties dynamically
+                    for (const [key, value] of Object.entries(properties)) {
+                        if (value !== null && value !== undefined && value !== '') {
+                            // Format the key to be more readable
+                            const formattedKey = key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+                            content += `<strong>${formattedKey}:</strong> ${value}<br>`;
+                        }
+                    }
                     
                     content += '</div>';
                     return content;
