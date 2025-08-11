@@ -1059,7 +1059,6 @@
             UIUpdater[hasSelections ? 'enable' : 'disable']('clear-last-selection');
             UIUpdater[hasSelections ? 'enable' : 'disable']('clear-all-selections');
             UIUpdater[hasSelections ? 'enable' : 'disable']('infer-weights');
-            UIUpdater[hasSelections ? 'enable' : 'disable']('infer-weights-uta');
             
             // Clear optimization session when selections change
             if (hasSelections) {
@@ -1739,6 +1738,7 @@
             // Check optimization type from radio buttons
             const optimizationType = document.querySelector('input[name="optimization-type"]:checked').value;
             const isPromethee = optimizationType === 'promethee';
+            const isUTA = optimizationType === 'uta';
 
             document.getElementById('spinner').style.display = 'block';
 
@@ -1756,8 +1756,8 @@
                     ...getCurrentFilters()
                 };
 
-                // For PROMETHEE optimization, we need all parcel scores for constraints
-                if (isPromethee) {
+                // For PROMETHEE and UTA optimizations, we need all parcel scores
+                if (isPromethee || isUTA) {
                     const allParcelScores = [];
                     if (currentData && currentData.features) {
                         currentData.features.forEach(feature => {
@@ -1770,14 +1770,36 @@
                             });
                             allParcelScores.push({
                                 parcel_id: feature.properties.parcel_id,
-                                scores: scores
+                                scores: scores,
+                                original_index: feature.properties.original_index || feature.properties.index
                             });
                         });
                     }
                     requestData.parcel_scores = allParcelScores;
                 }
 
-                const data = await window.apiClient.inferWeights(requestData);
+                // Add UTA-specific parameters
+                if (isUTA) {
+                    requestData.threat_size = 200;  // Default threat set size
+                }
+
+                // Call appropriate endpoint based on optimization type
+                let data;
+                if (isUTA) {
+                    const response = await fetch('/api/infer-weights-uta', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify(requestData)
+                    });
+                    data = await response.json();
+                    if (!response.ok) {
+                        throw new Error(data.error || 'UTA optimization failed');
+                    }
+                } else {
+                    data = await window.apiClient.inferWeights(requestData);
+                }
 
                 // Store only the session ID (memory optimized - no bulk data)
                 currentOptimizationSession = data.session_id;
@@ -1815,141 +1837,33 @@
                 // Clear the drawn features after successful optimization
                 clearAllSelectionAreas();
                 
+                // Show optimization results
+                if (isUTA && data.average_rank !== undefined) {
+                    // UTA-specific results
+                    let alertMessage = `UTA optimization complete in ${data.elapsed_time.toFixed(2)}s!\n\n`;
+                    alertMessage += `Average rank of selected parcels: ${data.average_rank.toFixed(0)}\n`;
+                    alertMessage += `Median rank: ${data.median_rank.toFixed(0)}\n`;
+                    alertMessage += `Selected parcels in top 10%: ${data.top_10_pct_rate.toFixed(1)}%\n`;
+                    alertMessage += `Selected parcels in top 25%: ${data.top_25_pct_rate.toFixed(1)}%\n`;
+                    alertMessage += `Total constraint violations: ${data.total_violations.toFixed(2)}\n`;
+                    alertMessage += `Threat identification time: ${data.threat_identification_time.toFixed(2)}s\n`;
+                    alertMessage += `LP solve time: ${data.lp_solve_time.toFixed(2)}s`;
+                    alert(alertMessage);
+                } else if (isPromethee && data.average_rank !== undefined) {
+                    // SA-specific results
+                    let alertMessage = `Simulated Annealing optimization complete in ${data.elapsed_time.toFixed(2)}s!\n\n`;
+                    alertMessage += `Average rank of selected parcels: ${data.average_rank.toFixed(0)}\n`;
+                    alertMessage += `Selected parcels in top 10%: ${data.top_10_pct_rate.toFixed(1)}%\n`;
+                    alertMessage += `Selected parcels in top 25%: ${data.top_25_pct_rate.toFixed(1)}%`;
+                    alert(alertMessage);
+                } else {
+                    // Absolute optimization results
+                    alert(`Optimization complete! Total score: ${data.total_score.toFixed(2)}`);
+                }
+                
             } catch (error) {
                 console.error(`Error in ${optimizationType} optimization:`, error);
                 alert(`${optimizationType} optimization failed: ` + error.message);
-            } finally {
-                document.getElementById('spinner').style.display = 'none';
-            }
-        });
-
-        // UTA-based weight inference handler
-        document.getElementById('infer-weights-uta').addEventListener('click', async () => {
-            if (selectionAreas.length === 0) {
-                alert('Please draw at least one selection area first!');
-                return;
-            }
-
-            if (!currentData) {
-                alert('Please calculate scores first by clicking "Calculate Scores"!');
-                return;
-            }
-
-            const combinedSelection = combineSelectionAreas();
-            if (!combinedSelection) {
-                alert('Error combining selection areas. Please try again.');
-                return;
-            }
-
-            // Collect parcel scores from client-side calculations
-            const parcelScoreData = collectParcelScoresInSelection();
-            if (parcelScoreData.selectedParcels.length === 0) {
-                alert('No parcels found in selection areas. Please ensure selection areas overlap with parcels.');
-                return;
-            }
-
-            const maxParcels = parseInt(document.getElementById('max-parcels').value);
-
-            const includeVars = Array.from(weightSliders)
-                .map(slider => slider.id)
-                .filter(varName => {
-                    const cb = document.getElementById(`enable-${varName}`);
-                    return cb && cb.checked;
-                });
-
-            document.getElementById('spinner').style.display = 'block';
-
-            try {
-                // Prepare request data for UTA
-                const requestData = {
-                    selection: combinedSelection,
-                    selection_areas: selectionAreas,
-                    max_parcels: maxParcels,
-                    include_vars: includeVars,
-                    selected_parcel_scores: parcelScoreData.selectedParcels,
-                    use_quantile: document.getElementById('use-quantile').checked,
-                    use_raw_scoring: document.getElementById('use-raw-scoring').checked,
-                    threat_size: 200,  // Default threat set size
-                    ...getCurrentFilters()
-                };
-
-                // UTA needs all parcel scores for threat set identification
-                const allParcelScores = [];
-                if (currentData && currentData.features) {
-                    currentData.features.forEach(feature => {
-                        const scores = {};
-                        includeVars.forEach(varName => {
-                            const baseVar = varName.replace('_s', '').replace('_q', '');
-                            if (feature.properties[varName] !== undefined) {
-                                scores[baseVar] = feature.properties[varName];
-                            }
-                        });
-                        allParcelScores.push({
-                            parcel_id: feature.properties.parcel_id,
-                            scores: scores,
-                            original_index: feature.properties.original_index || feature.properties.index
-                        });
-                    });
-                }
-                requestData.parcel_scores = allParcelScores;
-
-                // Call UTA-specific endpoint
-                const response = await fetch('/api/infer-weights-uta', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify(requestData)
-                });
-
-                const data = await response.json();
-
-                if (!response.ok) {
-                    throw new Error(data.error || 'UTA optimization failed');
-                }
-
-                // Store session ID
-                currentOptimizationSession = data.session_id;
-
-                // Clear any previous optimization data
-                selectedParcels = [];
-
-                // Enable download buttons
-                document.getElementById('download-lp-btn').disabled = false;
-                document.getElementById('download-txt-btn').disabled = false;
-                document.getElementById('view-solution-btn').disabled = false;
-
-                // Update weight sliders with optimized values
-                Object.entries(data.weights).forEach(([key, value]) => {
-                    const sliderKey = key + '_s'; // Add _s suffix for slider IDs
-                    const slider = document.getElementById(sliderKey);
-                    if (slider) {
-                        slider.value = value;
-                        updateSliderFill(slider);
-                    }
-                });
-
-                // Update percentage displays
-                updatePercentageDisplays();
-                
-                // Update scores with new weights
-                await updateScores(false);
-
-                // Show results alert with UTA-specific metrics
-                let alertMessage = `UTA optimization complete in ${data.elapsed_time.toFixed(2)}s!\n\n`;
-                alertMessage += `Average rank of selected parcels: ${data.average_rank.toFixed(0)}\n`;
-                alertMessage += `Median rank: ${data.median_rank.toFixed(0)}\n`;
-                alertMessage += `Selected parcels in top 10%: ${data.top_10_pct_rate.toFixed(1)}%\n`;
-                alertMessage += `Selected parcels in top 25%: ${data.top_25_pct_rate.toFixed(1)}%\n`;
-                alertMessage += `Total constraint violations: ${data.total_violations.toFixed(2)}\n`;
-                alertMessage += `Threat identification time: ${data.threat_identification_time.toFixed(2)}s\n`;
-                alertMessage += `LP solve time: ${data.lp_solve_time.toFixed(2)}s`;
-                
-                alert(alertMessage);
-
-            } catch (error) {
-                console.error('UTA optimization error:', error);
-                alert(`UTA optimization failed: ${error.message}`);
             } finally {
                 document.getElementById('spinner').style.display = 'none';
             }
@@ -2187,7 +2101,6 @@
             else {
                             // Regular single selection for weight inference (legacy mode)
             document.getElementById('infer-weights').disabled = false;
-            document.getElementById('infer-weights-uta').disabled = false;
             
             if (window.turf) {
                 // Use queryRenderedFeatures for vector tile selection
@@ -2229,7 +2142,6 @@
 
         function resetInferWeightsUI() {
             document.getElementById('infer-weights').disabled = true;
-            document.getElementById('infer-weights-uta').disabled = true;
             document.getElementById('download-lp-btn').disabled = true;
             document.getElementById('download-txt-btn').disabled = true;
             document.getElementById('view-solution-btn').disabled = true;
@@ -2830,6 +2742,28 @@
             checkbox.addEventListener('change', (e) => {
                 const variableId = e.target.id.replace('enable-', '');
                 toggleVariable(variableId, e.target.checked);
+            });
+        });
+
+        // Update optimization description when radio buttons change
+        document.querySelectorAll('input[name="optimization-type"]').forEach(radio => {
+            radio.addEventListener('change', (e) => {
+                const descElement = document.getElementById('optimization-desc');
+                if (descElement) {
+                    switch (e.target.value) {
+                        case 'absolute':
+                            descElement.textContent = 'Linear Program to maximize total risk score of selected parcels';
+                            break;
+                        case 'promethee':
+                            descElement.textContent = 'Simulated Annealing to minimize average rank of selected parcels (10-20s)';
+                            break;
+                        case 'uta':
+                            descElement.textContent = 'UTA preference learning to optimize ranking using Linear Programming (2-5s)';
+                            break;
+                        default:
+                            descElement.textContent = 'Select an optimization method';
+                    }
+                }
             });
         });
 
