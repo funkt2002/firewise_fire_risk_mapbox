@@ -1603,26 +1603,26 @@ def solve_simulated_annealing_optimization(parcel_data, include_vars, all_parcel
     
     # Enhanced metrics for multi-start SA method
     ranking_metrics = {
-        'preference_gap': preference_gap,
-        'avg_selected_score': avg_selected_score,
-        'avg_non_selected_score': avg_all_score,
-        'ranking_quality': ranking_quality,
-        'avg_rank': avg_rank,
-        'avg_rank_percentile': avg_rank / total_parcels,
-        'top_10_pct_rate': top_10_pct,
-        'top_25_pct_rate': top_25_pct,
-        'nonzero_weights': nonzero_weights,
+        'preference_gap': float(preference_gap),
+        'avg_selected_score': float(avg_selected_score),
+        'avg_non_selected_score': float(avg_all_score),
+        'ranking_quality': float(ranking_quality),
+        'avg_rank': float(avg_rank),
+        'avg_rank_percentile': float(avg_rank / total_parcels),
+        'top_10_pct_rate': float(top_10_pct),
+        'top_25_pct_rate': float(top_25_pct),
+        'nonzero_weights': int(nonzero_weights),
         'dominant_var': dominant_var,
-        'is_mixed': nonzero_weights > 1,
-        'parcels_analyzed': len(all_parcels_data),
-        'optimization_time': optimization_time,
+        'is_mixed': bool(nonzero_weights > 1),
+        'parcels_analyzed': int(len(all_parcels_data)),
+        'optimization_time': float(optimization_time),
         'optimization_type': 'multi_start_sa',
-        'num_starts': num_starts,
+        'num_starts': int(num_starts),
         'best_start_type': best_result['start_type'],
-        'analytical_baseline': analytical_objective,
-        'improvement_pct': improvement_pct,
-        'total_improvements': total_improvements,
-        'total_acceptances': total_acceptances
+        'analytical_baseline': float(analytical_objective),
+        'improvement_pct': float(improvement_pct),
+        'total_improvements': int(total_improvements),
+        'total_acceptances': int(total_acceptances)
     }
     
     gc.collect()
@@ -1797,24 +1797,24 @@ def solve_uta_linear_optimization(parcel_data, include_vars, all_parcels_data, t
         optimization_time = time.time() - start_time
         
         ranking_metrics = {
-            'average_rank': avg_rank,
-            'median_rank': median_rank,
-            'best_rank': min(selected_ranks),
-            'worst_rank': max(selected_ranks),
-            'top_10_pct_rate': top_10_pct,
-            'top_25_pct_rate': top_25_pct,
-            'nonzero_weights': nonzero_weights,
+            'average_rank': float(avg_rank),
+            'median_rank': float(median_rank),
+            'best_rank': int(min(selected_ranks)),
+            'worst_rank': int(max(selected_ranks)),
+            'top_10_pct_rate': float(top_10_pct),
+            'top_25_pct_rate': float(top_25_pct),
+            'nonzero_weights': int(nonzero_weights),
             'dominant_var': dominant_var,
-            'is_mixed': nonzero_weights > 1,
-            'parcels_analyzed': len(all_parcels_data),
-            'optimization_time': optimization_time,
+            'is_mixed': bool(nonzero_weights > 1),
+            'parcels_analyzed': int(len(all_parcels_data)),
+            'optimization_time': float(optimization_time),
             'optimization_type': 'uta_linear',
-            'threat_set_size': threat_size,
-            'total_constraints': constraint_count,
-            'total_violations': total_violations,
-            'avg_violation': avg_violation,
-            'threat_identification_time': threat_time,
-            'lp_solve_time': solve_time
+            'threat_set_size': int(threat_size),
+            'total_constraints': int(constraint_count),
+            'total_violations': float(total_violations),
+            'avg_violation': float(avg_violation),
+            'threat_identification_time': float(threat_time),
+            'lp_solve_time': float(solve_time)
         }
         
         gc.collect()
@@ -2080,25 +2080,25 @@ def solve_uta_disaggregation(parcel_data, include_vars, all_parcels_data, threat
         optimization_time = time.time() - start_time
         
         ranking_metrics = {
-            'average_rank': avg_rank,
-            'median_rank': median_rank,
-            'best_rank': min(selected_ranks),
-            'worst_rank': max(selected_ranks),
-            'top_10_pct_rate': top_10_pct,
-            'top_25_pct_rate': top_25_pct,
-            'nonzero_weights': nonzero_weights,
+            'average_rank': float(avg_rank),
+            'median_rank': float(median_rank),
+            'best_rank': int(min(selected_ranks)),
+            'worst_rank': int(max(selected_ranks)),
+            'top_10_pct_rate': float(top_10_pct),
+            'top_25_pct_rate': float(top_25_pct),
+            'nonzero_weights': int(nonzero_weights),
             'dominant_var': dominant_var,
-            'is_mixed': nonzero_weights > 1,
-            'parcels_analyzed': len(all_parcels_data),
-            'optimization_time': optimization_time,
+            'is_mixed': bool(nonzero_weights > 1),
+            'parcels_analyzed': int(len(all_parcels_data)),
+            'optimization_time': float(optimization_time),
             'optimization_type': 'uta_disaggregation',
-            'threat_set_size': threat_size,
-            'num_breakpoints': K,
-            'total_constraints': constraint_count,
-            'total_violations': total_violations,
-            'avg_violation': avg_violation,
-            'threat_identification_time': threat_time,
-            'lp_solve_time': solve_time,
+            'threat_set_size': int(threat_size),
+            'num_breakpoints': int(K),
+            'total_constraints': int(constraint_count),
+            'total_violations': float(total_violations),
+            'avg_violation': float(avg_violation),
+            'threat_identification_time': float(threat_time),
+            'lp_solve_time': float(solve_time),
             'marginals': marginals
         }
         
@@ -2288,24 +2288,24 @@ def solve_inverse_wlc(parcel_data, include_vars, all_parcels_data, threat_size=2
         optimization_time = time.time() - start_time
         
         ranking_metrics = {
-            'average_rank': avg_rank,
-            'median_rank': median_rank,
-            'best_rank': min(selected_ranks),
-            'worst_rank': max(selected_ranks),
-            'top_10_pct_rate': top_10_pct,
-            'top_25_pct_rate': top_25_pct,
-            'nonzero_weights': nonzero_weights,
+            'average_rank': float(avg_rank),
+            'median_rank': float(median_rank),
+            'best_rank': int(min(selected_ranks)),
+            'worst_rank': int(max(selected_ranks)),
+            'top_10_pct_rate': float(top_10_pct),
+            'top_25_pct_rate': float(top_25_pct),
+            'nonzero_weights': int(nonzero_weights),
             'dominant_var': dominant_var,
-            'is_mixed': nonzero_weights > 1,
-            'parcels_analyzed': len(all_parcels_data),
-            'optimization_time': optimization_time,
+            'is_mixed': bool(nonzero_weights > 1),
+            'parcels_analyzed': int(len(all_parcels_data)),
+            'optimization_time': float(optimization_time),
             'optimization_type': 'inverse_wlc',
-            'threat_set_size': threat_size,
-            'total_constraints': constraint_count,
-            'total_violations': total_violations,
-            'avg_violation': avg_violation,
-            'threat_identification_time': threat_time,
-            'lp_solve_time': solve_time
+            'threat_set_size': int(threat_size),
+            'total_constraints': int(constraint_count),
+            'total_violations': float(total_violations),
+            'avg_violation': float(avg_violation),
+            'threat_identification_time': float(threat_time),
+            'lp_solve_time': float(solve_time)
         }
         
         gc.collect()
