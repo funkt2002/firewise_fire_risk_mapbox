@@ -1460,6 +1460,9 @@ def solve_simulated_annealing_optimization(parcel_data, include_vars, all_parcel
             # Calculate acceptance probability
             accept_prob = acceptance_probability(current_objective, neighbor_objective, temperature)
             
+            # Check if this is an improvement BEFORE updating current state
+            improved = neighbor_objective < current_objective
+            
             # Accept or reject based on probability
             if np.random.random() < accept_prob:
                 current_weights = neighbor_weights
@@ -1467,13 +1470,13 @@ def solve_simulated_annealing_optimization(parcel_data, include_vars, all_parcel
                 acceptances += 1
                 
                 # Track improvements
-                if neighbor_objective < current_objective:
+                if improved:
                     improvements += 1
                 
                 # Track best ever found
-                if neighbor_objective < best_objective:
+                if current_objective < best_objective:
                     best_weights = neighbor_weights.copy()
-                    best_objective = neighbor_objective
+                    best_objective = current_objective
         
         return best_weights, best_objective, improvements, acceptances
     
@@ -1823,6 +1826,504 @@ def solve_uta_linear_optimization(parcel_data, include_vars, all_parcels_data, t
         return None, None, None, False, None
 
 
+def solve_uta_disaggregation(parcel_data, include_vars, all_parcels_data, threat_size=200, K=6):
+    """
+    True UTA (Utility Theory Additive) preference disaggregation with piecewise-linear 
+    marginal value functions. Learns monotone marginal utilities v_j(x) for each criterion.
+    
+    Args:
+        parcel_data: List of selected parcels (those we want to rank highly)
+        include_vars: List of variable names to include in optimization
+        all_parcels_data: List of all parcels in the dataset
+        threat_size: Number of top threat parcels to consider per selected parcel
+        K: Number of breakpoints per criterion (default 6)
+    
+    Returns:
+        Tuple of (optimal_weights, weights_pct, total_score, success, ranking_metrics)
+    """
+    import time
+    import numpy as np
+    from pulp import LpProblem, LpMinimize, LpVariable, lpSum, LpStatus, COIN_CMD, value
+    
+    start_time = time.time()
+    
+    # Process variable names
+    include_vars_base = [var[:-2] if var.endswith('_s') else var for var in include_vars]
+    
+    logger.info(f"TRUE UTA DISAGGREGATION: {len(parcel_data):,} selected parcels, "
+                f"{len(all_parcels_data):,} total parcels, {len(include_vars_base)} variables, K={K}")
+    
+    n_selected = len(parcel_data)
+    n_vars = len(include_vars_base)
+    
+    # Build parcel_id to index mapping for stable indexing
+    parcel_id_to_idx = {}
+    for i, parcel in enumerate(all_parcels_data):
+        pid = parcel.get('parcel_id') or parcel.get('id')
+        if pid:
+            parcel_id_to_idx[pid] = i
+    
+    # Get selected parcel indices
+    selected_indices = []
+    for parcel in parcel_data:
+        pid = parcel.get('parcel_id') or parcel.get('id')
+        if pid and pid in parcel_id_to_idx:
+            selected_indices.append(parcel_id_to_idx[pid])
+    
+    logger.info(f"Mapped {len(selected_indices)} selected parcels to indices")
+    
+    # Build score matrices (already scaled to [0,1])
+    selected_scores = np.zeros((n_selected, n_vars))
+    all_scores = np.zeros((len(all_parcels_data), n_vars))
+    
+    for i, parcel in enumerate(parcel_data):
+        for j, var_base in enumerate(include_vars_base):
+            selected_scores[i, j] = parcel['scores'].get(var_base, 0)
+    
+    for i, parcel in enumerate(all_parcels_data):
+        for j, var_base in enumerate(include_vars_base):
+            all_scores[i, j] = parcel['scores'].get(var_base, 0)
+    
+    # Define breakpoints for each criterion (uniform on [0,1])
+    breakpoints = {}
+    for j, var_base in enumerate(include_vars_base):
+        breakpoints[var_base] = np.linspace(0, 1, K + 1)
+    
+    # Precompute interpolation info for all parcels and criteria
+    interpolation_info = {}
+    for i in range(len(all_parcels_data)):
+        for j, var_base in enumerate(include_vars_base):
+            x_ij = all_scores[i, j]
+            breaks = breakpoints[var_base]
+            
+            # Find the bin k such that breaks[k] <= x_ij <= breaks[k+1]
+            k = np.searchsorted(breaks, x_ij, side='right') - 1
+            k = max(0, min(k, K - 1))  # Ensure k is in valid range
+            
+            # Compute interpolation weight alpha
+            if breaks[k+1] - breaks[k] > 0:
+                alpha = (x_ij - breaks[k]) / (breaks[k+1] - breaks[k])
+            else:
+                alpha = 0
+            
+            interpolation_info[(i, j)] = (k, alpha)
+    
+    # Identify threat sets using equal-weight composite as proxy
+    logger.info(f"Identifying threat sets (top {threat_size} competitors per selected parcel)...")
+    threat_time_start = time.time()
+    
+    threat_sets = {}
+    equal_weights = np.ones(n_vars) / n_vars
+    proxy_scores = np.dot(all_scores, equal_weights)
+    
+    for idx, sel_idx in enumerate(selected_indices):
+        sel_proxy = proxy_scores[sel_idx]
+        
+        # Find parcels with higher proxy scores (potential threats)
+        threat_mask = (proxy_scores > sel_proxy)
+        threat_indices = np.where(threat_mask)[0]
+        
+        # Sort by proxy score and take top threat_size
+        if len(threat_indices) > 0:
+            threat_scores_sorted = proxy_scores[threat_indices]
+            sorted_idx = np.argsort(threat_scores_sorted)[::-1][:threat_size]
+            threat_sets[sel_idx] = threat_indices[sorted_idx].tolist()
+        else:
+            threat_sets[sel_idx] = []
+    
+    threat_time = time.time() - threat_time_start
+    logger.info(f"Threat set identification completed in {threat_time:.2f}s")
+    
+    # Create LP problem
+    prob = LpProblem("UTA_Disaggregation", LpMinimize)
+    
+    # Decision variables: marginal values V[j,k] = v_j(breakpoint_k)
+    V_vars = {}
+    for j, var_base in enumerate(include_vars_base):
+        for k in range(K + 1):
+            V_vars[(var_base, k)] = LpVariable(f"V_{var_base}_{k}", lowBound=0, upBound=1)
+    
+    # Slack variables for violations
+    xi_vars = {}
+    constraint_count = 0
+    
+    # Monotonicity constraints
+    for j, var_base in enumerate(include_vars_base):
+        for k in range(K):
+            prob += V_vars[(var_base, k+1)] >= V_vars[(var_base, k)]
+    
+    # Normalization constraints
+    # v_j(0) = 0 for all j
+    for j, var_base in enumerate(include_vars_base):
+        prob += V_vars[(var_base, 0)] == 0
+    
+    # sum_j v_j(1) = 1
+    prob += lpSum([V_vars[(var_base, K)] for var_base in include_vars_base]) == 1
+    
+    # Build preference constraints with threat sets
+    epsilon = 0.001  # Small margin for strict preference
+    
+    for sel_data_idx, sel_idx in enumerate(selected_indices):
+        for threat_idx in threat_sets[sel_idx]:
+            # Create slack variable for this pair
+            xi_vars[(sel_idx, threat_idx)] = LpVariable(f"xi_{sel_idx}_{threat_idx}", lowBound=0)
+            
+            # Calculate utilities using linear interpolation
+            # U(i) = sum_j v_j(x_ij) where v_j is linearly interpolated
+            
+            # Selected parcel utility
+            selected_utility = 0
+            for j, var_base in enumerate(include_vars_base):
+                k_sel, alpha_sel = interpolation_info[(sel_idx, j)]
+                selected_utility += ((1 - alpha_sel) * V_vars[(var_base, k_sel)] + 
+                                    alpha_sel * V_vars[(var_base, k_sel + 1)])
+            
+            # Threat parcel utility
+            threat_utility = 0
+            for j, var_base in enumerate(include_vars_base):
+                k_threat, alpha_threat = interpolation_info[(threat_idx, j)]
+                threat_utility += ((1 - alpha_threat) * V_vars[(var_base, k_threat)] + 
+                                  alpha_threat * V_vars[(var_base, k_threat + 1)])
+            
+            # Preference constraint: U(selected) >= U(threat) + epsilon - xi
+            prob += selected_utility >= threat_utility + epsilon - xi_vars[(sel_idx, threat_idx)]
+            constraint_count += 1
+    
+    # Objective: minimize sum of violations
+    prob += lpSum([xi_vars[key] for key in xi_vars])
+    
+    logger.info(f"Built LP with {len(V_vars)} marginal value variables, {len(xi_vars)} slack variables, "
+                f"{constraint_count} preference constraints")
+    
+    # Solve
+    solve_start = time.time()
+    solver = COIN_CMD(msg=0, timeLimit=60)
+    solver_result = prob.solve(solver)
+    solve_time = time.time() - solve_start
+    
+    logger.info(f"LP solver completed in {solve_time:.2f}s with status: {LpStatus[prob.status]}")
+    
+    if solver_result == 1:  # Optimal solution found
+        # Extract marginal value functions
+        marginals = {}
+        for var_base in include_vars_base:
+            marginals[var_base] = []
+            for k in range(K + 1):
+                marginals[var_base].append({
+                    'break': float(breakpoints[var_base][k]),
+                    'value': float(value(V_vars[(var_base, k)]))
+                })
+        
+        # Calculate swing weights (v_j(1) - v_j(0) = v_j(1))
+        swing_weights = {}
+        for var_base in include_vars_base:
+            swing_weights[var_base] = float(value(V_vars[(var_base, K)]))
+        
+        # Normalize swing weights to sum to 1 (they already should)
+        total_swing = sum(swing_weights.values())
+        if total_swing > 0:
+            for var_base in swing_weights:
+                swing_weights[var_base] /= total_swing
+        
+        # Calculate percentage weights
+        weights_pct = {var: weight * 100 for var, weight in swing_weights.items()}
+        
+        # Calculate total violations
+        total_violations = value(prob.objective)
+        avg_violation = total_violations / len(xi_vars) if xi_vars else 0
+        
+        logger.info(f"UTA optimization successful - Total violations: {total_violations:.4f}, "
+                    f"Average: {avg_violation:.4f}")
+        logger.info(f"Swing weights: {[(var, f'{weight:.1%}') for var, weight in swing_weights.items() if weight > 0.001]}")
+        
+        # Calculate ranking metrics using the learned utility functions
+        # First compute utilities for all parcels
+        all_utilities = np.zeros(len(all_parcels_data))
+        for i in range(len(all_parcels_data)):
+            utility = 0
+            for j, var_base in enumerate(include_vars_base):
+                k, alpha = interpolation_info[(i, j)]
+                v_low = value(V_vars[(var_base, k)])
+                v_high = value(V_vars[(var_base, k + 1)])
+                utility += (1 - alpha) * v_low + alpha * v_high
+            all_utilities[i] = utility
+        
+        # Calculate ranks
+        sorted_indices = np.argsort(all_utilities)[::-1]
+        ranks = np.empty_like(sorted_indices)
+        ranks[sorted_indices] = np.arange(len(sorted_indices)) + 1
+        
+        # Get ranks of selected parcels
+        selected_ranks = []
+        for sel_idx in selected_indices:
+            selected_ranks.append(ranks[sel_idx])
+        
+        avg_rank = np.mean(selected_ranks)
+        median_rank = np.median(selected_ranks)
+        
+        # Calculate percentile metrics
+        percentile_90 = np.percentile(all_utilities, 90)
+        percentile_75 = np.percentile(all_utilities, 75)
+        
+        top_10_pct = sum(1 for idx in selected_indices if all_utilities[idx] >= percentile_90) / n_selected * 100
+        top_25_pct = sum(1 for idx in selected_indices if all_utilities[idx] >= percentile_75) / n_selected * 100
+        
+        # Count non-zero swing weights
+        nonzero_weights = sum(1 for w in swing_weights.values() if w > 0.01)
+        
+        # Find dominant variable
+        dominant_var = max(swing_weights.items(), key=lambda x: x[1])[0]
+        
+        # Total score (sum of selected parcel utilities)
+        total_score = sum(all_utilities[idx] for idx in selected_indices)
+        
+        optimization_time = time.time() - start_time
+        
+        ranking_metrics = {
+            'average_rank': avg_rank,
+            'median_rank': median_rank,
+            'best_rank': min(selected_ranks),
+            'worst_rank': max(selected_ranks),
+            'top_10_pct_rate': top_10_pct,
+            'top_25_pct_rate': top_25_pct,
+            'nonzero_weights': nonzero_weights,
+            'dominant_var': dominant_var,
+            'is_mixed': nonzero_weights > 1,
+            'parcels_analyzed': len(all_parcels_data),
+            'optimization_time': optimization_time,
+            'optimization_type': 'uta_disaggregation',
+            'threat_set_size': threat_size,
+            'num_breakpoints': K,
+            'total_constraints': constraint_count,
+            'total_violations': total_violations,
+            'avg_violation': avg_violation,
+            'threat_identification_time': threat_time,
+            'lp_solve_time': solve_time,
+            'marginals': marginals
+        }
+        
+        gc.collect()
+        return swing_weights, weights_pct, total_score, True, ranking_metrics
+        
+    else:
+        logger.error(f"UTA optimization failed with status: {LpStatus[prob.status]}")
+        gc.collect()
+        return None, None, None, False, None
+
+
+def solve_inverse_wlc(parcel_data, include_vars, all_parcels_data, threat_size=200):
+    """
+    Inverse weighted linear combination optimization (formerly misnamed as UTA).
+    Uses threat-set reduction to make the problem computationally tractable.
+    
+    This is NOT true UTA - it just learns linear weights w_j, not marginal value functions.
+    
+    Args:
+        parcel_data: List of selected parcels (those we want to rank highly)
+        include_vars: List of variable names to include in optimization
+        all_parcels_data: List of all parcels in the dataset
+        threat_size: Number of top threat parcels to consider per selected parcel
+    
+    Returns:
+        Tuple of (optimal_weights, weights_pct, total_score, success, ranking_metrics)
+    """
+    import time
+    import numpy as np
+    from pulp import LpProblem, LpMinimize, LpVariable, lpSum, LpStatus, COIN_CMD, value
+    
+    start_time = time.time()
+    
+    # Process variable names
+    include_vars_base = [var[:-2] if var.endswith('_s') else var for var in include_vars]
+    
+    logger.info(f"INVERSE WLC OPTIMIZATION: {len(parcel_data):,} selected parcels, "
+                f"{len(all_parcels_data):,} total parcels, {len(include_vars_base)} variables")
+    
+    # Build parcel_id to index mapping for stable indexing
+    parcel_id_to_idx = {}
+    for i, parcel in enumerate(all_parcels_data):
+        pid = parcel.get('parcel_id') or parcel.get('id')
+        if pid:
+            parcel_id_to_idx[pid] = i
+    
+    # Get selected parcel indices
+    selected_indices = []
+    for parcel in parcel_data:
+        pid = parcel.get('parcel_id') or parcel.get('id')
+        if pid and pid in parcel_id_to_idx:
+            selected_indices.append(parcel_id_to_idx[pid])
+    
+    n_selected = len(selected_indices)
+    n_vars = len(include_vars_base)
+    
+    # Build score matrices
+    selected_scores = np.zeros((n_selected, n_vars))
+    all_scores = np.zeros((len(all_parcels_data), n_vars))
+    
+    for i, parcel in enumerate(parcel_data):
+        for j, var_base in enumerate(include_vars_base):
+            selected_scores[i, j] = parcel['scores'].get(var_base, 0)
+    
+    for i, parcel in enumerate(all_parcels_data):
+        for j, var_base in enumerate(include_vars_base):
+            all_scores[i, j] = parcel['scores'].get(var_base, 0)
+    
+    # Identify threat sets: for each selected parcel, find top-m parcels that could outrank it
+    logger.info(f"Identifying threat sets (top {threat_size} competitors per selected parcel)...")
+    threat_time_start = time.time()
+    
+    threat_sets = {}
+    for idx, sel_idx in enumerate(selected_indices):
+        # Calculate threat potential: parcels with higher average normalized scores
+        sel_scores = all_scores[sel_idx]
+        
+        # Threat score: how much each parcel could potentially outrank this selected parcel
+        # Higher threat score = more likely to outrank
+        threat_scores = np.mean(all_scores - sel_scores, axis=1)
+        
+        # Get indices of top threats (excluding the selected parcel itself)
+        threat_indices = np.argsort(threat_scores)[::-1]
+        threat_indices = [t for t in threat_indices if t != sel_idx][:threat_size]
+        
+        threat_sets[sel_idx] = threat_indices
+    
+    threat_time = time.time() - threat_time_start
+    logger.info(f"Threat set identification completed in {threat_time:.2f}s")
+    
+    # Create LP problem
+    prob = LpProblem("Inverse_WLC_Weight_Inference", LpMinimize)
+    
+    # Decision variables: weights for each factor
+    w_vars = {}
+    for var_base in include_vars_base:
+        w_vars[var_base] = LpVariable(f"w_{var_base}", lowBound=0, upBound=1)
+    
+    # Slack variables for constraint violations
+    xi_vars = {}
+    constraint_count = 0
+    
+    # Build constraints: for each selected parcel and its threats
+    epsilon = 0.001  # Small margin for strict preference
+    
+    for sel_data_idx, sel_idx in enumerate(selected_indices):
+        for threat_idx in threat_sets[sel_idx]:
+            # Create slack variable for this pair
+            xi_vars[(sel_idx, threat_idx)] = LpVariable(f"xi_{sel_idx}_{threat_idx}", lowBound=0)
+            
+            # Preference constraint: U(selected) >= U(threat) + epsilon - xi
+            # Where U(parcel) = sum(w_j * score_j)
+            selected_utility = lpSum([w_vars[var_base] * selected_scores[sel_data_idx, j] 
+                                     for j, var_base in enumerate(include_vars_base)])
+            
+            threat_utility = lpSum([w_vars[var_base] * all_scores[threat_idx, j] 
+                                   for j, var_base in enumerate(include_vars_base)])
+            
+            prob += selected_utility >= threat_utility + epsilon - xi_vars[(sel_idx, threat_idx)]
+            constraint_count += 1
+    
+    # Objective: minimize sum of violations
+    prob += lpSum([xi_vars[key] for key in xi_vars])
+    
+    # Normalization constraint: weights sum to 1
+    prob += lpSum([w_vars[var_base] for var_base in include_vars_base]) == 1
+    
+    logger.info(f"Built LP with {len(w_vars)} weight variables, {len(xi_vars)} slack variables, "
+                f"{constraint_count} preference constraints")
+    
+    # Solve
+    solve_start = time.time()
+    solver = COIN_CMD(msg=0)
+    solver_result = prob.solve(solver)
+    solve_time = time.time() - solve_start
+    
+    logger.info(f"LP solver completed in {solve_time:.2f}s with status: {LpStatus[prob.status]}")
+    
+    if solver_result == 1:  # Optimal solution found
+        # Extract optimal weights
+        optimal_weights = {}
+        for var_base in include_vars_base:
+            optimal_weights[var_base] = value(w_vars[var_base])
+        
+        # Calculate percentage weights
+        weights_pct = {var: weight * 100 for var, weight in optimal_weights.items()}
+        
+        # Calculate total violations
+        total_violations = value(prob.objective)
+        avg_violation = total_violations / len(xi_vars) if xi_vars else 0
+        
+        logger.info(f"Inverse WLC optimization successful - Total violations: {total_violations:.4f}, "
+                    f"Average: {avg_violation:.4f}")
+        logger.info(f"Optimal weights: {[(var, f'{weight:.1%}') for var, weight in optimal_weights.items() if weight > 0.001]}")
+        
+        # Calculate ranking metrics using the optimal weights
+        weights_array = np.array([optimal_weights[var] for var in include_vars_base])
+        all_composite = np.dot(all_scores, weights_array)
+        
+        # Calculate average rank of selected parcels
+        selected_ranks = []
+        for sel_idx in selected_indices:
+            parcel_score = all_composite[sel_idx]
+            rank = np.sum(all_composite > parcel_score) + 1
+            selected_ranks.append(rank)
+        
+        avg_rank = np.mean(selected_ranks)
+        median_rank = np.median(selected_ranks)
+        
+        # Calculate percentile metrics
+        percentile_90 = np.percentile(all_composite, 90)
+        percentile_75 = np.percentile(all_composite, 75)
+        
+        top_10_pct = sum(1 for idx in selected_indices if all_composite[idx] >= percentile_90) / n_selected * 100
+        top_25_pct = sum(1 for idx in selected_indices if all_composite[idx] >= percentile_75) / n_selected * 100
+        
+        # Count non-zero weights
+        nonzero_weights = sum(1 for w in optimal_weights.values() if w > 0.01)
+        
+        # Find dominant variable
+        dominant_var = max(optimal_weights.items(), key=lambda x: x[1])[0]
+        
+        # Total score (sum of selected parcel scores with optimal weights)
+        total_score = sum(all_composite[idx] for idx in selected_indices)
+        
+        optimization_time = time.time() - start_time
+        
+        ranking_metrics = {
+            'average_rank': avg_rank,
+            'median_rank': median_rank,
+            'best_rank': min(selected_ranks),
+            'worst_rank': max(selected_ranks),
+            'top_10_pct_rate': top_10_pct,
+            'top_25_pct_rate': top_25_pct,
+            'nonzero_weights': nonzero_weights,
+            'dominant_var': dominant_var,
+            'is_mixed': nonzero_weights > 1,
+            'parcels_analyzed': len(all_parcels_data),
+            'optimization_time': optimization_time,
+            'optimization_type': 'inverse_wlc',
+            'threat_set_size': threat_size,
+            'total_constraints': constraint_count,
+            'total_violations': total_violations,
+            'avg_violation': avg_violation,
+            'threat_identification_time': threat_time,
+            'lp_solve_time': solve_time
+        }
+        
+        gc.collect()
+        return optimal_weights, weights_pct, total_score, True, ranking_metrics
+        
+    else:
+        logger.error(f"Inverse WLC optimization failed with status: {LpStatus[prob.status]}")
+        gc.collect()
+        return None, None, None, False, None
+
+
+# Keep the old function name for backward compatibility but have it call the renamed version
+def solve_uta_linear_optimization(parcel_data, include_vars, all_parcels_data, threat_size=200):
+    """Deprecated: Use solve_inverse_wlc instead. This is not true UTA."""
+    logger.warning("solve_uta_linear_optimization is deprecated. Use solve_inverse_wlc instead.")
+    return solve_inverse_wlc(parcel_data, include_vars, all_parcels_data, threat_size)
+
+
 def generate_solution_files(include_vars, best_weights, weights_pct, total_score, 
                            parcel_data, request_data):
     """Generate LP and TXT solution files"""
@@ -1891,8 +2392,8 @@ def generate_solution_files(include_vars, best_weights, weights_pct, total_score
     # Detect optimization type from request data
     optimization_type = request_data.get('optimization_type', 'absolute')
     
-    if optimization_type == 'promethee':
-        optimization_title = "HYBRID SEPARATION + RANK-DOMINANCE OPTIMIZATION RESULTS"
+    if optimization_type == 'ranking_sa':
+        optimization_title = "SIMULATED ANNEALING RANK MINIMIZATION RESULTS"
     else:
         optimization_title = "ABSOLUTE OPTIMIZATION RESULTS (LP Maximum Score)"
     
@@ -1908,22 +2409,22 @@ def generate_solution_files(include_vars, best_weights, weights_pct, total_score
         f"Scoring Method: {scoring_method}",
     ])
     
-    if optimization_type == 'promethee':
+    if optimization_type == 'ranking_sa':
         txt_lines.extend([
             "",
-            "OPTIMIZATION TYPE: Hybrid Separation + Rank-Dominance Maximization (LP)",
-            "OBJECTIVE: Maximize gap between selected and non-selected parcels",
-            "           + Ensure selected parcels rank above problematic non-selected parcels",
+            "OPTIMIZATION TYPE: Simulated Annealing Rank Minimization",
+            "OBJECTIVE: Minimize average rank of selected parcels",
+            "           Using multi-start simulated annealing optimization",
             "",
             f"Total parcels analyzed: {parcel_count:,}",
             f"Total optimized score: {total_score:.2f}",
             f"Average score: {avg_score:.3f}",
             "",
             "MATHEMATICAL APPROACH:",
-            "  PHASE 1: Separation constraints - maximize: min(selected) - max(other)",
-            "  PHASE 2: Rank-dominance constraints - selected[i] >= problematic[j] + ε",
-            "  subject to: weights_sum = 1, weights >= 0",
-            "  This creates strong ranking with selected parcels dominating top threats."
+            "  Rank-based optimization to minimize average rank of selected parcels",
+            "  Multi-start approach with 9 different initializations",
+            "  Adaptive cooling schedule with probabilistic acceptance",
+            "  This finds weights that push selected parcels to top ranks."
         ])
     else:
         txt_lines.extend([
@@ -2042,7 +2543,7 @@ def generate_enhanced_solution_html(txt_content, lp_content, parcel_data, weight
     html_parts.append('</div>')
     
     # SA metrics section (if applicable)
-    if optimization_type == 'promethee' and sa_metrics:
+    if optimization_type == 'ranking_sa' and sa_metrics:
         html_parts.append('<div class="section">')
         html_parts.append('<h2>Simulated Annealing Analysis</h2>')
         
@@ -2368,9 +2869,9 @@ def infer_weights():
         optimization_type = data.get('optimization_type', 'absolute')
         sa_metrics = None
         
-        if optimization_type == 'promethee':
-            # Separation optimization: maximize gap between selected and non-selected
-            logger.info(f"SEPARATION OPTIMIZATION: selected parcels={len(parcel_data)}")
+        if optimization_type == 'ranking_sa':
+            # Simulated annealing rank minimization
+            logger.info(f"SIMULATED ANNEALING RANK MINIMIZATION: selected parcels={len(parcel_data)}")
             
             # Get all parcels currently in memory/view for constraints
             all_parcels_data = data.get('parcel_scores', [])
@@ -2392,7 +2893,7 @@ def infer_weights():
             )
         
         if not success:
-            if optimization_type == 'promethee':
+            if optimization_type == 'ranking_sa':
                 return jsonify({"error": "Selection area infeasible, please select another"}), 400
             else:
                 return jsonify({"error": "Absolute optimization failed"}), 500
@@ -2442,7 +2943,7 @@ def infer_weights():
                 'timestamp': time.time(),
                 'ttl': time.time() + 3600  # 1 hour expiry
             }
-            if optimization_type == 'promethee' and sa_metrics:
+            if optimization_type == 'ranking_sa' and sa_metrics:
                 metadata['sa_metrics'] = sa_metrics
             json.dump(metadata, f)
         
@@ -2452,7 +2953,7 @@ def infer_weights():
         
         # Return minimal response - NO BULK DATA (memory optimized!)
         timing_log = f"{optimization_type.title()} optimization completed in {total_time:.2f}s for {num_parcels} parcels."
-        if optimization_type == 'promethee' and sa_metrics:
+        if optimization_type == 'ranking_sa' and sa_metrics:
             timing_log += f" Gap: {sa_metrics['preference_gap']:.3f}"
         
         response_data = {
@@ -2466,7 +2967,7 @@ def infer_weights():
             "files_available": True           # Files stored on disk, not in memory
         }
         
-        if optimization_type == 'promethee' and sa_metrics:
+        if optimization_type == 'ranking_sa' and sa_metrics:
             response_data['preference_gap'] = sa_metrics['preference_gap']
         
         logger.info(f"Sending response: {len(str(response_data))} characters")
@@ -2519,8 +3020,8 @@ def infer_weights_uta():
         # Get threat set size from request or use default
         threat_size = data.get('threat_size', 200)
         
-        # Run UTA optimization
-        result = solve_uta_linear_optimization(parcel_data, include_vars, all_parcels_data, threat_size)
+        # Run true UTA disaggregation optimization
+        result = solve_uta_disaggregation(parcel_data, include_vars, all_parcels_data, threat_size)
         best_weights, weights_pct, total_score, success, uta_metrics = result
         
         if not success:
@@ -2565,7 +3066,7 @@ def infer_weights_uta():
                 'total_score': total_score,
                 'num_parcels': num_parcels,
                 'include_vars': include_vars,
-                'optimization_type': 'uta_linear',
+                'optimization_type': 'uta_disaggregation',
                 'threat_size': threat_size,
                 'ttl': time.time() + (60 * 60)  # 1 hour TTL
             }
@@ -2582,7 +3083,7 @@ def infer_weights_uta():
             'session_id': session_id,
             'download_url': f'/api/download-lp/{session_id}',
             'elapsed_time': elapsed_time,
-            'optimization_type': 'uta_linear'
+            'optimization_type': 'uta_disaggregation'
         }
         
         # Add UTA-specific metrics
@@ -2594,6 +3095,9 @@ def infer_weights_uta():
             response_data['total_violations'] = uta_metrics['total_violations']
             response_data['threat_identification_time'] = uta_metrics['threat_identification_time']
             response_data['lp_solve_time'] = uta_metrics['lp_solve_time']
+            # Include marginal value functions for plotting
+            if 'marginals' in uta_metrics:
+                response_data['marginals'] = uta_metrics['marginals']
         
         logger.info(f"UTA optimization completed in {elapsed_time:.2f}s")
         
