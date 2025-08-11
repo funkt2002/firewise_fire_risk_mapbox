@@ -1778,7 +1778,14 @@ def solve_uta_linear_optimization(parcel_data, include_vars, all_parcels_data, t
         avg_rank = np.mean(selected_ranks)
         median_rank = np.median(selected_ranks)
         
-        # Calculate percentile metrics
+        # Calculate fixed rank metrics (Top 500, Top 1000, etc.)
+        top_500_count = sum(1 for rank in selected_ranks if rank <= 500)
+        top_500_rate = top_500_count / n_selected * 100
+        
+        top_1000_count = sum(1 for rank in selected_ranks if rank <= 1000)
+        top_1000_rate = top_1000_count / n_selected * 100
+        
+        # Also keep percentile metrics for reference
         percentile_90 = np.percentile(all_composite, 90)
         percentile_75 = np.percentile(all_composite, 75)
         
@@ -2061,7 +2068,14 @@ def solve_uta_disaggregation(parcel_data, include_vars, all_parcels_data, threat
         avg_rank = np.mean(selected_ranks)
         median_rank = np.median(selected_ranks)
         
-        # Calculate percentile metrics
+        # Calculate fixed rank metrics (Top 500, Top 1000, etc.)
+        top_500_count = sum(1 for rank in selected_ranks if rank <= 500)
+        top_500_rate = top_500_count / n_selected * 100
+        
+        top_1000_count = sum(1 for rank in selected_ranks if rank <= 1000)
+        top_1000_rate = top_1000_count / n_selected * 100
+        
+        # Also keep percentile metrics for reference
         percentile_90 = np.percentile(all_utilities, 90)
         percentile_75 = np.percentile(all_utilities, 75)
         
@@ -2084,6 +2098,10 @@ def solve_uta_disaggregation(parcel_data, include_vars, all_parcels_data, threat
             'median_rank': float(median_rank),
             'best_rank': int(min(selected_ranks)),
             'worst_rank': int(max(selected_ranks)),
+            'top_500_count': int(top_500_count),
+            'top_500_rate': float(top_500_rate),
+            'top_1000_count': int(top_1000_count),
+            'top_1000_rate': float(top_1000_rate),
             'top_10_pct_rate': float(top_10_pct),
             'top_25_pct_rate': float(top_25_pct),
             'nonzero_weights': int(nonzero_weights),
@@ -2101,6 +2119,9 @@ def solve_uta_disaggregation(parcel_data, include_vars, all_parcels_data, threat
             'lp_solve_time': float(solve_time),
             'marginals': marginals
         }
+        
+        logger.info(f"Ranking performance: {top_500_count}/{n_selected} parcels ({top_500_rate:.1f}%) in Top 500")
+        logger.info(f"Average rank: {avg_rank:.1f}, Median: {median_rank:.1f}, Best: {min(selected_ranks)}")
         
         gc.collect()
         return swing_weights, weights_pct, total_score, True, ranking_metrics
@@ -2269,7 +2290,14 @@ def solve_inverse_wlc(parcel_data, include_vars, all_parcels_data, threat_size=2
         avg_rank = np.mean(selected_ranks)
         median_rank = np.median(selected_ranks)
         
-        # Calculate percentile metrics
+        # Calculate fixed rank metrics (Top 500, Top 1000, etc.)
+        top_500_count = sum(1 for rank in selected_ranks if rank <= 500)
+        top_500_rate = top_500_count / n_selected * 100
+        
+        top_1000_count = sum(1 for rank in selected_ranks if rank <= 1000)
+        top_1000_rate = top_1000_count / n_selected * 100
+        
+        # Also keep percentile metrics for reference
         percentile_90 = np.percentile(all_composite, 90)
         percentile_75 = np.percentile(all_composite, 75)
         
@@ -2292,6 +2320,10 @@ def solve_inverse_wlc(parcel_data, include_vars, all_parcels_data, threat_size=2
             'median_rank': float(median_rank),
             'best_rank': int(min(selected_ranks)),
             'worst_rank': int(max(selected_ranks)),
+            'top_500_count': int(top_500_count),
+            'top_500_rate': float(top_500_rate),
+            'top_1000_count': int(top_1000_count),
+            'top_1000_rate': float(top_1000_rate),
             'top_10_pct_rate': float(top_10_pct),
             'top_25_pct_rate': float(top_25_pct),
             'nonzero_weights': int(nonzero_weights),
@@ -3090,6 +3122,10 @@ def infer_weights_uta():
         if uta_metrics:
             response_data['average_rank'] = uta_metrics['average_rank']
             response_data['median_rank'] = uta_metrics['median_rank']
+            response_data['top_500_count'] = uta_metrics.get('top_500_count', 0)
+            response_data['top_500_rate'] = uta_metrics.get('top_500_rate', 0.0)
+            response_data['top_1000_count'] = uta_metrics.get('top_1000_count', 0)
+            response_data['top_1000_rate'] = uta_metrics.get('top_1000_rate', 0.0)
             response_data['top_10_pct_rate'] = uta_metrics['top_10_pct_rate']
             response_data['top_25_pct_rate'] = uta_metrics['top_25_pct_rate']
             response_data['total_violations'] = uta_metrics['total_violations']
