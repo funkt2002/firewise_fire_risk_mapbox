@@ -1625,6 +1625,204 @@ def solve_simulated_annealing_optimization(parcel_data, include_vars, all_parcel
     gc.collect()
     return optimal_weights, weights_pct, total_score, True, ranking_metrics
 
+
+def solve_uta_linear_optimization(parcel_data, include_vars, all_parcels_data, threat_size=200):
+    """
+    Linear UTA (UTilités Additives) preference disaggregation for weight inference.
+    Uses threat-set reduction to make the problem computationally tractable.
+    
+    Instead of considering all n parcels, we only consider the top-m "threat" parcels
+    for each selected parcel, reducing constraints from O(|S| × n) to O(|S| × m).
+    
+    Args:
+        parcel_data: List of selected parcels (those we want to rank highly)
+        include_vars: List of variable names to include in optimization
+        all_parcels_data: List of all parcels in the dataset
+        threat_size: Number of top threat parcels to consider per selected parcel
+    
+    Returns:
+        Tuple of (optimal_weights, weights_pct, total_score, success, ranking_metrics)
+    """
+    import time
+    import numpy as np
+    from pulp import LpProblem, LpMinimize, LpVariable, lpSum, LpStatus, COIN_CMD, value
+    
+    start_time = time.time()
+    
+    # Process variable names
+    include_vars_base = [var[:-2] if var.endswith('_s') else var for var in include_vars]
+    
+    logger.info(f"UTA LINEAR OPTIMIZATION: {len(parcel_data):,} selected parcels, "
+                f"{len(all_parcels_data):,} total parcels, {len(include_vars_base)} variables")
+    
+    # Convert to numpy arrays for efficient computation
+    selected_indices = [p['original_index'] for p in parcel_data]
+    n_selected = len(selected_indices)
+    n_vars = len(include_vars_base)
+    
+    # Build score matrices
+    selected_scores = np.zeros((n_selected, n_vars))
+    all_scores = np.zeros((len(all_parcels_data), n_vars))
+    
+    for i, parcel in enumerate(parcel_data):
+        for j, var_base in enumerate(include_vars_base):
+            selected_scores[i, j] = parcel['scores'].get(var_base, 0)
+    
+    for i, parcel in enumerate(all_parcels_data):
+        for j, var_base in enumerate(include_vars_base):
+            all_scores[i, j] = parcel['scores'].get(var_base, 0)
+    
+    # Identify threat sets: for each selected parcel, find top-m parcels that could outrank it
+    logger.info(f"Identifying threat sets (top {threat_size} competitors per selected parcel)...")
+    threat_time_start = time.time()
+    
+    threat_sets = {}
+    for idx, sel_idx in enumerate(selected_indices):
+        # Calculate threat potential: parcels with higher average normalized scores
+        sel_scores = selected_scores[idx]
+        
+        # Threat score: how much each parcel could potentially outrank this selected parcel
+        # Higher threat score = more likely to outrank
+        threat_scores = np.mean(all_scores - sel_scores, axis=1)
+        
+        # Get indices of top threats (excluding the selected parcel itself)
+        threat_indices = np.argsort(threat_scores)[::-1]
+        threat_indices = [t for t in threat_indices if t != sel_idx][:threat_size]
+        
+        threat_sets[sel_idx] = threat_indices
+    
+    threat_time = time.time() - threat_time_start
+    logger.info(f"Threat set identification completed in {threat_time:.2f}s")
+    
+    # Create LP problem
+    prob = LpProblem("UTA_Weight_Inference", LpMinimize)
+    
+    # Decision variables: weights for each factor
+    w_vars = {}
+    for var_base in include_vars_base:
+        w_vars[var_base] = LpVariable(f"w_{var_base}", lowBound=0, upBound=1)
+    
+    # Slack variables for constraint violations
+    xi_vars = {}
+    constraint_count = 0
+    
+    # Build constraints: for each selected parcel and its threats
+    epsilon = 0.001  # Small margin for strict preference
+    
+    for sel_idx in selected_indices:
+        sel_data_idx = next(i for i, p in enumerate(parcel_data) if p['original_index'] == sel_idx)
+        
+        for threat_idx in threat_sets[sel_idx]:
+            # Create slack variable for this pair
+            xi_vars[(sel_idx, threat_idx)] = LpVariable(f"xi_{sel_idx}_{threat_idx}", lowBound=0)
+            
+            # Preference constraint: U(selected) >= U(threat) + epsilon - xi
+            # Where U(parcel) = sum(w_j * score_j)
+            selected_utility = lpSum([w_vars[var_base] * selected_scores[sel_data_idx, j] 
+                                     for j, var_base in enumerate(include_vars_base)])
+            
+            threat_utility = lpSum([w_vars[var_base] * all_scores[threat_idx, j] 
+                                   for j, var_base in enumerate(include_vars_base)])
+            
+            prob += selected_utility >= threat_utility + epsilon - xi_vars[(sel_idx, threat_idx)]
+            constraint_count += 1
+    
+    # Objective: minimize sum of violations
+    prob += lpSum([xi_vars[key] for key in xi_vars])
+    
+    # Normalization constraint: weights sum to 1
+    prob += lpSum([w_vars[var_base] for var_base in include_vars_base]) == 1
+    
+    logger.info(f"Built LP with {len(w_vars)} weight variables, {len(xi_vars)} slack variables, "
+                f"{constraint_count} preference constraints")
+    
+    # Solve
+    solve_start = time.time()
+    solver = COIN_CMD(msg=0)
+    solver_result = prob.solve(solver)
+    solve_time = time.time() - solve_start
+    
+    logger.info(f"LP solver completed in {solve_time:.2f}s with status: {LpStatus[prob.status]}")
+    
+    if solver_result == 1:  # Optimal solution found
+        # Extract optimal weights
+        optimal_weights = {}
+        for var_base in include_vars_base:
+            optimal_weights[var_base] = value(w_vars[var_base])
+        
+        # Calculate percentage weights
+        weights_pct = {var: weight * 100 for var, weight in optimal_weights.items()}
+        
+        # Calculate total violations
+        total_violations = value(prob.objective)
+        avg_violation = total_violations / len(xi_vars) if xi_vars else 0
+        
+        logger.info(f"UTA optimization successful - Total violations: {total_violations:.4f}, "
+                    f"Average: {avg_violation:.4f}")
+        logger.info(f"Optimal weights: {[(var, f'{weight:.1%}') for var, weight in optimal_weights.items() if weight > 0.001]}")
+        
+        # Calculate ranking metrics using the optimal weights
+        weights_array = np.array([optimal_weights[var] for var in include_vars_base])
+        all_composite = np.dot(all_scores, weights_array)
+        
+        # Calculate average rank of selected parcels
+        selected_ranks = []
+        for sel_idx in selected_indices:
+            parcel_score = all_composite[sel_idx]
+            rank = np.sum(all_composite > parcel_score) + 1
+            selected_ranks.append(rank)
+        
+        avg_rank = np.mean(selected_ranks)
+        median_rank = np.median(selected_ranks)
+        
+        # Calculate percentile metrics
+        percentile_90 = np.percentile(all_composite, 90)
+        percentile_75 = np.percentile(all_composite, 75)
+        
+        top_10_pct = sum(1 for idx in selected_indices if all_composite[idx] >= percentile_90) / n_selected * 100
+        top_25_pct = sum(1 for idx in selected_indices if all_composite[idx] >= percentile_75) / n_selected * 100
+        
+        # Count non-zero weights
+        nonzero_weights = sum(1 for w in optimal_weights.values() if w > 0.01)
+        
+        # Find dominant variable
+        dominant_var = max(optimal_weights.items(), key=lambda x: x[1])[0]
+        
+        # Total score (sum of selected parcel scores with optimal weights)
+        total_score = sum(all_composite[idx] for idx in selected_indices)
+        
+        optimization_time = time.time() - start_time
+        
+        ranking_metrics = {
+            'average_rank': avg_rank,
+            'median_rank': median_rank,
+            'best_rank': min(selected_ranks),
+            'worst_rank': max(selected_ranks),
+            'top_10_pct_rate': top_10_pct,
+            'top_25_pct_rate': top_25_pct,
+            'nonzero_weights': nonzero_weights,
+            'dominant_var': dominant_var,
+            'is_mixed': nonzero_weights > 1,
+            'parcels_analyzed': len(all_parcels_data),
+            'optimization_time': optimization_time,
+            'optimization_type': 'uta_linear',
+            'threat_set_size': threat_size,
+            'total_constraints': constraint_count,
+            'total_violations': total_violations,
+            'avg_violation': avg_violation,
+            'threat_identification_time': threat_time,
+            'lp_solve_time': solve_time
+        }
+        
+        gc.collect()
+        return optimal_weights, weights_pct, total_score, True, ranking_metrics
+        
+    else:
+        logger.error(f"UTA optimization failed with status: {LpStatus[prob.status]}")
+        gc.collect()
+        return None, None, None, False, None
+
+
 def generate_solution_files(include_vars, best_weights, weights_pct, total_score, 
                            parcel_data, request_data):
     """Generate LP and TXT solution files"""
@@ -2283,6 +2481,132 @@ def infer_weights():
         force_memory_cleanup("infer-weights exception", locals())
         logger.error(f"Exception in /api/infer-weights: {e}")
         return jsonify({"error": str(e), "traceback": traceback.format_exc()}), 500
+
+
+@app.route('/api/infer-weights-uta', methods=['POST'])
+def infer_weights_uta():
+    """Infer optimal weights using UTA linear programming with threat-set reduction"""
+    start_time = time.time()
+    try:
+        data = request.get_json()
+        logger.info("UTA weight optimization called")
+        
+        # Validate input
+        if not data.get('selection'):
+            return jsonify({"error": "No selection provided"}), 400
+        
+        # Get include_vars and apply corrections
+        include_vars = data.get('include_vars', [var + '_s' for var in Config.WEIGHT_VARS_BASE])
+        include_vars = correct_variable_names(include_vars)
+        
+        if not include_vars:
+            return jsonify({"error": "No variables selected for optimization"}), 400
+        
+        logger.info(f"Using corrected include_vars for UTA optimization: {include_vars}")
+        
+        # Get parcel scores for optimization
+        parcel_data, include_vars = get_parcel_scores_for_optimization(data, include_vars)
+        if not parcel_data:
+            return jsonify({"error": "No parcels found in selection"}), 400
+        
+        # Get all parcels data for UTA
+        all_parcels_data = data.get('parcel_scores', [])
+        if not all_parcels_data:
+            return jsonify({"error": "No parcel scores provided for UTA optimization"}), 400
+        
+        logger.info(f"UTA OPTIMIZATION: selected parcels={len(parcel_data)}, total parcels={len(all_parcels_data)}")
+        
+        # Get threat set size from request or use default
+        threat_size = data.get('threat_size', 200)
+        
+        # Run UTA optimization
+        result = solve_uta_linear_optimization(parcel_data, include_vars, all_parcels_data, threat_size)
+        best_weights, weights_pct, total_score, success, uta_metrics = result
+        
+        if not success:
+            return jsonify({"error": "UTA optimization failed - check if selected parcels have reasonable scores"}), 400
+        
+        # Generate files
+        lp_content, txt_content = generate_solution_files(
+            include_vars, best_weights, weights_pct, total_score, 
+            parcel_data, data
+        )
+        
+        # Create session for file storage
+        import uuid
+        session_id = str(uuid.uuid4())
+        session_dir = os.path.join(tempfile.gettempdir(), 'fire_risk_sessions', session_id)
+        os.makedirs(session_dir, exist_ok=True)
+        
+        # Save files
+        with open(os.path.join(session_dir, 'optimization.lp'), 'w') as f:
+            f.write(lp_content)
+        with open(os.path.join(session_dir, 'solution.txt'), 'w') as f:
+            f.write(txt_content)
+        
+        # Save parcel data for report
+        parcel_data_for_report = []
+        for parcel in parcel_data:
+            parcel_data_for_report.append({
+                'parcel_id': parcel.get('parcel_id') or parcel.get('id'),
+                'scores': parcel.get('scores', {}),
+                'raw': parcel.get('raw', {})
+            })
+        
+        with open(os.path.join(session_dir, 'parcel_data.json'), 'w') as f:
+            json.dump(parcel_data_for_report, f)
+        
+        # Save metadata
+        num_parcels = len(parcel_data) if isinstance(parcel_data, list) else 0
+        
+        with open(os.path.join(session_dir, 'metadata.json'), 'w') as f:
+            metadata = {
+                'weights': weights_pct,
+                'total_score': total_score,
+                'num_parcels': num_parcels,
+                'include_vars': include_vars,
+                'optimization_type': 'uta_linear',
+                'threat_size': threat_size,
+                'ttl': time.time() + (60 * 60)  # 1 hour TTL
+            }
+            if uta_metrics:
+                metadata['uta_metrics'] = uta_metrics
+            json.dump(metadata, f)
+        
+        # Response data
+        elapsed_time = time.time() - start_time
+        response_data = {
+            'weights': weights_pct,
+            'total_score': total_score,
+            'num_parcels': num_parcels,
+            'session_id': session_id,
+            'download_url': f'/api/download-lp/{session_id}',
+            'elapsed_time': elapsed_time,
+            'optimization_type': 'uta_linear'
+        }
+        
+        # Add UTA-specific metrics
+        if uta_metrics:
+            response_data['average_rank'] = uta_metrics['average_rank']
+            response_data['median_rank'] = uta_metrics['median_rank']
+            response_data['top_10_pct_rate'] = uta_metrics['top_10_pct_rate']
+            response_data['top_25_pct_rate'] = uta_metrics['top_25_pct_rate']
+            response_data['total_violations'] = uta_metrics['total_violations']
+            response_data['threat_identification_time'] = uta_metrics['threat_identification_time']
+            response_data['lp_solve_time'] = uta_metrics['lp_solve_time']
+        
+        logger.info(f"UTA optimization completed in {elapsed_time:.2f}s")
+        
+        # Memory cleanup
+        force_memory_cleanup("End of infer-weights-uta", locals())
+        
+        return jsonify(response_data)
+        
+    except Exception as e:
+        force_memory_cleanup("infer-weights-uta exception", locals())
+        logger.error(f"Exception in /api/infer-weights-uta: {e}")
+        return jsonify({"error": str(e), "traceback": traceback.format_exc()}), 500
+
 
 @app.route('/api/download-lp/<session_id>')
 def download_lp_file(session_id):
