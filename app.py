@@ -59,14 +59,9 @@ try:
 except Exception as e:
     logger.error(f"Error checking LP solvers: {e}")
 
-# Check Gurobi availability globally
-try:
-    import gurobipy as gp
-    logger.info("Gurobi is available and will be used for UTA-STAR optimization")
-    HAS_GUROBI = True
-except ImportError:
-    logger.warning("Gurobi not available, will fall back to PuLP for UTA-STAR optimization")
-    HAS_GUROBI = False
+# Disable Gurobi for web app deployment (use PuLP only for license-free operation)
+HAS_GUROBI = False
+logger.info("Using PuLP solver for UTA-STAR optimization (Gurobi disabled for web deployment)")
 
 # ====================
 # FLASK APP SETUP
@@ -2111,9 +2106,9 @@ def solve_uta_disaggregation(parcel_data, include_vars, all_parcels_data, threat
     non_subset_mask[subset_idx] = False
     non_subset_idx = np.where(non_subset_mask)[0]
     
-    # Reduced sample size for web app responsiveness
-    # Sample ~5,000 parcels or 5% of non-subset, whichever is smaller
-    sample_size = min(5000, max(len(non_subset_idx) // 20, 500))
+    # Further reduced sample size for PuLP solver and web app responsiveness
+    # Sample ~3,500 parcels or 5% of non-subset, whichever is smaller
+    sample_size = min(3500, max(len(non_subset_idx) // 20, 500))
     if len(non_subset_idx) > sample_size:
         # Spatial stratified sampling
         step = len(non_subset_idx) / sample_size
@@ -2220,7 +2215,7 @@ def solve_uta_disaggregation(parcel_data, include_vars, all_parcels_data, threat
             'parcels_analyzed': len(all_parcels_data),
             'optimization_time': solve_time,
             'optimization_type': 'uta_star',
-            'solver': 'Gurobi UTA-STAR' if HAS_GUROBI else 'PuLP UTA-STAR',
+            'solver': 'PuLP UTA-STAR',  # Always PuLP for web deployment
             'num_segments': alpha,
             'total_error': float(total_error),
             'violations': int(violations),
