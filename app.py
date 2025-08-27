@@ -1833,17 +1833,202 @@ def solve_uta_linear_optimization(parcel_data, include_vars, all_parcels_data, t
         return None, None, None, False, None
 
 
-def solve_uta_disaggregation(parcel_data, include_vars, all_parcels_data, threat_size=200, K=6):
+# ====================
+# UTA-STAR HELPER FUNCTIONS
+# ====================
+
+def solve_uta_star_gurobi(X, subset_idx, non_subset_idx, W, alpha, delta=1e-3, epsilon_mon=0.0, violation_penalty=1.0):
+    """Solve UTA-STAR with Gurobi solver"""
+    import gurobipy as gp
+    from gurobipy import GRB
+    import numpy as np
+    
+    n, m = X.shape
+    
+    # Create model
+    model = gp.Model("UTA-STAR")
+    model.setParam('LogToConsole', 0)
+    model.setParam('TimeLimit', 60)
+    
+    # Variables: u[i,k] for utility values at breakpoints
+    u = {}
+    for i in range(m):
+        for k in range(alpha + 1):
+            u[i,k] = model.addVar(lb=0, ub=1, name=f"u_{i}_{k}")
+    
+    # Error variables
+    sigma_plus = {}
+    sigma_minus = {}
+    for p_idx in subset_idx:
+        for q_idx in non_subset_idx:
+            sigma_plus[p_idx,q_idx] = model.addVar(lb=0, name=f"sp_{p_idx}_{q_idx}")
+            sigma_minus[p_idx,q_idx] = model.addVar(lb=0, name=f"sm_{p_idx}_{q_idx}")
+    
+    model.update()
+    
+    # Constraints
+    # Normalization: u[i,0] = 0
+    for i in range(m):
+        model.addConstr(u[i,0] == 0)
+    
+    # Normalization: sum u[i,alpha] = 1
+    model.addConstr(gp.quicksum(u[i,alpha] for i in range(m)) == 1)
+    
+    # Monotonicity
+    for i in range(m):
+        for k in range(alpha):
+            model.addConstr(u[i,k+1] >= u[i,k] + epsilon_mon)
+    
+    # Preference constraints
+    for p_idx in subset_idx:
+        for q_idx in non_subset_idx:
+            # U(p) - U(q) >= delta - sigma_plus + sigma_minus
+            U_p = gp.quicksum(W[p_idx,i,k] * u[i,k] for i in range(m) for k in range(alpha + 1))
+            U_q = gp.quicksum(W[q_idx,i,k] * u[i,k] for i in range(m) for k in range(alpha + 1))
+            model.addConstr(U_p - U_q >= delta - sigma_plus[p_idx,q_idx] + sigma_minus[p_idx,q_idx])
+    
+    # Objective: minimize total error
+    obj = gp.quicksum(violation_penalty * (sigma_plus[key] + sigma_minus[key]) for key in sigma_plus)
+    model.setObjective(obj, GRB.MINIMIZE)
+    
+    # Solve
+    model.optimize()
+    
+    if model.Status == GRB.OPTIMAL:
+        # Extract utilities
+        utilities = {}
+        for i in range(m):
+            utilities[str(i)] = [u[i,k].X for k in range(alpha + 1)]
+        
+        # Count violations
+        violations = sum(1 for key in sigma_plus if sigma_plus[key].X > 1e-6 or sigma_minus[key].X > 1e-6)
+        total_error = model.ObjVal
+        
+        return utilities, total_error, violations
+    
+    return None
+
+
+def solve_uta_star_pulp(X, subset_idx, non_subset_idx, W, alpha, delta=1e-3, epsilon_mon=0.0):
+    """Solve UTA-STAR with PuLP solver"""
+    from pulp import LpProblem, LpMinimize, LpVariable, lpSum, COIN_CMD, value
+    import numpy as np
+    
+    n, m = X.shape
+    
+    # Create problem
+    prob = LpProblem("UTA-STAR", LpMinimize)
+    
+    # Variables
+    u = {}
+    for i in range(m):
+        for k in range(alpha + 1):
+            u[(i,k)] = LpVariable(f"u_{i}_{k}", lowBound=0, upBound=1)
+    
+    # Error variables
+    sigma_plus = {}
+    sigma_minus = {}
+    for p_idx in subset_idx:
+        for q_idx in non_subset_idx:
+            sigma_plus[(p_idx,q_idx)] = LpVariable(f"sp_{p_idx}_{q_idx}", lowBound=0)
+            sigma_minus[(p_idx,q_idx)] = LpVariable(f"sm_{p_idx}_{q_idx}", lowBound=0)
+    
+    # Constraints
+    # Normalization
+    for i in range(m):
+        prob += u[(i,0)] == 0
+    
+    prob += lpSum([u[(i,alpha)] for i in range(m)]) == 1
+    
+    # Monotonicity  
+    for i in range(m):
+        for k in range(alpha):
+            prob += u[(i,k+1)] >= u[(i,k)] + epsilon_mon
+    
+    # Preference constraints
+    for p_idx in subset_idx:
+        for q_idx in non_subset_idx:
+            U_p = lpSum([W[p_idx,i,k] * u[(i,k)] for i in range(m) for k in range(alpha + 1)])
+            U_q = lpSum([W[q_idx,i,k] * u[(i,k)] for i in range(m) for k in range(alpha + 1)])
+            prob += U_p - U_q >= delta - sigma_plus[(p_idx,q_idx)] + sigma_minus[(p_idx,q_idx)]
+    
+    # Objective
+    prob += lpSum([sigma_plus[key] + sigma_minus[key] for key in sigma_plus])
+    
+    # Solve
+    solver = COIN_CMD(msg=0, timeLimit=60)
+    solver.solve(prob)
+    
+    if prob.status == 1:  # Optimal
+        utilities = {}
+        for i in range(m):
+            utilities[str(i)] = [value(u[(i,k)]) for k in range(alpha + 1)]
+        
+        violations = sum(1 for key in sigma_plus if value(sigma_plus[key]) > 1e-6 or value(sigma_minus[key]) > 1e-6)
+        total_error = value(prob.objective)
+        
+        return utilities, total_error, violations
+    
+    return None
+
+
+def compute_utility_scores(X, utilities, breakpoints, alpha):
+    """Compute utility scores for all parcels using piecewise linear utilities"""
+    import numpy as np
+    
+    n, m = X.shape
+    scores = np.zeros(n)
+    
+    for a in range(n):
+        total_utility = 0.0
+        for i in range(m):
+            x_val = X[a, i]
+            # Find which segment x_val falls into
+            for k in range(alpha):
+                if breakpoints[k] <= x_val <= breakpoints[k+1]:
+                    # Linear interpolation within segment
+                    if breakpoints[k+1] - breakpoints[k] > 1e-10:
+                        theta = (x_val - breakpoints[k]) / (breakpoints[k+1] - breakpoints[k])
+                    else:
+                        theta = 0.0
+                    u_val = (1 - theta) * utilities[str(i)][k] + theta * utilities[str(i)][k+1]
+                    total_utility += u_val
+                    break
+        scores[a] = total_utility
+    
+    return scores
+
+
+def derive_weights_from_utilities(utilities, alpha):
+    """Derive approximate linear weights from piecewise linear utilities"""
+    import numpy as np
+    
+    m = len(utilities)
+    weights = np.zeros(m)
+    
+    # Use the utility at the maximum (u[i,alpha]) as the weight
+    for i in range(m):
+        weights[i] = utilities[str(i)][alpha]
+    
+    # Normalize to sum to 1
+    total = np.sum(weights)
+    if total > 0:
+        weights = weights / total
+    
+    return weights
+
+
+def solve_uta_disaggregation(parcel_data, include_vars, all_parcels_data, threat_size=200, K=3):
     """
-    True UTA (Utility Theory Additive) preference disaggregation with piecewise-linear 
-    marginal value functions. Learns monotone marginal utilities v_j(x) for each criterion.
+    UTA-STAR (Utility Theory Additive with piecewise-linear utilities) preference disaggregation.
+    Learns monotone piecewise-linear marginal utilities v_j(x) for each criterion.
     
     Args:
         parcel_data: List of selected parcels (those we want to rank highly)
         include_vars: List of variable names to include in optimization
         all_parcels_data: List of all parcels in the dataset
-        threat_size: Number of top threat parcels to consider per selected parcel
-        K: Number of breakpoints per criterion (default 6)
+        threat_size: Number of top threat parcels to consider per selected parcel (unused - samples instead)
+        K: Number of segments per criterion (default 3, i.e. 4 breakpoints)
     
     Returns:
         Tuple of (optimal_weights, weights_pct, total_score, success, ranking_metrics)
@@ -1852,16 +2037,25 @@ def solve_uta_disaggregation(parcel_data, include_vars, all_parcels_data, threat
     import numpy as np
     from pulp import LpProblem, LpMinimize, LpVariable, lpSum, LpStatus, COIN_CMD, value
     
+    # Try to import gurobipy for better performance
+    try:
+        import gurobipy as gp
+        from gurobipy import GRB
+        has_gurobi = True
+    except ImportError:
+        has_gurobi = False
+    
     start_time = time.time()
     
     # Process variable names
     include_vars_base = [var[:-2] if var.endswith('_s') else var for var in include_vars]
     
-    logger.info(f"TRUE UTA DISAGGREGATION: {len(parcel_data):,} selected parcels, "
-                f"{len(all_parcels_data):,} total parcels, {len(include_vars_base)} variables, K={K}")
+    logger.info(f"UTA-STAR DISAGGREGATION: {len(parcel_data):,} selected parcels, "
+                f"{len(all_parcels_data):,} total parcels, {len(include_vars_base)} variables, alpha={K}")
     
     n_selected = len(parcel_data)
     n_vars = len(include_vars_base)
+    alpha = K  # Using K parameter as alpha (number of segments)
     
     # Build parcel_id to index mapping for stable indexing
     parcel_id_to_idx = {}
@@ -1879,255 +2073,157 @@ def solve_uta_disaggregation(parcel_data, include_vars, all_parcels_data, threat
     
     logger.info(f"Mapped {len(selected_indices)} selected parcels to indices")
     
-    # Build score matrices (already scaled to [0,1])
-    selected_scores = np.zeros((n_selected, n_vars))
-    all_scores = np.zeros((len(all_parcels_data), n_vars))
-    
-    for i, parcel in enumerate(parcel_data):
-        for j, var_base in enumerate(include_vars_base):
-            selected_scores[i, j] = parcel['scores'].get(var_base, 0)
+    # Build score matrix for all parcels (already scaled to [0,1])
+    X = np.zeros((len(all_parcels_data), n_vars))
     
     for i, parcel in enumerate(all_parcels_data):
         for j, var_base in enumerate(include_vars_base):
-            all_scores[i, j] = parcel['scores'].get(var_base, 0)
+            X[i, j] = parcel['scores'].get(var_base, 0)
     
-    # Define breakpoints for each criterion (uniform on [0,1])
-    breakpoints = {}
-    for j, var_base in enumerate(include_vars_base):
-        breakpoints[var_base] = np.linspace(0, 1, K + 1)
+    # Create subset indices (selected parcels)
+    subset_idx = np.array(selected_indices)
     
-    # Precompute interpolation info for all parcels and criteria
-    interpolation_info = {}
-    for i in range(len(all_parcels_data)):
-        for j, var_base in enumerate(include_vars_base):
-            x_ij = all_scores[i, j]
-            breaks = breakpoints[var_base]
-            
-            # Find the bin k such that breaks[k] <= x_ij <= breaks[k+1]
-            k = np.searchsorted(breaks, x_ij, side='right') - 1
-            k = max(0, min(k, K - 1))  # Ensure k is in valid range
-            
-            # Compute interpolation weight alpha
-            if breaks[k+1] - breaks[k] > 0:
-                alpha = (x_ij - breaks[k]) / (breaks[k+1] - breaks[k])
-            else:
-                alpha = 0
-            
-            interpolation_info[(i, j)] = (k, alpha)
+    # Define breakpoints for piecewise linear utilities
+    breakpoints = np.linspace(0, 1, alpha + 1)
     
-    # Identify threat sets using equal-weight composite as proxy
-    logger.info(f"Identifying threat sets (top {threat_size} competitors per selected parcel)...")
-    threat_time_start = time.time()
+    # Precompute interpolation coefficients
+    n = X.shape[0]
+    m = X.shape[1]
+    W = np.zeros((n, m, alpha + 1))
     
-    threat_sets = {}
-    equal_weights = np.ones(n_vars) / n_vars
-    proxy_scores = np.dot(all_scores, equal_weights)
+    for a in range(n):
+        for i in range(m):
+            x_val = X[a, i]
+            for k in range(alpha):
+                if breakpoints[k] <= x_val <= breakpoints[k+1]:
+                    if breakpoints[k+1] - breakpoints[k] > 1e-10:
+                        theta = (x_val - breakpoints[k]) / (breakpoints[k+1] - breakpoints[k])
+                    else:
+                        theta = 0.0
+                    W[a, i, k] = 1 - theta
+                    W[a, i, k+1] = theta
+                    break
     
-    for idx, sel_idx in enumerate(selected_indices):
-        sel_proxy = proxy_scores[sel_idx]
+    # Sample non-subset parcels (spatially stratified sampling)
+    logger.info(f"Sampling non-subset parcels for comparison...")
+    non_subset_mask = np.ones(len(all_parcels_data), dtype=bool)
+    non_subset_mask[subset_idx] = False
+    non_subset_idx = np.where(non_subset_mask)[0]
+    
+    # Sample ~10,000 parcels or 10% of non-subset, whichever is smaller
+    sample_size = min(10000, max(len(non_subset_idx) // 10, 1000))
+    if len(non_subset_idx) > sample_size:
+        # Spatial stratified sampling
+        step = len(non_subset_idx) / sample_size
+        sampled_indices = [non_subset_idx[int(i * step)] for i in range(sample_size)]
+        non_subset_idx = np.array(sampled_indices)
+    
+    logger.info(f"Using {len(subset_idx)} subset parcels and {len(non_subset_idx):,} sampled non-subset parcels")
+    
+    # Solve with Gurobi if available, otherwise PuLP
+    if has_gurobi:
+        logger.info("Using Gurobi solver for UTA-STAR")
+        result = solve_uta_star_gurobi(X, subset_idx, non_subset_idx, W, alpha, 
+                                      delta=0.001, epsilon_mon=0.0, violation_penalty=1.0)
+    else:
+        logger.info("Using PuLP solver for UTA-STAR")
+        result = solve_uta_star_pulp(X, subset_idx, non_subset_idx, W, alpha,
+                                    delta=0.001, epsilon_mon=0.0)
+    
+    solve_time = time.time() - start_time
+    
+    if result is not None:
+        utilities, total_error, violations = result
         
-        # Find parcels with higher proxy scores (potential threats)
-        threat_mask = (proxy_scores > sel_proxy)
-        threat_indices = np.where(threat_mask)[0]
+        logger.info(f"UTA-STAR optimization successful - Total error: {total_error:.4f}, Violations: {violations}")
         
-        # Sort by proxy score and take top threat_size
-        if len(threat_indices) > 0:
-            threat_scores_sorted = proxy_scores[threat_indices]
-            sorted_idx = np.argsort(threat_scores_sorted)[::-1][:threat_size]
-            threat_sets[sel_idx] = threat_indices[sorted_idx].tolist()
-        else:
-            threat_sets[sel_idx] = []
-    
-    threat_time = time.time() - threat_time_start
-    logger.info(f"Threat set identification completed in {threat_time:.2f}s")
-    
-    # Create LP problem
-    prob = LpProblem("UTA_Disaggregation", LpMinimize)
-    
-    # Decision variables: marginal values V[j,k] = v_j(breakpoint_k)
-    V_vars = {}
-    for j, var_base in enumerate(include_vars_base):
-        for k in range(K + 1):
-            V_vars[(var_base, k)] = LpVariable(f"V_{var_base}_{k}", lowBound=0, upBound=1)
-    
-    # Slack variables for violations
-    xi_vars = {}
-    constraint_count = 0
-    
-    # Monotonicity constraints
-    for j, var_base in enumerate(include_vars_base):
-        for k in range(K):
-            prob += V_vars[(var_base, k+1)] >= V_vars[(var_base, k)]
-    
-    # Normalization constraints
-    # v_j(0) = 0 for all j
-    for j, var_base in enumerate(include_vars_base):
-        prob += V_vars[(var_base, 0)] == 0
-    
-    # sum_j v_j(1) = 1
-    prob += lpSum([V_vars[(var_base, K)] for var_base in include_vars_base]) == 1
-    
-    # Build preference constraints with threat sets
-    epsilon = 0.001  # Small margin for strict preference
-    
-    for sel_data_idx, sel_idx in enumerate(selected_indices):
-        for threat_idx in threat_sets[sel_idx]:
-            # Create slack variable for this pair
-            xi_vars[(sel_idx, threat_idx)] = LpVariable(f"xi_{sel_idx}_{threat_idx}", lowBound=0)
-            
-            # Calculate utilities using linear interpolation
-            # U(i) = sum_j v_j(x_ij) where v_j is linearly interpolated
-            
-            # Selected parcel utility
-            selected_utility = 0
-            for j, var_base in enumerate(include_vars_base):
-                k_sel, alpha_sel = interpolation_info[(sel_idx, j)]
-                selected_utility += ((1 - alpha_sel) * V_vars[(var_base, k_sel)] + 
-                                    alpha_sel * V_vars[(var_base, k_sel + 1)])
-            
-            # Threat parcel utility
-            threat_utility = 0
-            for j, var_base in enumerate(include_vars_base):
-                k_threat, alpha_threat = interpolation_info[(threat_idx, j)]
-                threat_utility += ((1 - alpha_threat) * V_vars[(var_base, k_threat)] + 
-                                  alpha_threat * V_vars[(var_base, k_threat + 1)])
-            
-            # Preference constraint: U(selected) >= U(threat) + epsilon - xi
-            prob += selected_utility >= threat_utility + epsilon - xi_vars[(sel_idx, threat_idx)]
-            constraint_count += 1
-    
-    # Objective: minimize sum of violations
-    prob += lpSum([xi_vars[key] for key in xi_vars])
-    
-    logger.info(f"Built LP with {len(V_vars)} marginal value variables, {len(xi_vars)} slack variables, "
-                f"{constraint_count} preference constraints")
-    
-    # Solve
-    solve_start = time.time()
-    solver = COIN_CMD(msg=0, timeLimit=60)
-    solver_result = prob.solve(solver)
-    solve_time = time.time() - solve_start
-    
-    logger.info(f"LP solver completed in {solve_time:.2f}s with status: {LpStatus[prob.status]}")
-    
-    if solver_result == 1:  # Optimal solution found
-        # Extract marginal value functions
-        marginals = {}
-        for var_base in include_vars_base:
-            marginals[var_base] = []
-            for k in range(K + 1):
-                marginals[var_base].append({
-                    'break': float(breakpoints[var_base][k]),
-                    'value': float(value(V_vars[(var_base, k)]))
-                })
+        # Compute utility scores for all parcels
+        all_scores = compute_utility_scores(X, utilities, breakpoints, alpha)
         
-        # Calculate swing weights (v_j(1) - v_j(0) = v_j(1))
-        swing_weights = {}
-        for var_base in include_vars_base:
-            swing_weights[var_base] = float(value(V_vars[(var_base, K)]))
-        
-        # Normalize swing weights to sum to 1 (they already should)
-        total_swing = sum(swing_weights.values())
-        if total_swing > 0:
-            for var_base in swing_weights:
-                swing_weights[var_base] /= total_swing
-        
-        # Calculate percentage weights
-        weights_pct = {var: weight * 100 for var, weight in swing_weights.items()}
-        
-        # Calculate total violations
-        total_violations = value(prob.objective)
-        avg_violation = total_violations / len(xi_vars) if xi_vars else 0
-        
-        logger.info(f"UTA optimization successful - Total violations: {total_violations:.4f}, "
-                    f"Average: {avg_violation:.4f}")
-        logger.info(f"Swing weights: {[(var, f'{weight:.1%}') for var, weight in swing_weights.items() if weight > 0.001]}")
-        
-        # Calculate ranking metrics using the learned utility functions
-        # First compute utilities for all parcels
-        all_utilities = np.zeros(len(all_parcels_data))
-        for i in range(len(all_parcels_data)):
-            utility = 0
-            for j, var_base in enumerate(include_vars_base):
-                k, alpha = interpolation_info[(i, j)]
-                v_low = value(V_vars[(var_base, k)])
-                v_high = value(V_vars[(var_base, k + 1)])
-                utility += (1 - alpha) * v_low + alpha * v_high
-            all_utilities[i] = utility
-        
-        # Calculate ranks
-        sorted_indices = np.argsort(all_utilities)[::-1]
-        ranks = np.empty_like(sorted_indices)
-        ranks[sorted_indices] = np.arange(len(sorted_indices)) + 1
+        # Calculate ranks (proper formula: rank 1 = highest score)
+        ranks = 1 + np.argsort(np.argsort(-all_scores))
         
         # Get ranks of selected parcels
-        selected_ranks = []
-        for sel_idx in selected_indices:
-            selected_ranks.append(ranks[sel_idx])
+        selected_ranks = ranks[selected_indices]
         
+        # Calculate ranking metrics
         avg_rank = np.mean(selected_ranks)
         median_rank = np.median(selected_ranks)
+        best_rank = int(np.min(selected_ranks))
+        worst_rank = int(np.max(selected_ranks))
         
-        # Calculate fixed rank metrics (Top 500, Top 1000, etc.)
-        top_500_count = sum(1 for rank in selected_ranks if rank <= 500)
-        top_500_rate = top_500_count / n_selected * 100
+        # Top-k metrics
+        top_500_count = int(np.sum(selected_ranks <= 500))
+        top_500_rate = float(top_500_count / n_selected * 100)
+        top_1000_count = int(np.sum(selected_ranks <= 1000))
+        top_1000_rate = float(top_1000_count / n_selected * 100)
         
-        top_1000_count = sum(1 for rank in selected_ranks if rank <= 1000)
-        top_1000_rate = top_1000_count / n_selected * 100
+        # Derive approximate weights from utilities
+        derived_weights = derive_weights_from_utilities(utilities, alpha)
         
-        # Also keep percentile metrics for reference
-        percentile_90 = np.percentile(all_utilities, 90)
-        percentile_75 = np.percentile(all_utilities, 75)
-        
-        top_10_pct = sum(1 for idx in selected_indices if all_utilities[idx] >= percentile_90) / n_selected * 100
-        top_25_pct = sum(1 for idx in selected_indices if all_utilities[idx] >= percentile_75) / n_selected * 100
-        
-        # Count non-zero swing weights
-        nonzero_weights = sum(1 for w in swing_weights.values() if w > 0.01)
-        
-        # Find dominant variable
-        dominant_var = max(swing_weights.items(), key=lambda x: x[1])[0]
+        # Convert to format expected by web app
+        weights = {}
+        weights_pct = {}
+        for j, var_base in enumerate(include_vars_base):
+            weights[var_base] = derived_weights[j]
+            weights_pct[var_base] = derived_weights[j] * 100
         
         # Total score (sum of selected parcel utilities)
-        total_score = sum(all_utilities[idx] for idx in selected_indices)
+        total_score = float(np.sum(all_scores[selected_indices]))
         
-        optimization_time = time.time() - start_time
+        # Count parcels that violate preferences
+        violation_rate = violations / (len(subset_idx) * len(non_subset_idx)) if len(non_subset_idx) > 0 else 0
+        
+        # Format utility functions for display
+        marginals = {}
+        for j, var_base in enumerate(include_vars_base):
+            marginals[var_base] = []
+            for k in range(alpha + 1):
+                marginals[var_base].append({
+                    'break': float(breakpoints[k]),
+                    'value': float(utilities[str(j)][k])
+                })
+        
+        # Count non-zero weights and find dominant variable
+        nonzero_weights = sum(1 for w in weights.values() if w > 0.01)
+        dominant_var = max(weights.items(), key=lambda x: x[1])[0]
+        is_mixed = nonzero_weights > 1
         
         ranking_metrics = {
             'average_rank': float(avg_rank),
             'median_rank': float(median_rank),
-            'best_rank': int(min(selected_ranks)),
-            'worst_rank': int(max(selected_ranks)),
-            'top_500_count': int(top_500_count),
-            'top_500_rate': float(top_500_rate),
-            'top_1000_count': int(top_1000_count),
-            'top_1000_rate': float(top_1000_rate),
-            'top_10_pct_rate': float(top_10_pct),
-            'top_25_pct_rate': float(top_25_pct),
-            'nonzero_weights': int(nonzero_weights),
+            'best_rank': best_rank,
+            'worst_rank': worst_rank,
+            'top_500_count': top_500_count,
+            'top_500_rate': top_500_rate,
+            'top_1000_count': top_1000_count,
+            'top_1000_rate': top_1000_rate,
+            'nonzero_weights': nonzero_weights,
             'dominant_var': dominant_var,
-            'is_mixed': bool(nonzero_weights > 1),
-            'parcels_analyzed': int(len(all_parcels_data)),
-            'optimization_time': float(optimization_time),
-            'optimization_type': 'uta_disaggregation',
-            'threat_set_size': int(threat_size),
-            'num_breakpoints': int(K),
-            'total_constraints': int(constraint_count),
-            'total_violations': float(total_violations),
-            'avg_violation': float(avg_violation),
-            'threat_identification_time': float(threat_time),
-            'lp_solve_time': float(solve_time),
-            'marginals': marginals
+            'is_mixed': is_mixed,
+            'parcels_analyzed': len(all_parcels_data),
+            'optimization_time': solve_time,
+            'optimization_type': 'uta_star',
+            'solver': 'Gurobi UTA-STAR' if has_gurobi else 'PuLP UTA-STAR',
+            'num_segments': alpha,
+            'total_error': float(total_error),
+            'violations': int(violations),
+            'violation_rate': float(violation_rate * 100),
+            'sample_size': len(non_subset_idx),
+            'marginals': marginals,
+            'utilities': utilities,
+            'breakpoints': breakpoints.tolist()
         }
         
-        logger.info(f"Ranking performance: {top_500_count}/{n_selected} parcels ({top_500_rate:.1f}%) in Top 500")
-        logger.info(f"Average rank: {avg_rank:.1f}, Median: {median_rank:.1f}, Best: {min(selected_ranks)}")
+        logger.info(f"UTA-STAR Ranking: {top_500_count}/{n_selected} parcels ({top_500_rate:.1f}%) in Top 500")
+        logger.info(f"Average rank: {avg_rank:.1f}, Median: {median_rank:.1f}, Best: {best_rank}")
+        logger.info(f"Derived weights: {[(var, f'{weight:.1%}') for var, weight in weights.items() if weight > 0.001]}")
         
         gc.collect()
-        return swing_weights, weights_pct, total_score, True, ranking_metrics
+        return weights, weights_pct, total_score, True, ranking_metrics
         
     else:
-        logger.error(f"UTA optimization failed with status: {LpStatus[prob.status]}")
+        logger.error(f"UTA-STAR optimization failed")
         gc.collect()
         return None, None, None, False, None
 
@@ -2574,8 +2670,69 @@ def generate_enhanced_solution_html(txt_content, lp_content, parcel_data, weight
     html_parts.append(f'<pre>{txt_content}</pre>')
     html_parts.append('</div>')
     
+    # UTA-STAR metrics section (if applicable)
+    if optimization_type in ['uta_star', 'uta_disaggregation'] and sa_metrics:
+        html_parts.append('<div class="section">')
+        html_parts.append('<h2>UTA-STAR Analysis</h2>')
+        
+        # Basic UTA-STAR metrics
+        html_parts.append('<h3>Optimization Results</h3>')
+        html_parts.append('<table style="border-collapse: collapse; margin: 10px 0;">')
+        
+        # Solver and performance
+        html_parts.append('<tr><td style="padding: 5px; border: 1px solid #ddd;"><strong>Solver:</strong></td>')
+        html_parts.append(f'<td style="padding: 5px; border: 1px solid #ddd;">{sa_metrics.get("solver", "UTA-STAR")}</td></tr>')
+        
+        html_parts.append('<tr><td style="padding: 5px; border: 1px solid #ddd;"><strong>Average Rank:</strong></td>')
+        html_parts.append(f'<td style="padding: 5px; border: 1px solid #ddd;">{sa_metrics.get("average_rank", 0):.1f}</td></tr>')
+        
+        html_parts.append('<tr><td style="padding: 5px; border: 1px solid #ddd;"><strong>Best Rank:</strong></td>')
+        html_parts.append(f'<td style="padding: 5px; border: 1px solid #ddd;">{sa_metrics.get("best_rank", 0)}</td></tr>')
+        
+        html_parts.append('<tr><td style="padding: 5px; border: 1px solid #ddd;"><strong>Top 500 Rate:</strong></td>')
+        html_parts.append(f'<td style="padding: 5px; border: 1px solid #ddd;">{sa_metrics.get("top_500_rate", 0):.1f}%</td></tr>')
+        
+        html_parts.append('<tr><td style="padding: 5px; border: 1px solid #ddd;"><strong>Violation Rate:</strong></td>')
+        html_parts.append(f'<td style="padding: 5px; border: 1px solid #ddd;">{sa_metrics.get("violation_rate", 0):.2f}%</td></tr>')
+        
+        html_parts.append('</table>')
+        
+        # Piecewise linear utilities visualization
+        if 'marginals' in sa_metrics:
+            html_parts.append('<h3>Marginal Utility Functions</h3>')
+            html_parts.append('<p>Piecewise-linear utilities learned by UTA-STAR:</p>')
+            html_parts.append('<table style="border-collapse: collapse; margin: 10px 0;">')
+            html_parts.append('<tr><th style="padding: 5px; border: 1px solid #ddd;">Variable</th>')
+            html_parts.append('<th style="padding: 5px; border: 1px solid #ddd;">u(0)</th>')
+            html_parts.append('<th style="padding: 5px; border: 1px solid #ddd;">u(0.33)</th>')
+            html_parts.append('<th style="padding: 5px; border: 1px solid #ddd;">u(0.67)</th>')
+            html_parts.append('<th style="padding: 5px; border: 1px solid #ddd;">u(1)</th></tr>')
+            
+            for var_name, values in sa_metrics['marginals'].items():
+                html_parts.append(f'<tr><td style="padding: 5px; border: 1px solid #ddd;">{var_name}</td>')
+                for val_dict in values:
+                    html_parts.append(f'<td style="padding: 5px; border: 1px solid #ddd;">{val_dict["value"]:.4f}</td>')
+                html_parts.append('</tr>')
+            html_parts.append('</table>')
+        
+        # Analysis details
+        html_parts.append('<h3>Analysis Details</h3>')
+        html_parts.append('<table style="border-collapse: collapse; margin: 10px 0;">')
+        html_parts.append('<tr><td style="padding: 5px; border: 1px solid #ddd;"><strong>Parcels Analyzed:</strong></td>')
+        html_parts.append(f'<td style="padding: 5px; border: 1px solid #ddd;">{sa_metrics.get("parcels_analyzed", 0):,}</td></tr>')
+        html_parts.append('<tr><td style="padding: 5px; border: 1px solid #ddd;"><strong>Sample Size:</strong></td>')
+        html_parts.append(f'<td style="padding: 5px; border: 1px solid #ddd;">{sa_metrics.get("sample_size", 0):,}</td></tr>')
+        html_parts.append('<tr><td style="padding: 5px; border: 1px solid #ddd;"><strong>Piecewise Segments:</strong></td>')
+        html_parts.append(f'<td style="padding: 5px; border: 1px solid #ddd;">{sa_metrics.get("num_segments", 3)}</td></tr>')
+        html_parts.append('</table>')
+        
+        html_parts.append('<p><em><strong>UTA-STAR Explanation:</strong> This method learns piecewise-linear utility functions that best explain why your selected parcels should be preferred. ')
+        html_parts.append('Unlike simple linear weights, UTA-STAR can capture non-linear preferences where the importance of a criterion varies across its range.</em></p>')
+        
+        html_parts.append('</div>')
+    
     # SA metrics section (if applicable)
-    if optimization_type == 'ranking_sa' and sa_metrics:
+    elif optimization_type == 'ranking_sa' and sa_metrics:
         html_parts.append('<div class="section">')
         html_parts.append('<h2>Simulated Annealing Analysis</h2>')
         
@@ -3259,7 +3416,7 @@ def view_solution(session_id):
             with open(parcel_data_path, 'r') as f:
                 parcel_data = json.load(f)
         
-        # Read metadata for weights and SA metrics
+        # Read metadata for weights and optimization metrics
         weights = {}
         sa_metrics = None
         optimization_type = 'absolute'
@@ -3267,7 +3424,10 @@ def view_solution(session_id):
             with open(metadata_path, 'r') as f:
                 metadata = json.load(f)
                 weights = metadata.get('weights', {})
+                # Check for both SA metrics and UTA metrics
                 sa_metrics = metadata.get('sa_metrics', None)
+                if not sa_metrics:
+                    sa_metrics = metadata.get('uta_metrics', None)
                 optimization_type = metadata.get('optimization_type', 'absolute')
         
         # Generate enhanced HTML report
