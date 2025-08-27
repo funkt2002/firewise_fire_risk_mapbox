@@ -59,6 +59,15 @@ try:
 except Exception as e:
     logger.error(f"Error checking LP solvers: {e}")
 
+# Check Gurobi availability globally
+try:
+    import gurobipy as gp
+    logger.info("Gurobi is available and will be used for UTA-STAR optimization")
+    HAS_GUROBI = True
+except ImportError:
+    logger.warning("Gurobi not available, will fall back to PuLP for UTA-STAR optimization")
+    HAS_GUROBI = False
+
 # ====================
 # FLASK APP SETUP
 # ====================
@@ -1848,7 +1857,7 @@ def solve_uta_star_gurobi(X, subset_idx, non_subset_idx, W, alpha, delta=1e-3, e
     # Create model
     model = gp.Model("UTA-STAR")
     model.setParam('LogToConsole', 0)
-    model.setParam('TimeLimit', 60)
+    model.setParam('TimeLimit', 30)  # Reduced timeout for web app
     
     # Variables: u[i,k] for utility values at breakpoints
     u = {}
@@ -1956,7 +1965,7 @@ def solve_uta_star_pulp(X, subset_idx, non_subset_idx, W, alpha, delta=1e-3, eps
     prob += lpSum([sigma_plus[key] + sigma_minus[key] for key in sigma_plus])
     
     # Solve
-    solver = COIN_CMD(msg=0, timeLimit=60)
+    solver = COIN_CMD(msg=0, timeLimit=30)  # Reduced timeout for web app
     solver.solve(prob)
     
     if prob.status == 1:  # Optimal
@@ -2037,14 +2046,6 @@ def solve_uta_disaggregation(parcel_data, include_vars, all_parcels_data, threat
     import numpy as np
     from pulp import LpProblem, LpMinimize, LpVariable, lpSum, LpStatus, COIN_CMD, value
     
-    # Try to import gurobipy for better performance
-    try:
-        import gurobipy as gp
-        from gurobipy import GRB
-        has_gurobi = True
-    except ImportError:
-        has_gurobi = False
-    
     start_time = time.time()
     
     # Process variable names
@@ -2110,8 +2111,9 @@ def solve_uta_disaggregation(parcel_data, include_vars, all_parcels_data, threat
     non_subset_mask[subset_idx] = False
     non_subset_idx = np.where(non_subset_mask)[0]
     
-    # Sample ~10,000 parcels or 10% of non-subset, whichever is smaller
-    sample_size = min(10000, max(len(non_subset_idx) // 10, 1000))
+    # Reduced sample size for web app responsiveness
+    # Sample ~5,000 parcels or 5% of non-subset, whichever is smaller
+    sample_size = min(5000, max(len(non_subset_idx) // 20, 500))
     if len(non_subset_idx) > sample_size:
         # Spatial stratified sampling
         step = len(non_subset_idx) / sample_size
@@ -2121,7 +2123,7 @@ def solve_uta_disaggregation(parcel_data, include_vars, all_parcels_data, threat
     logger.info(f"Using {len(subset_idx)} subset parcels and {len(non_subset_idx):,} sampled non-subset parcels")
     
     # Solve with Gurobi if available, otherwise PuLP
-    if has_gurobi:
+    if HAS_GUROBI:
         logger.info("Using Gurobi solver for UTA-STAR")
         result = solve_uta_star_gurobi(X, subset_idx, non_subset_idx, W, alpha, 
                                       delta=0.001, epsilon_mon=0.0, violation_penalty=1.0)
@@ -2131,6 +2133,20 @@ def solve_uta_disaggregation(parcel_data, include_vars, all_parcels_data, threat
                                     delta=0.001, epsilon_mon=0.0)
     
     solve_time = time.time() - start_time
+    
+    if result is None:
+        logger.warning(f"UTA-STAR solver returned no solution after {solve_time:.1f}s")
+        # Try with even smaller sample if it timed out
+        if len(non_subset_idx) > 1000:
+            logger.info("Retrying with smaller sample size (1000 parcels)")
+            # Take first 1000 for speed
+            non_subset_idx = non_subset_idx[:1000]
+            if HAS_GUROBI:
+                result = solve_uta_star_gurobi(X, subset_idx, non_subset_idx, W, alpha, 
+                                              delta=0.001, epsilon_mon=0.0, violation_penalty=1.0)
+            else:
+                result = solve_uta_star_pulp(X, subset_idx, non_subset_idx, W, alpha,
+                                            delta=0.001, epsilon_mon=0.0)
     
     if result is not None:
         utilities, total_error, violations = result
@@ -2204,7 +2220,7 @@ def solve_uta_disaggregation(parcel_data, include_vars, all_parcels_data, threat
             'parcels_analyzed': len(all_parcels_data),
             'optimization_time': solve_time,
             'optimization_type': 'uta_star',
-            'solver': 'Gurobi UTA-STAR' if has_gurobi else 'PuLP UTA-STAR',
+            'solver': 'Gurobi UTA-STAR' if HAS_GUROBI else 'PuLP UTA-STAR',
             'num_segments': alpha,
             'total_error': float(total_error),
             'violations': int(violations),
