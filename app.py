@@ -60,32 +60,32 @@ try:
 except Exception as e:
     logger.error(f"Error checking LP solvers: {e}")
 
-# Check for Gurobi availability
+# Check for Gurobi availability (LOCAL ONLY - deployment uses PuLP)
 try:
     import os
-    # Try multiple license methods
-    # 1. First check for license file
-    if not os.environ.get('GRB_LICENSE_FILE'):
-        license_path = os.path.expanduser('~/gurobi.lic')
-        if os.path.exists(license_path):
-            os.environ['GRB_LICENSE_FILE'] = license_path
-            logger.info(f"Setting GRB_LICENSE_FILE to {license_path}")
     
-    # 2. For deployment: Set WLS credentials if provided in environment
-    # You can set these in Railway/deployment environment variables
-    if os.environ.get('GUROBI_WLS_ACCESSID') and os.environ.get('GUROBI_WLS_SECRET'):
-        os.environ['GRB_WLSACCESSID'] = os.environ['GUROBI_WLS_ACCESSID']
-        os.environ['GRB_WLSSECRET'] = os.environ['GUROBI_WLS_SECRET']
-        os.environ['GRB_LICENSEID'] = os.environ.get('GUROBI_LICENSEID', '2445643')
-        logger.info("Using Gurobi WLS cloud license for deployment")
+    # Check if we're in deployment (Railway sets RAILWAY_ENVIRONMENT)
+    is_deployed = os.environ.get('RAILWAY_ENVIRONMENT') or os.environ.get('DEPLOYED') or os.environ.get('PRODUCTION')
     
-    import gurobipy as gp
-    from gurobipy import GRB
-    # Test that license works
-    test_env = gp.Env()
-    test_env.dispose()
-    HAS_GUROBI = True
-    logger.info("Gurobi solver available and licensed for UTA-STAR optimization")
+    if is_deployed:
+        # Force PuLP for deployment to avoid WLS license limits
+        logger.info("Deployment detected - using PuLP solver (avoids Gurobi cloud license limits)")
+        HAS_GUROBI = False
+    else:
+        # Local environment - try to use Gurobi
+        if not os.environ.get('GRB_LICENSE_FILE'):
+            license_path = os.path.expanduser('~/gurobi.lic')
+            if os.path.exists(license_path):
+                os.environ['GRB_LICENSE_FILE'] = license_path
+                logger.info(f"Setting GRB_LICENSE_FILE to {license_path}")
+        
+        import gurobipy as gp
+        from gurobipy import GRB
+        # Test that license works
+        test_env = gp.Env()
+        test_env.dispose()
+        HAS_GUROBI = True
+        logger.info("Gurobi solver available locally with unlimited license")
 except ImportError:
     HAS_GUROBI = False
     logger.info("Gurobi not available, will use PuLP solver for UTA-STAR optimization")
