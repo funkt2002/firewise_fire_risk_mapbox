@@ -1869,7 +1869,6 @@
                     const indicator = document.getElementById('uta-mode-indicator');
                     if (indicator) {
                         indicator.style.display = 'block';
-                        indicator.innerHTML = '🎯 UTA-STAR Mode Active';
                     }
                     
                     console.log('✓ UTA scores stored. Using piecewise utility functions for ranking.');

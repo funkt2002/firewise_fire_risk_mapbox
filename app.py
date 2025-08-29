@@ -2565,6 +2565,8 @@ def generate_solution_files(include_vars, best_weights, weights_pct, total_score
     
     if optimization_type == 'ranking_sa':
         optimization_title = "SIMULATED ANNEALING RANK MINIMIZATION RESULTS"
+    elif optimization_type in ['uta_disaggregation', 'uta_star', 'uta']:
+        optimization_title = "UTA-STAR PREFERENCE LEARNING RESULTS"
     else:
         optimization_title = "ABSOLUTE OPTIMIZATION RESULTS (LP Maximum Score)"
     
@@ -2596,6 +2598,25 @@ def generate_solution_files(include_vars, best_weights, weights_pct, total_score
             "  Multi-start approach with 9 different initializations",
             "  Adaptive cooling schedule with probabilistic acceptance",
             "  This finds weights that push selected parcels to top ranks."
+        ])
+    elif optimization_type in ['uta_disaggregation', 'uta_star', 'uta']:
+        txt_lines.extend([
+            "",
+            "OPTIMIZATION TYPE: UTA-STAR (Preference Disaggregation)",
+            "OBJECTIVE: Learn piecewise linear utility functions that best",
+            "           explain why selected parcels should be preferred",
+            "",
+            f"Total parcels analyzed: {parcel_count:,}",
+            f"Total optimized utility: {total_score:.2f}",
+            f"Average utility: {avg_score:.3f}",
+            "",
+            "MATHEMATICAL APPROACH:",
+            "  Learn monotone piecewise-linear marginal utilities u_i(x)",
+            "  Minimize ranking violations between selected and non-selected parcels",
+            "  Utilities capture non-linear preferences (e.g., diminishing returns)",
+            "",
+            "NOTE: Displayed weights represent utility at maximum value.",
+            "      Actual scoring uses non-linear piecewise utility functions."
         ])
     else:
         txt_lines.extend([
@@ -3259,10 +3280,11 @@ def infer_weights_uta():
         if not success:
             return jsonify({"error": "UTA optimization failed - check if selected parcels have reasonable scores"}), 400
         
-        # Generate files
+        # Generate files with UTA optimization type
+        data_with_type = {**data, 'optimization_type': 'uta_disaggregation'}
         lp_content, txt_content = generate_solution_files(
             include_vars, best_weights, weights_pct, total_score, 
-            parcel_data, data
+            parcel_data, data_with_type
         )
         
         # Create session for file storage
