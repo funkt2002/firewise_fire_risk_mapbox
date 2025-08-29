@@ -62,13 +62,27 @@ except Exception as e:
 
 # Check for Gurobi availability
 try:
+    import os
+    # Set Gurobi license path if not already set
+    if not os.environ.get('GRB_LICENSE_FILE'):
+        license_path = os.path.expanduser('~/gurobi.lic')
+        if os.path.exists(license_path):
+            os.environ['GRB_LICENSE_FILE'] = license_path
+            logger.info(f"Setting GRB_LICENSE_FILE to {license_path}")
+    
     import gurobipy as gp
     from gurobipy import GRB
+    # Test that license works
+    test_env = gp.Env()
+    test_env.dispose()
     HAS_GUROBI = True
-    logger.info("Gurobi solver available for UTA-STAR optimization")
+    logger.info("Gurobi solver available and licensed for UTA-STAR optimization")
 except ImportError:
     HAS_GUROBI = False
     logger.info("Gurobi not available, will use PuLP solver for UTA-STAR optimization")
+except Exception as e:
+    HAS_GUROBI = False
+    logger.info(f"Gurobi available but license issue: {e}. Will use PuLP solver")
 
 # ====================
 # FLASK APP SETUP
@@ -1886,7 +1900,10 @@ def solve_uta_star_gurobi(X, subset_idx, non_subset_idx, W, alpha, delta=1e-3):
     # Create model
     model = gp.Model("UTA-STAR-Utilities")
     model.Params.LogToConsole = 0
-    model.Params.TimeLimit = 60  # Increased timeout for better solutions
+    model.Params.TimeLimit = 30  # Reduced for faster response
+    model.Params.MIPGap = 0.01  # Accept 1% optimality gap for speed
+    model.Params.Threads = 4  # Use multiple threads
+    model.Params.Presolve = 2  # Aggressive presolve
     
     # Variables: u[i,k] for utility values at breakpoints
     u = {}
@@ -2122,9 +2139,14 @@ def solve_uta_disaggregation(parcel_data, include_vars, all_parcels_data, threat
     non_subset_mask[subset_idx] = False
     non_subset_idx = np.where(non_subset_mask)[0]
     
-    # Further reduced sample size for PuLP solver and web app responsiveness
-    # Sample ~3,500 parcels or 5% of non-subset, whichever is smaller
-    sample_size = min(3500, max(len(non_subset_idx) // 20, 500))
+    # Optimized sampling for faster performance
+    # With Gurobi: can handle more, without: use less
+    if HAS_GUROBI:
+        # Gurobi can handle ~2000 efficiently
+        sample_size = min(2000, max(len(non_subset_idx) // 30, 300))
+    else:
+        # PuLP needs smaller sample
+        sample_size = min(1000, max(len(non_subset_idx) // 60, 200))
     if len(non_subset_idx) > sample_size:
         # Spatial stratified sampling
         step = len(non_subset_idx) / sample_size
