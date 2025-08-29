@@ -161,27 +161,86 @@ def get_db():
         logger.error(f"Database connection failed: {e}")
         raise
 
-def load_local_geojson(filename):
-    """Load GeoJSON from local data folder"""
-    filepath = os.path.join('data', filename)
-    if os.path.exists(filepath):
-        with open(filepath, 'r') as f:
-            data = json.load(f)
-            logger.info(f"Loaded {len(data.get('features', []))} features from {filename}")
-            return data.get('features', [])
-    else:
-        logger.warning(f"File not found: {filepath}")
-        return []
+# ====================
+# LOCAL DEVELOPMENT SUPPORT
+# ====================
+# This section contains all local file loading functionality
+# Only activated when USE_LOCAL_FILES=true environment variable is set
 
-def fetch_geojson_features(table_name, where_clause="", params=None):
-    """Reusable function for fetching GeoJSON from any table or local file"""
-    start_time = time.time()
+class LocalDataLoader:
+    """Handles loading data from local files for development without database"""
     
-    # Check if using local files
-    if os.environ.get('USE_LOCAL_FILES') == 'true':
-        # Map table names to local files
+    @staticmethod
+    def load_parcels_shapefile():
+        """Load parcels from shapefile with all computed scores"""
+        import geopandas as gpd
+        
+        shapefile_path = os.path.join('data', 'parcels.shp')
+        if not os.path.exists(shapefile_path):
+            logger.error(f"Parcels shapefile not found: {shapefile_path}")
+            return []
+        
+        try:
+            # Load shapefile
+            gdf = gpd.read_file(shapefile_path)
+            logger.info(f"Loaded {len(gdf):,} parcels from shapefile")
+            
+            # Convert to GeoJSON format expected by frontend
+            # Transform to WGS84 if needed
+            if gdf.crs and gdf.crs != 'EPSG:4326':
+                gdf = gdf.to_crs('EPSG:4326')
+            
+            # Convert to GeoJSON features
+            features = []
+            for idx, row in gdf.iterrows():
+                feature = {
+                    'type': 'Feature',
+                    'geometry': row['geometry'].__geo_interface__ if row['geometry'] else None,
+                    'properties': {}
+                }
+                
+                # Add all properties except geometry
+                for col in gdf.columns:
+                    if col != 'geometry':
+                        val = row[col]
+                        # Handle numpy types
+                        if hasattr(val, 'item'):
+                            val = val.item()
+                        # Handle NaN values
+                        if pd.isna(val):
+                            val = None
+                        feature['properties'][col] = val
+                
+                features.append(feature)
+            
+            return features
+            
+        except Exception as e:
+            logger.error(f"Error loading parcels shapefile: {e}")
+            return []
+    
+    @staticmethod
+    def load_layer_geojson(filename):
+        """Load GeoJSON layer from local data folder"""
+        filepath = os.path.join('data', filename)
+        if os.path.exists(filepath):
+            with open(filepath, 'r') as f:
+                data = json.load(f)
+                logger.info(f"Loaded {len(data.get('features', []))} features from {filename}")
+                return data.get('features', [])
+        else:
+            logger.warning(f"File not found: {filepath}")
+            return []
+    
+    @staticmethod
+    def get_layer_features(table_name):
+        """Get features for a specific layer from local files"""
+        # Special handling for parcels - use shapefile
+        if table_name == 'parcels':
+            return LocalDataLoader.load_parcels_shapefile()
+        
+        # Map other table names to local GeoJSON files
         file_mapping = {
-            'parcels': 'parcels_updated_ids_geom.geojson',
             'agricultural': 'agricultural.geojson',
             'burnscars': 'burnscars.geojson',
             'fuelbreaks': 'fuelbreaks.geojson',
@@ -195,12 +254,20 @@ def fetch_geojson_features(table_name, where_clause="", params=None):
         
         filename = file_mapping.get(table_name)
         if filename:
-            features = load_local_geojson(filename)
-            logger.info(f"Loaded {table_name} from local file in {time.time() - start_time:.2f}s")
-            return features
+            return LocalDataLoader.load_layer_geojson(filename)
         else:
             logger.warning(f"No local file mapping for table: {table_name}")
             return []
+
+def fetch_geojson_features(table_name, where_clause="", params=None):
+    """Reusable function for fetching GeoJSON from any table or local file"""
+    start_time = time.time()
+    
+    # Check if using local files
+    if os.environ.get('USE_LOCAL_FILES') == 'true':
+        features = LocalDataLoader.get_layer_features(table_name)
+        logger.info(f"Loaded {table_name} from local file in {time.time() - start_time:.2f}s")
+        return features
     
     # Original database logic
     conn = get_db()
@@ -894,28 +961,23 @@ def check_cache_for_base_dataset(data, start_time):
     return None, cache_time, use_filters
 
 def execute_local_file_query(data, timings):
-    """Load and process parcel data from local GeoJSON file"""
+    """Load and process parcel data from local shapefile"""
     start_time = time.time()
     
-    # Load parcels from local file
-    filepath = os.path.join('data', 'parcels_updated_ids_geom.geojson')
-    if not os.path.exists(filepath):
-        # Try alternative file
-        filepath = os.path.join('data', 'parcels_enhanced.geojson')
+    # Use the LocalDataLoader to get parcels from shapefile
+    features = LocalDataLoader.load_parcels_shapefile()
     
-    if not os.path.exists(filepath):
-        logger.error(f"No parcels file found in data folder")
+    if not features:
+        logger.error("Failed to load parcels from shapefile")
         return None, 0
     
-    logger.info(f"Loading parcels from {filepath}")
-    with open(filepath, 'r') as f:
-        geojson_data = json.load(f)
-    
-    features = geojson_data.get('features', [])
     total_parcels = len(features)
-    logger.info(f"Loaded {total_parcels:,} parcels from local file in {time.time() - start_time:.2f}s")
+    logger.info(f"Loaded {total_parcels:,} parcels from shapefile in {time.time() - start_time:.2f}s")
     
     timings['local_file_load'] = time.time() - start_time
+    
+    # Apply any filters if needed (for now, return all)
+    # TODO: Add filter support for local data if needed
     
     # Return in expected format
     return features, total_parcels
@@ -3753,11 +3815,47 @@ def cleanup_expired_sessions():
         return jsonify({"error": str(e)}), 500
 
 # ====================
-# MAIN EXECUTION
+# LOCAL DEVELOPMENT RUNNER
 # ====================
+# This section only runs when executing 'python app.py' directly
+# Deployment uses gunicorn and never executes this code
+
+def setup_local_environment():
+    """Configure environment for local development"""
+    if os.environ.get('USE_LOCAL_FILES') == 'true':
+        logger.info("=" * 60)
+        logger.info("LOCAL DEVELOPMENT MODE ACTIVATED")
+        logger.info("=" * 60)
+        logger.info("✓ Using local data files from ./data folder")
+        logger.info("✓ Loading parcels from parcels.shp")
+        logger.info("✓ No database connection required")
+        
+        # Check if Gurobi is available
+        if HAS_GUROBI:
+            logger.info("✓ Using Gurobi solver with unlimited license")
+        else:
+            logger.info("✗ Gurobi not available, using PuLP solver")
+        
+        # Verify shapefile exists
+        shapefile_path = os.path.join('data', 'parcels.shp')
+        if os.path.exists(shapefile_path):
+            logger.info(f"✓ Found parcels.shp ({os.path.getsize(shapefile_path) / 1024 / 1024:.1f} MB)")
+        else:
+            logger.error("✗ parcels.shp not found in data folder!")
+        
+        logger.info("=" * 60)
+    else:
+        logger.info("Using standard database configuration")
 
 if __name__ == '__main__':
+    # Setup local environment if needed
+    setup_local_environment()
+    
     logger.info("Starting Flask development server...")
+    logger.info(f"Server will be available at:")
+    logger.info(f"  → http://localhost:5000")
+    logger.info(f"  → http://127.0.0.1:5000")
+    
     # Local development settings (deployment uses gunicorn, not this)
     app.run(
         host='0.0.0.0',  # Allow connections from any interface
