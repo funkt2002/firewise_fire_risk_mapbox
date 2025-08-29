@@ -150,6 +150,10 @@ def encode_float32_array(numpy_array):
 
 def get_db():
     """Get database connection"""
+    # Check if running locally without database
+    if os.environ.get('USE_LOCAL_FILES') == 'true':
+        logger.info("Using local files instead of database")
+        return None
     try:
         conn = psycopg2.connect(app.config['DATABASE_URL'], cursor_factory=RealDictCursor)
         return conn
@@ -157,9 +161,48 @@ def get_db():
         logger.error(f"Database connection failed: {e}")
         raise
 
+def load_local_geojson(filename):
+    """Load GeoJSON from local data folder"""
+    filepath = os.path.join('data', filename)
+    if os.path.exists(filepath):
+        with open(filepath, 'r') as f:
+            data = json.load(f)
+            logger.info(f"Loaded {len(data.get('features', []))} features from {filename}")
+            return data.get('features', [])
+    else:
+        logger.warning(f"File not found: {filepath}")
+        return []
+
 def fetch_geojson_features(table_name, where_clause="", params=None):
-    """Reusable function for fetching GeoJSON from any table"""
+    """Reusable function for fetching GeoJSON from any table or local file"""
     start_time = time.time()
+    
+    # Check if using local files
+    if os.environ.get('USE_LOCAL_FILES') == 'true':
+        # Map table names to local files
+        file_mapping = {
+            'parcels': 'parcels_updated_ids_geom.geojson',
+            'agricultural': 'agricultural.geojson',
+            'burnscars': 'burnscars.geojson',
+            'fuelbreaks': 'fuelbreaks.geojson',
+            'hazard': 'hazard.geojson',
+            'wui': 'wui.geojson',
+            'structures': 'structures.geojson',
+            'fire_stations': 'fire_stations.geojson',
+            'dins': 'DINS_incidents.geojson',
+            'firewise': 'firewise.geojson'
+        }
+        
+        filename = file_mapping.get(table_name)
+        if filename:
+            features = load_local_geojson(filename)
+            logger.info(f"Loaded {table_name} from local file in {time.time() - start_time:.2f}s")
+            return features
+        else:
+            logger.warning(f"No local file mapping for table: {table_name}")
+            return []
+    
+    # Original database logic
     conn = get_db()
     cur = conn.cursor()
     
@@ -850,8 +893,39 @@ def check_cache_for_base_dataset(data, start_time):
     
     return None, cache_time, use_filters
 
+def execute_local_file_query(data, timings):
+    """Load and process parcel data from local GeoJSON file"""
+    start_time = time.time()
+    
+    # Load parcels from local file
+    filepath = os.path.join('data', 'parcels_updated_ids_geom.geojson')
+    if not os.path.exists(filepath):
+        # Try alternative file
+        filepath = os.path.join('data', 'parcels_enhanced.geojson')
+    
+    if not os.path.exists(filepath):
+        logger.error(f"No parcels file found in data folder")
+        return None, 0
+    
+    logger.info(f"Loading parcels from {filepath}")
+    with open(filepath, 'r') as f:
+        geojson_data = json.load(f)
+    
+    features = geojson_data.get('features', [])
+    total_parcels = len(features)
+    logger.info(f"Loaded {total_parcels:,} parcels from local file in {time.time() - start_time:.2f}s")
+    
+    timings['local_file_load'] = time.time() - start_time
+    
+    # Return in expected format
+    return features, total_parcels
+
 def execute_database_query(data, timings):
     """Execute database query and return results with parcels count"""
+    # Check if using local files
+    if os.environ.get('USE_LOCAL_FILES') == 'true':
+        return execute_local_file_query(data, timings)
+    
     # Build filters
     filter_start = time.time()
     conditions, params = build_filter_conditions(data)

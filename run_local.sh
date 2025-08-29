@@ -3,6 +3,9 @@
 
 echo "Starting Fire Risk Calculator locally..."
 echo "=================================="
+echo "Using LOCAL DATA FILES from ./data folder"
+echo "Using GUROBI solver (unlimited license)"
+echo "=================================="
 echo "The app will be available at:"
 echo "  http://localhost:5000"
 echo "  http://127.0.0.1:5000"
@@ -13,6 +16,9 @@ echo ""
 unset RAILWAY_ENVIRONMENT
 unset DEPLOYED
 unset PRODUCTION
+
+# Use local files instead of database
+export USE_LOCAL_FILES=true
 
 # Run the Flask app
 python3 app.py
