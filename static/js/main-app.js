@@ -590,6 +590,7 @@
                     
                     <div style="margin: 10px 0; padding: 8px; background: rgba(255,255,255,0.1); border-radius: 4px;">
                         <p style="margin: 0;"><strong>Total Score:</strong> ${props.score?.toFixed(3) || 'N/A'}</p>
+                        ${window.utaSession?.active ? '<p style="margin: 5px 0 0 0; color: #aaf;"><strong>UTA Score:</strong> ' + (props.uta_score?.toFixed(3) || props.score?.toFixed(3) || 'N/A') + ' (Non-linear)</p>' : ''}
                         <p style="margin: 5px 0 0 0;"><strong>Rank:</strong> ${props.rank || 'N/A'}</p>
                     </div>
 
@@ -666,6 +667,31 @@
 
         // Make map accessible globally for spatial filtering (kept for backward compatibility)
         window.map = fireRiskApp.map;
+        
+        // Clear UTA mode function
+        window.clearUTAMode = function() {
+            if (window.utaSession) {
+                window.utaSession.active = false;
+                window.utaSession = null;
+                
+                // Hide indicator
+                const indicator = document.getElementById('uta-mode-indicator');
+                if (indicator) {
+                    indicator.style.display = 'none';
+                }
+                
+                // Remove UTA mode classes from sliders
+                document.querySelectorAll('.slider').forEach(slider => {
+                    slider.parentElement.classList.remove('uta-mode');
+                    slider.title = '';
+                });
+                
+                console.log('✓ UTA mode cleared. Using linear weights for scoring.');
+                
+                // Recalculate scores with linear weights
+                updateScores();
+            }
+        };
 
         // Initialize drawing
         fireRiskApp.draw = new MapboxDraw({
@@ -1818,6 +1844,37 @@
                     return;
                 }
 
+                // Handle UTA scores if present
+                if (data.uta_scores_f32 && data.parcel_ids) {
+                    console.log('🎯 UTA-STAR Mode: Received pre-computed scores for', data.parcel_ids.length, 'parcels');
+                    
+                    // Decode Float32Array from base64
+                    const base64 = data.uta_scores_f32;
+                    const binary = atob(base64);
+                    const bytes = new Uint8Array(binary.length);
+                    for (let i = 0; i < binary.length; i++) {
+                        bytes[i] = binary.charCodeAt(i);
+                    }
+                    const float32Array = new Float32Array(bytes.buffer);
+                    
+                    // Store UTA session globally
+                    window.utaSession = {
+                        scores: float32Array,
+                        parcelIds: data.parcel_ids,
+                        model: data.uta_model,
+                        active: true
+                    };
+                    
+                    // Add UTA mode indicator
+                    const indicator = document.getElementById('uta-mode-indicator');
+                    if (indicator) {
+                        indicator.style.display = 'block';
+                        indicator.innerHTML = '🎯 UTA-STAR Mode Active';
+                    }
+                    
+                    console.log('✓ UTA scores stored. Using piecewise utility functions for ranking.');
+                }
+                
                 // Update the weight sliders with optimized values
                 Object.entries(data.weights).forEach(([key, value]) => {
                     const sliderKey = key + '_s'; // Add _s suffix for slider IDs
@@ -1825,14 +1882,21 @@
                     if (slider) {
                         slider.value = value;
                         updateSliderFill(slider);
+                        
+                        // Add visual indicator for UTA mode
+                        if (window.utaSession?.active) {
+                            slider.parentElement.classList.add('uta-mode');
+                            // Add tooltip
+                            slider.title = 'Weight shown is utility at maximum. Actual scoring uses non-linear curves.';
+                        }
                     }
                 });
                 
                 // Update percentage displays to match the new slider values
                 normalizeWeights();
                 
-                // Trigger a score recalculation with the new weights
-                await updateScores(); // Recalculate scores with new weights
+                // Trigger a score recalculation with the new weights (or UTA scores)
+                await updateScores(); // Recalculate scores with new weights or UTA scores
                 
                 // Clear the drawn features after successful optimization
                 clearAllSelectionAreas();

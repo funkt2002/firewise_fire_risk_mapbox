@@ -178,6 +178,13 @@ class FireRiskScoring {
         }
 
         const start = performance.now();
+        
+        // Check if UTA scores are available
+        if (window.utaSession?.active) {
+            console.log(`🎯 Using pre-computed UTA-STAR scores for ${parcelsToScore.length} parcels...`);
+            return this.applyUTAScores(parcelsToScore, maxParcels);
+        }
+        
         console.log(`Starting client-side scoring for ${parcelsToScore.length} parcels...`);
 
         // Normalize weights
@@ -273,6 +280,74 @@ class FireRiskScoring {
         return result;
     }
 
+    // Apply pre-computed UTA scores
+    applyUTAScores(parcelsToScore, maxParcels = 500) {
+        const start = performance.now();
+        
+        if (!window.utaSession) {
+            console.error('UTA session not available');
+            return null;
+        }
+        
+        const { scores, parcelIds } = window.utaSession;
+        
+        // Create a map for fast lookup
+        const scoreMap = new Map();
+        for (let i = 0; i < parcelIds.length; i++) {
+            scoreMap.set(parcelIds[i], scores[i]);
+        }
+        
+        // Apply UTA scores to parcels
+        const scoredParcels = parcelsToScore.map(parcel => {
+            const parcelId = String(parcel.properties.parcel_id || parcel.properties.id);
+            const utaScore = scoreMap.get(parcelId);
+            
+            if (utaScore === undefined) {
+                console.warn(`No UTA score found for parcel ${parcelId}`);
+            }
+            
+            return {
+                ...parcel,
+                properties: {
+                    ...parcel.properties,
+                    score: utaScore || 0,
+                    uta_score: utaScore || 0  // Keep both for clarity
+                }
+            };
+        });
+        
+        // Sort by UTA score and add ranking
+        scoredParcels.sort((a, b) => b.properties.score - a.properties.score);
+        
+        scoredParcels.forEach((parcel, index) => {
+            parcel.properties.rank = index + 1;
+            parcel.properties.top500 = index < maxParcels;
+            
+            // Update shared attribute map
+            if (parcel.properties.parcel_id) {
+                this.dataStore.updateAttributeMapProperty(parcel.properties.parcel_id, 'score', parcel.properties.score);
+                this.dataStore.updateAttributeMapProperty(parcel.properties.parcel_id, 'rank', index + 1);
+                this.dataStore.updateAttributeMapProperty(parcel.properties.parcel_id, 'top500', index < maxParcels);
+            }
+        });
+        
+        const totalTime = performance.now() - start;
+        console.log(`🎯 UTA scoring completed in ${totalTime.toFixed(1)}ms`);
+        
+        // Store result as currentDataset
+        const result = {
+            type: "FeatureCollection",
+            features: scoredParcels,
+            total_parcels: scoredParcels.length,
+            selected_count: scoredParcels.filter(p => p.properties.top500).length,
+            uta_calculated: true,
+            calculation_time: totalTime
+        };
+        
+        this.currentDataset = result;
+        return result;
+    }
+    
     // Check if weights have changed significantly
     weightsChanged(newWeights, threshold = 0.001) {
         if (!this.lastWeights) return true;

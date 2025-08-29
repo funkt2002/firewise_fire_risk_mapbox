@@ -12,6 +12,7 @@ import traceback
 import gzip
 import gc  # For garbage collection
 import psutil  # For memory monitoring
+import base64  # For Float32Array encoding
 
 from flask import Flask, request, jsonify, render_template, send_file, make_response
 from flask_cors import CORS
@@ -59,9 +60,15 @@ try:
 except Exception as e:
     logger.error(f"Error checking LP solvers: {e}")
 
-# Disable Gurobi for web app deployment (use PuLP only for license-free operation)
-HAS_GUROBI = False
-logger.info("Using PuLP solver for UTA-STAR optimization (Gurobi disabled for web deployment)")
+# Check for Gurobi availability
+try:
+    import gurobipy as gp
+    from gurobipy import GRB
+    HAS_GUROBI = True
+    logger.info("Gurobi solver available for UTA-STAR optimization")
+except ImportError:
+    HAS_GUROBI = False
+    logger.info("Gurobi not available, will use PuLP solver for UTA-STAR optimization")
 
 # ====================
 # FLASK APP SETUP
@@ -112,6 +119,11 @@ def get_redis_client():
 # ====================
 
 # correct_variable_names is now imported from utils
+
+def encode_float32_array(numpy_array):
+    """Encode numpy array as base64 Float32Array for efficient transfer"""
+    float32_array = numpy_array.astype(np.float32)
+    return base64.b64encode(float32_array.tobytes()).decode('utf-8')
 
 def get_db():
     """Get database connection"""
@@ -1841,8 +1853,30 @@ def solve_uta_linear_optimization(parcel_data, include_vars, all_parcels_data, t
 # UTA-STAR HELPER FUNCTIONS
 # ====================
 
-def solve_uta_star_gurobi(X, subset_idx, non_subset_idx, W, alpha, delta=1e-3, epsilon_mon=0.0, violation_penalty=1.0):
-    """Solve UTA-STAR with Gurobi solver"""
+def precompute_interpolation_weights(X, alpha=3):
+    """Precompute interpolation weights for piecewise linear utilities."""
+    import numpy as np
+    n, m = X.shape
+    breakpoints = np.linspace(0, 1, alpha + 1)
+    W = np.zeros((n, m, alpha + 1))
+    
+    for a in range(n):
+        for i in range(m):
+            x_val = X[a, i]
+            for k in range(alpha):
+                if breakpoints[k] <= x_val <= breakpoints[k+1]:
+                    if breakpoints[k+1] - breakpoints[k] > 1e-10:
+                        theta = (x_val - breakpoints[k]) / (breakpoints[k+1] - breakpoints[k])
+                    else:
+                        theta = 0.0
+                    W[a, i, k] = 1 - theta
+                    W[a, i, k+1] = theta
+                    break
+    
+    return W, breakpoints
+
+def solve_uta_star_gurobi(X, subset_idx, non_subset_idx, W, alpha, delta=1e-3):
+    """Solve UTA-STAR with Gurobi solver (improved implementation)"""
     import gurobipy as gp
     from gurobipy import GRB
     import numpy as np
@@ -1850,9 +1884,9 @@ def solve_uta_star_gurobi(X, subset_idx, non_subset_idx, W, alpha, delta=1e-3, e
     n, m = X.shape
     
     # Create model
-    model = gp.Model("UTA-STAR")
-    model.setParam('LogToConsole', 0)
-    model.setParam('TimeLimit', 30)  # Reduced timeout for web app
+    model = gp.Model("UTA-STAR-Utilities")
+    model.Params.LogToConsole = 0
+    model.Params.TimeLimit = 60  # Increased timeout for better solutions
     
     # Variables: u[i,k] for utility values at breakpoints
     u = {}
@@ -1881,7 +1915,7 @@ def solve_uta_star_gurobi(X, subset_idx, non_subset_idx, W, alpha, delta=1e-3, e
     # Monotonicity
     for i in range(m):
         for k in range(alpha):
-            model.addConstr(u[i,k+1] >= u[i,k] + epsilon_mon)
+            model.addConstr(u[i,k+1] >= u[i,k])  # Pure monotonicity, no epsilon
     
     # Preference constraints
     for p_idx in subset_idx:
@@ -1892,7 +1926,7 @@ def solve_uta_star_gurobi(X, subset_idx, non_subset_idx, W, alpha, delta=1e-3, e
             model.addConstr(U_p - U_q >= delta - sigma_plus[p_idx,q_idx] + sigma_minus[p_idx,q_idx])
     
     # Objective: minimize total error
-    obj = gp.quicksum(violation_penalty * (sigma_plus[key] + sigma_minus[key]) for key in sigma_plus)
+    obj = gp.quicksum(sigma_plus[key] + sigma_minus[key] for key in sigma_plus)
     model.setObjective(obj, GRB.MINIMIZE)
     
     # Solve
@@ -1913,15 +1947,15 @@ def solve_uta_star_gurobi(X, subset_idx, non_subset_idx, W, alpha, delta=1e-3, e
     return None
 
 
-def solve_uta_star_pulp(X, subset_idx, non_subset_idx, W, alpha, delta=1e-3, epsilon_mon=0.0):
-    """Solve UTA-STAR with PuLP solver"""
+def solve_uta_star_pulp(X, subset_idx, non_subset_idx, W, alpha, delta=1e-3):
+    """Solve UTA-STAR with PuLP solver (improved implementation)"""
     from pulp import LpProblem, LpMinimize, LpVariable, lpSum, COIN_CMD, value
     import numpy as np
     
     n, m = X.shape
     
     # Create problem
-    prob = LpProblem("UTA-STAR", LpMinimize)
+    prob = LpProblem("UTA-STAR-Utilities", LpMinimize)
     
     # Variables
     u = {}
@@ -1947,7 +1981,7 @@ def solve_uta_star_pulp(X, subset_idx, non_subset_idx, W, alpha, delta=1e-3, eps
     # Monotonicity  
     for i in range(m):
         for k in range(alpha):
-            prob += u[(i,k+1)] >= u[(i,k)] + epsilon_mon
+            prob += u[(i,k+1)] >= u[(i,k)]  # Pure monotonicity, no epsilon
     
     # Preference constraints
     for p_idx in subset_idx:
@@ -2079,26 +2113,8 @@ def solve_uta_disaggregation(parcel_data, include_vars, all_parcels_data, threat
     # Create subset indices (selected parcels)
     subset_idx = np.array(selected_indices)
     
-    # Define breakpoints for piecewise linear utilities
-    breakpoints = np.linspace(0, 1, alpha + 1)
-    
-    # Precompute interpolation coefficients
-    n = X.shape[0]
-    m = X.shape[1]
-    W = np.zeros((n, m, alpha + 1))
-    
-    for a in range(n):
-        for i in range(m):
-            x_val = X[a, i]
-            for k in range(alpha):
-                if breakpoints[k] <= x_val <= breakpoints[k+1]:
-                    if breakpoints[k+1] - breakpoints[k] > 1e-10:
-                        theta = (x_val - breakpoints[k]) / (breakpoints[k+1] - breakpoints[k])
-                    else:
-                        theta = 0.0
-                    W[a, i, k] = 1 - theta
-                    W[a, i, k+1] = theta
-                    break
+    # Precompute interpolation weights for piecewise linear utilities
+    W, breakpoints = precompute_interpolation_weights(X, alpha)
     
     # Sample non-subset parcels (spatially stratified sampling)
     logger.info(f"Sampling non-subset parcels for comparison...")
@@ -2120,12 +2136,10 @@ def solve_uta_disaggregation(parcel_data, include_vars, all_parcels_data, threat
     # Solve with Gurobi if available, otherwise PuLP
     if HAS_GUROBI:
         logger.info("Using Gurobi solver for UTA-STAR")
-        result = solve_uta_star_gurobi(X, subset_idx, non_subset_idx, W, alpha, 
-                                      delta=0.001, epsilon_mon=0.0, violation_penalty=1.0)
+        result = solve_uta_star_gurobi(X, subset_idx, non_subset_idx, W, alpha, delta=0.001)
     else:
         logger.info("Using PuLP solver for UTA-STAR")
-        result = solve_uta_star_pulp(X, subset_idx, non_subset_idx, W, alpha,
-                                    delta=0.001, epsilon_mon=0.0)
+        result = solve_uta_star_pulp(X, subset_idx, non_subset_idx, W, alpha, delta=0.001)
     
     solve_time = time.time() - start_time
     
@@ -2137,11 +2151,9 @@ def solve_uta_disaggregation(parcel_data, include_vars, all_parcels_data, threat
             # Take first 1000 for speed
             non_subset_idx = non_subset_idx[:1000]
             if HAS_GUROBI:
-                result = solve_uta_star_gurobi(X, subset_idx, non_subset_idx, W, alpha, 
-                                              delta=0.001, epsilon_mon=0.0, violation_penalty=1.0)
+                result = solve_uta_star_gurobi(X, subset_idx, non_subset_idx, W, alpha, delta=0.001)
             else:
-                result = solve_uta_star_pulp(X, subset_idx, non_subset_idx, W, alpha,
-                                            delta=0.001, epsilon_mon=0.0)
+                result = solve_uta_star_pulp(X, subset_idx, non_subset_idx, W, alpha, delta=0.001)
     
     if result is not None:
         utilities, total_error, violations = result
@@ -2200,6 +2212,12 @@ def solve_uta_disaggregation(parcel_data, include_vars, all_parcels_data, threat
         dominant_var = max(weights.items(), key=lambda x: x[1])[0]
         is_mixed = nonzero_weights > 1
         
+        # Store parcel IDs for score mapping
+        parcel_ids = []
+        for parcel in all_parcels_data:
+            pid = parcel.get('parcel_id') or parcel.get('id')
+            parcel_ids.append(str(pid))
+        
         ranking_metrics = {
             'average_rank': float(avg_rank),
             'median_rank': float(median_rank),
@@ -2215,7 +2233,7 @@ def solve_uta_disaggregation(parcel_data, include_vars, all_parcels_data, threat
             'parcels_analyzed': len(all_parcels_data),
             'optimization_time': solve_time,
             'optimization_type': 'uta_star',
-            'solver': 'PuLP UTA-STAR',  # Always PuLP for web deployment
+            'solver': 'Gurobi UTA-STAR' if HAS_GUROBI else 'PuLP UTA-STAR',
             'num_segments': alpha,
             'total_error': float(total_error),
             'violations': int(violations),
@@ -2223,7 +2241,9 @@ def solve_uta_disaggregation(parcel_data, include_vars, all_parcels_data, threat
             'sample_size': len(non_subset_idx),
             'marginals': marginals,
             'utilities': utilities,
-            'breakpoints': breakpoints.tolist()
+            'breakpoints': breakpoints.tolist(),
+            'uta_scores': all_scores.tolist(),  # All parcel scores using piecewise utilities
+            'parcel_ids': parcel_ids  # Matching parcel IDs
         }
         
         logger.info(f"UTA-STAR Ranking: {top_500_count}/{n_selected} parcels ({top_500_rate:.1f}%) in Top 500")
@@ -3302,6 +3322,16 @@ def infer_weights_uta():
             # Include marginal value functions for plotting
             if 'marginals' in uta_metrics:
                 response_data['marginals'] = uta_metrics['marginals']
+            
+            # Include UTA scores for all parcels (Float32Array encoded)
+            if 'uta_scores' in uta_metrics:
+                response_data['uta_scores_f32'] = encode_float32_array(np.array(uta_metrics['uta_scores']))
+                response_data['parcel_ids'] = uta_metrics['parcel_ids']
+                response_data['uta_model'] = {
+                    'utilities': uta_metrics['utilities'],
+                    'breakpoints': uta_metrics['breakpoints']
+                }
+                logger.info(f"Sending UTA scores for {len(uta_metrics['parcel_ids'])} parcels")
         
         logger.info(f"UTA optimization completed in {elapsed_time:.2f}s")
         
