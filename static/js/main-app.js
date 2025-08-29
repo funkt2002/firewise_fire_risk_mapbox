@@ -1853,13 +1853,15 @@
 
                 // Handle error responses from optimization
                 if (data.error) {
-                    alert(`${optimizationType} optimization failed: ${data.error}`);
+                    const displayType = isUTALinear ? 'UTA-LINEAR' : optimizationType.toUpperCase();
+                    alert(`${displayType} optimization failed: ${data.error}`);
                     return;
                 }
 
-                // Handle UTA scores if present
+                // Handle UTA scores if present (both piecewise and linear)
                 if (data.uta_scores_f32 && data.parcel_ids) {
-                    console.log('🎯 UTA-STAR Mode: Received pre-computed scores for', data.parcel_ids.length, 'parcels');
+                    const utaMode = isUTALinear ? 'UTA-LINEAR' : 'UTA-STAR';
+                    console.log(`🎯 ${utaMode} Mode: Received pre-computed scores for`, data.parcel_ids.length, 'parcels');
                     
                     // Decode Float32Array from base64
                     const base64 = data.uta_scores_f32;
@@ -1882,9 +1884,21 @@
                     const indicator = document.getElementById('uta-mode-indicator');
                     if (indicator) {
                         indicator.style.display = 'block';
+                        // Update the text to show which UTA mode
+                        const modeText = indicator.querySelector('div:first-child');
+                        if (modeText) {
+                            modeText.textContent = isUTALinear ? 'UTA-LINEAR Mode Active' : 'UTA-STAR Mode Active';
+                        }
+                        const descText = indicator.querySelector('div:last-child');
+                        if (descText) {
+                            descText.textContent = isUTALinear ? 
+                                'Using linear weights for scoring' : 
+                                'Using non-linear utility functions for scoring';
+                        }
                     }
                     
-                    console.log('✓ UTA scores stored. Using piecewise utility functions for ranking.');
+                    const utilityType = isUTALinear ? 'linear weights' : 'piecewise utility functions';
+                    console.log(`✓ UTA scores stored. Using ${utilityType} for ranking.`);
                 }
                 
                 // Update the weight sliders with optimized values
@@ -1914,9 +1928,10 @@
                 clearAllSelectionAreas();
                 
                 // Show optimization results
-                if (isUTA && data.average_rank !== undefined) {
-                    // UTA-specific results
-                    let alertMessage = `UTA optimization complete in ${data.elapsed_time.toFixed(2)}s!\n\n`;
+                if ((isUTA || isUTALinear) && data.average_rank !== undefined) {
+                    // UTA-specific results (both piecewise and linear)
+                    const utaType = isUTALinear ? 'UTA-LINEAR' : 'UTA-STAR';
+                    let alertMessage = `${utaType} optimization complete in ${data.elapsed_time.toFixed(2)}s!\n\n`;
                     alertMessage += `Average rank of selected parcels: ${data.average_rank.toFixed(0)}\n`;
                     alertMessage += `Median rank: ${data.median_rank.toFixed(0)}\n`;
                     alertMessage += `Selected parcels in top 10%: ${data.top_10_pct_rate.toFixed(1)}%\n`;

@@ -2767,7 +2767,7 @@ def generate_solution_files(include_vars, best_weights, weights_pct, total_score
     
     if optimization_type == 'ranking_sa':
         optimization_title = "SIMULATED ANNEALING RANK MINIMIZATION RESULTS"
-    elif optimization_type in ['uta_disaggregation', 'uta_star', 'uta']:
+    elif optimization_type in ['uta_disaggregation', 'uta_star', 'uta', 'uta_linear']:
         optimization_title = "UTA-STAR PREFERENCE LEARNING RESULTS"
     else:
         optimization_title = "ABSOLUTE OPTIMIZATION RESULTS (LP Maximum Score)"
@@ -2801,7 +2801,7 @@ def generate_solution_files(include_vars, best_weights, weights_pct, total_score
             "  Adaptive cooling schedule with probabilistic acceptance",
             "  This finds weights that push selected parcels to top ranks."
         ])
-    elif optimization_type in ['uta_disaggregation', 'uta_star', 'uta']:
+    elif optimization_type in ['uta_disaggregation', 'uta_star', 'uta', 'uta_linear']:
         # Check if it's linear or piecewise
         is_linear = request_data.get('use_linear_uta', False)
         if is_linear:
