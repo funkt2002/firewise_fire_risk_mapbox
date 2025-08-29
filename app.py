@@ -3684,4 +3684,10 @@ def cleanup_expired_sessions():
 
 if __name__ == '__main__':
     logger.info("Starting Flask development server...")
-    app.run(debug=True, port=5000)
+    # Local development settings (deployment uses gunicorn, not this)
+    app.run(
+        host='0.0.0.0',  # Allow connections from any interface
+        port=5000,
+        debug=True,
+        threaded=True  # Handle multiple requests
+    )
