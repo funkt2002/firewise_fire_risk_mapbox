@@ -63,12 +63,21 @@ except Exception as e:
 # Check for Gurobi availability
 try:
     import os
-    # Set Gurobi license path if not already set
+    # Try multiple license methods
+    # 1. First check for license file
     if not os.environ.get('GRB_LICENSE_FILE'):
         license_path = os.path.expanduser('~/gurobi.lic')
         if os.path.exists(license_path):
             os.environ['GRB_LICENSE_FILE'] = license_path
             logger.info(f"Setting GRB_LICENSE_FILE to {license_path}")
+    
+    # 2. For deployment: Set WLS credentials if provided in environment
+    # You can set these in Railway/deployment environment variables
+    if os.environ.get('GUROBI_WLS_ACCESSID') and os.environ.get('GUROBI_WLS_SECRET'):
+        os.environ['GRB_WLSACCESSID'] = os.environ['GUROBI_WLS_ACCESSID']
+        os.environ['GRB_WLSSECRET'] = os.environ['GUROBI_WLS_SECRET']
+        os.environ['GRB_LICENSEID'] = os.environ.get('GUROBI_LICENSEID', '2445643')
+        logger.info("Using Gurobi WLS cloud license for deployment")
     
     import gurobipy as gp
     from gurobipy import GRB
