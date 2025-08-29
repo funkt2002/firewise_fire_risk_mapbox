@@ -976,11 +976,31 @@ def execute_local_file_query(data, timings):
     
     timings['local_file_load'] = time.time() - start_time
     
+    # Convert features to the format expected by process_query_results
+    # process_query_results expects a list of dict-like objects with properties as keys
+    raw_results = []
+    for feature in features:
+        # Extract properties and add them as a dict-like object
+        props = feature.get('properties', {})
+        # Ensure we have an 'id' field
+        if 'id' not in props:
+            # Try common id field names
+            if 'ID' in props:
+                props['id'] = props['ID']
+            elif 'parcel_id' in props:
+                props['id'] = props['parcel_id']
+            elif 'PARCEL_ID' in props:
+                props['id'] = props['PARCEL_ID']
+            else:
+                # Use index as id if no id field found
+                props['id'] = len(raw_results)
+        raw_results.append(props)
+    
     # Apply any filters if needed (for now, return all)
     # TODO: Add filter support for local data if needed
     
     # Return in expected format
-    return features, total_parcels
+    return raw_results, total_parcels
 
 def execute_database_query(data, timings):
     """Execute database query and return results with parcels count"""
@@ -3852,14 +3872,15 @@ if __name__ == '__main__':
     setup_local_environment()
     
     logger.info("Starting Flask development server...")
+    port = int(sys.argv[1]) if len(sys.argv) > 1 else 5000
     logger.info(f"Server will be available at:")
-    logger.info(f"  → http://localhost:5000")
-    logger.info(f"  → http://127.0.0.1:5000")
+    logger.info(f"  → http://localhost:{port}")
+    logger.info(f"  → http://127.0.0.1:{port}")
     
     # Local development settings (deployment uses gunicorn, not this)
     app.run(
         host='0.0.0.0',  # Allow connections from any interface
-        port=5000,
+        port=port,
         debug=True,
         threaded=True  # Handle multiple requests
     )
