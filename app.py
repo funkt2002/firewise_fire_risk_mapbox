@@ -2181,6 +2181,13 @@ def solve_uta_disaggregation(parcel_data, include_vars, all_parcels_data, threat
         top_1000_count = int(np.sum(selected_ranks <= 1000))
         top_1000_rate = float(top_1000_count / n_selected * 100)
         
+        # Top percentage metrics
+        total_parcels = len(all_parcels_data)
+        top_10_pct_threshold = int(total_parcels * 0.1)
+        top_25_pct_threshold = int(total_parcels * 0.25)
+        top_10_pct = float(np.sum(selected_ranks <= top_10_pct_threshold) / n_selected * 100)
+        top_25_pct = float(np.sum(selected_ranks <= top_25_pct_threshold) / n_selected * 100)
+        
         # Derive approximate weights from utilities
         derived_weights = derive_weights_from_utilities(utilities, alpha)
         
@@ -2227,6 +2234,8 @@ def solve_uta_disaggregation(parcel_data, include_vars, all_parcels_data, threat
             'top_500_rate': top_500_rate,
             'top_1000_count': top_1000_count,
             'top_1000_rate': top_1000_rate,
+            'top_10_pct_rate': top_10_pct,
+            'top_25_pct_rate': top_25_pct,
             'nonzero_weights': nonzero_weights,
             'dominant_var': dominant_var,
             'is_mixed': is_mixed,
@@ -2238,6 +2247,9 @@ def solve_uta_disaggregation(parcel_data, include_vars, all_parcels_data, threat
             'total_error': float(total_error),
             'violations': int(violations),
             'violation_rate': float(violation_rate * 100),
+            'total_violations': float(violations),  # Add for compatibility
+            'threat_identification_time': 0.0,  # Not tracked separately in UTA-STAR
+            'lp_solve_time': solve_time,  # Use total solve time
             'sample_size': len(non_subset_idx),
             'marginals': marginals,
             'utilities': utilities,
