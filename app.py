@@ -2710,34 +2710,42 @@ def generate_solution_files(include_vars, best_weights, weights_pct, total_score
             base_var = var  # No suffix to remove
         include_vars_base.append(base_var)
     
-    # Generate LP file
-    scoring_method_comment = f"\\ Scoring Method: {scoring_method}"
-    lp_lines = [scoring_method_comment, "Maximize"]
-    obj_terms = []
+    # Detect optimization type from request data
+    optimization_type = request_data.get('optimization_type', 'absolute')
     
-    # Use all parcel data for absolute optimization
-    parcels_to_process = parcel_data
-    
-    for i, parcel in enumerate(parcels_to_process):
-        for var_base in include_vars_base:
-            score = parcel['scores'][var_base]
-            if score != 0:
-                obj_terms.append(f"{score:.6f} w_{var_base}")
-    
-    lp_lines.append("obj: " + obj_terms[0])
-    for term in obj_terms[1:]:
-        lp_lines.append(f"     + {term}")
-    lp_lines.extend(["", "Subject To"])
-    
-    weight_sum_terms = [f"w_{var}" for var in include_vars_base]
-    lp_lines.append("weight_sum: " + " + ".join(weight_sum_terms) + " = 1")
-    lp_lines.extend(["", "Bounds"])
-    
-    for var in include_vars_base:
-        lp_lines.append(f"w_{var} >= 0")
-    lp_lines.extend(["", "End"])
-    
-    lp_content = "\n".join(lp_lines)
+    # Generate LP file only for absolute optimization
+    if optimization_type == 'absolute':
+        scoring_method_comment = f"\\ Scoring Method: {scoring_method}"
+        lp_lines = [scoring_method_comment, "Maximize"]
+        obj_terms = []
+        
+        # Use all parcel data for absolute optimization
+        parcels_to_process = parcel_data
+        
+        for i, parcel in enumerate(parcels_to_process):
+            for var_base in include_vars_base:
+                score = parcel['scores'][var_base]
+                if score != 0:
+                    obj_terms.append(f"{score:.6f} w_{var_base}")
+        
+        lp_lines.append("obj: " + obj_terms[0] if obj_terms else "obj: 0")
+        for term in obj_terms[1:]:
+            lp_lines.append(f"     + {term}")
+        lp_lines.extend(["", "Subject To"])
+        
+        weight_sum_terms = [f"w_{var}" for var in include_vars_base]
+        lp_lines.append("weight_sum: " + " + ".join(weight_sum_terms) + " = 1")
+        lp_lines.extend(["", "Bounds"])
+        
+        for var in include_vars_base:
+            lp_lines.append(f"w_{var} >= 0")
+        lp_lines.extend(["", "End"])
+        
+        lp_content = "\n".join(lp_lines)
+    else:
+        # For UTA and other methods, don't generate LP formulation
+        lp_content = "# LP formulation not applicable for " + optimization_type + " optimization\n"
+        lp_content += "# This optimization uses preference learning rather than linear programming\n"
     
     # Generate TXT file
     factor_names = Config.FACTOR_NAMES
@@ -2961,7 +2969,7 @@ def generate_enhanced_solution_html(txt_content, lp_content, parcel_data, weight
     html_parts.append('</div>')
     
     # UTA-STAR metrics section (if applicable)
-    if optimization_type in ['uta_star', 'uta_disaggregation'] and sa_metrics:
+    if optimization_type in ['uta_star', 'uta_disaggregation', 'uta_linear'] and sa_metrics:
         html_parts.append('<div class="section">')
         html_parts.append('<h2>UTA-STAR Analysis</h2>')
         
@@ -2987,16 +2995,90 @@ def generate_enhanced_solution_html(txt_content, lp_content, parcel_data, weight
         
         html_parts.append('</table>')
         
-        # Piecewise linear utilities visualization
+        # Piecewise linear utilities visualization with plots
         if 'marginals' in sa_metrics:
             html_parts.append('<h3>Marginal Utility Functions</h3>')
             html_parts.append('<p>Piecewise-linear utilities learned by UTA-STAR:</p>')
+            
+            # Add Plotly library for visualization
+            html_parts.append('<script src="https://cdn.plot.ly/plotly-latest.min.js"></script>')
+            html_parts.append('<div id="utility-plots" style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; margin: 20px 0;"></div>')
+            
+            # Generate plots for each utility function
+            html_parts.append('<script>')
+            html_parts.append('const marginals = ' + str(sa_metrics['marginals']).replace("'", '"') + ';')
+            html_parts.append('''
+                const plotDiv = document.getElementById('utility-plots');
+                const variables = Object.keys(marginals);
+                
+                variables.forEach((varName, idx) => {
+                    const values = marginals[varName];
+                    const x = values.map(v => v.break || v.x || 0);
+                    const y = values.map(v => v.value || v.y || 0);
+                    
+                    // Create div for this plot
+                    const divId = 'plot-' + idx;
+                    const plotContainer = document.createElement('div');
+                    plotContainer.id = divId;
+                    plotContainer.style.height = '250px';
+                    plotDiv.appendChild(plotContainer);
+                    
+                    // Create the plot
+                    const trace = {
+                        x: x,
+                        y: y,
+                        mode: 'lines+markers',
+                        type: 'scatter',
+                        line: {color: '#667eea', width: 2},
+                        marker: {size: 8, color: '#764ba2'},
+                        name: varName
+                    };
+                    
+                    const layout = {
+                        title: {
+                            text: varName.replace('_s', ''),
+                            font: {size: 14}
+                        },
+                        xaxis: {
+                            title: 'Normalized Score',
+                            range: [0, 1],
+                            dtick: 0.25
+                        },
+                        yaxis: {
+                            title: 'Utility',
+                            range: [0, Math.max(...y) * 1.1]
+                        },
+                        margin: {l: 50, r: 20, t: 40, b: 40},
+                        showlegend: false,
+                        paper_bgcolor: '#f9f9f9',
+                        plot_bgcolor: 'white',
+                        font: {size: 11}
+                    };
+                    
+                    const config = {
+                        responsive: true,
+                        displayModeBar: false
+                    };
+                    
+                    Plotly.newPlot(divId, [trace], layout, config);
+                });
+            ''')
+            html_parts.append('</script>')
+            
+            # Also show table for precise values
+            html_parts.append('<h4>Utility Values Table</h4>')
             html_parts.append('<table style="border-collapse: collapse; margin: 10px 0;">')
             html_parts.append('<tr><th style="padding: 5px; border: 1px solid #ddd;">Variable</th>')
-            html_parts.append('<th style="padding: 5px; border: 1px solid #ddd;">u(0)</th>')
-            html_parts.append('<th style="padding: 5px; border: 1px solid #ddd;">u(0.33)</th>')
-            html_parts.append('<th style="padding: 5px; border: 1px solid #ddd;">u(0.67)</th>')
-            html_parts.append('<th style="padding: 5px; border: 1px solid #ddd;">u(1)</th></tr>')
+            
+            # Determine number of breakpoints
+            first_var = list(sa_metrics['marginals'].values())[0] if sa_metrics['marginals'] else []
+            num_points = len(first_var) if first_var else 4
+            
+            # Add column headers based on number of breakpoints
+            for i in range(num_points):
+                x_val = i / (num_points - 1) if num_points > 1 else 0
+                html_parts.append(f'<th style="padding: 5px; border: 1px solid #ddd;">u({x_val:.2f})</th>')
+            html_parts.append('</tr>')
             
             for var_name, values in sa_metrics['marginals'].items():
                 html_parts.append(f'<tr><td style="padding: 5px; border: 1px solid #ddd;">{var_name}</td>')
@@ -3063,12 +3145,13 @@ def generate_enhanced_solution_html(txt_content, lp_content, parcel_data, weight
         
         html_parts.append('</div>')
     
-    # LP file section
-    html_parts.append('<div class="section">')
-    html_parts.append('<h2>Linear Programming Formulation</h2>')
-    html_parts.append('<button id="download-lp" onclick="downloadLPFile()">Download LP File</button>')
-    html_parts.append(f'<pre id="lp-content">{lp_content}</pre>')
-    html_parts.append('</div>')
+    # LP file section (only for absolute optimization)
+    if optimization_type == 'absolute':
+        html_parts.append('<div class="section">')
+        html_parts.append('<h2>Linear Programming Formulation</h2>')
+        html_parts.append('<button id="download-lp" onclick="downloadLPFile()">Download LP File</button>')
+        html_parts.append(f'<pre id="lp-content">{lp_content}</pre>')
+        html_parts.append('</div>')
     
     # Parcel scores table section
     if display_parcels:

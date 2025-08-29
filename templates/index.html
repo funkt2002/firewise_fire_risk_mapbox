@@ -281,7 +281,13 @@
                 <div class="toggle-container">
                     <label class="toggle-label">
                         <input type="radio" name="optimization-type" id="optimization-uta" value="uta">
-                        UTA-Based: Linear Programming with Preference Learning (Fast ranking optimization)
+                        UTA-STAR with Piecewise Linear Comparison (Learns non-linear utility functions)
+                    </label>
+                </div>
+                <div class="toggle-container">
+                    <label class="toggle-label">
+                        <input type="radio" name="optimization-type" id="optimization-uta-linear" value="uta-linear">
+                        UTA-STAR with Linear Weights (Simple linear preference learning)
                     </label>
                 </div>
             </div>
@@ -383,6 +389,46 @@
     </script>
     
     <script src="{{ url_for('static', filename='js/main-app.js') }}"></script>
+    
+    <script>
+    // Update optimization description when radio buttons change
+    document.addEventListener('DOMContentLoaded', function() {
+        const optimizationRadios = document.querySelectorAll('input[name="optimization-type"]');
+        const descElement = document.getElementById('optimization-desc');
+        
+        function updateOptimizationDescription() {
+            const selected = document.querySelector('input[name="optimization-type"]:checked');
+            if (selected) {
+                let description = '';
+                switch(selected.value) {
+                    case 'absolute':
+                        description = 'LP optimization to maximize total risk score in selection';
+                        break;
+                    case 'promethee':
+                        description = 'Simulated annealing to minimize average rank of selected parcels';
+                        break;
+                    case 'uta':
+                        description = 'UTA-STAR learns non-linear utility functions from preferences';
+                        break;
+                    case 'uta-linear':
+                        description = 'UTA-STAR with simple linear weights (no breakpoints)';
+                        break;
+                    default:
+                        description = 'Check radio button above to select optimization type';
+                }
+                descElement.textContent = description;
+            }
+        }
+        
+        // Add event listeners to all radio buttons
+        optimizationRadios.forEach(radio => {
+            radio.addEventListener('change', updateOptimizationDescription);
+        });
+        
+        // Initialize description
+        updateOptimizationDescription();
+    });
+    </script>
 
     <!-- Correlation Plot Modal -->
     <div id="correlation-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); z-index: 10000;">

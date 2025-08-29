@@ -1765,6 +1765,7 @@
             const optimizationType = document.querySelector('input[name="optimization-type"]:checked').value;
             const isPromethee = optimizationType === 'promethee';
             const isUTA = optimizationType === 'uta';
+            const isUTALinear = optimizationType === 'uta-linear';
 
             document.getElementById('spinner').style.display = 'block';
 
@@ -1783,7 +1784,7 @@
                 };
 
                 // For PROMETHEE and UTA optimizations, we need all parcel scores
-                if (isPromethee || isUTA) {
+                if (isPromethee || isUTA || isUTALinear) {
                     const allParcelScores = [];
                     if (currentData && currentData.features) {
                         currentData.features.forEach(feature => {
@@ -1805,7 +1806,7 @@
                 }
 
                 // Add UTA-specific parameters
-                if (isUTA) {
+                if (isUTA || isUTALinear) {
                     requestData.threat_size = 200;  // Default threat set size
                 }
 
@@ -1822,6 +1823,18 @@
                     data = await response.json();
                     if (!response.ok) {
                         throw new Error(data.error || 'UTA optimization failed');
+                    }
+                } else if (isUTALinear) {
+                    const response = await fetch('/api/infer-weights-uta-linear', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify(requestData)
+                    });
+                    data = await response.json();
+                    if (!response.ok) {
+                        throw new Error(data.error || 'UTA-LINEAR optimization failed');
                     }
                 } else {
                     data = await window.apiClient.inferWeights(requestData);
