@@ -2032,7 +2032,7 @@ def solve_uta_linear_optimization(parcel_data, include_vars, all_parcels_data, t
 # UTA-STAR HELPER FUNCTIONS
 # ====================
 
-def precompute_interpolation_weights(X, alpha=3):
+def precompute_interpolation_weights(X, alpha=4):
     """Precompute interpolation weights for piecewise linear utilities."""
     import numpy as np
     n, m = X.shape
@@ -2238,7 +2238,7 @@ def derive_weights_from_utilities(utilities, alpha):
     return weights
 
 
-def solve_uta_disaggregation(parcel_data, include_vars, all_parcels_data, threat_size=200, K=3):
+def solve_uta_disaggregation(parcel_data, include_vars, all_parcels_data, threat_size=200, K=4, use_linear=False):
     """
     UTA-STAR (Utility Theory Additive with piecewise-linear utilities) preference disaggregation.
     Learns monotone piecewise-linear marginal utilities v_j(x) for each criterion.
@@ -2248,7 +2248,8 @@ def solve_uta_disaggregation(parcel_data, include_vars, all_parcels_data, threat
         include_vars: List of variable names to include in optimization
         all_parcels_data: List of all parcels in the dataset
         threat_size: Number of top threat parcels to consider per selected parcel (unused - samples instead)
-        K: Number of segments per criterion (default 3, i.e. 4 breakpoints)
+        K: Number of segments per criterion (default 4, i.e. 5 breakpoints)
+        use_linear: If True, use linear weights (K=1 with breakpoints at 0 and 1)
     
     Returns:
         Tuple of (optimal_weights, weights_pct, total_score, success, ranking_metrics)
@@ -2262,8 +2263,14 @@ def solve_uta_disaggregation(parcel_data, include_vars, all_parcels_data, threat
     # Process variable names
     include_vars_base = [var[:-2] if var.endswith('_s') else var for var in include_vars]
     
-    logger.info(f"UTA-STAR DISAGGREGATION: {len(parcel_data):,} selected parcels, "
-                f"{len(all_parcels_data):,} total parcels, {len(include_vars_base)} variables, alpha={K}")
+    if use_linear:
+        # For linear weights, use only 1 segment (2 breakpoints at 0 and 1)
+        K = 1
+        logger.info(f"UTA-STAR with LINEAR WEIGHTS: {len(parcel_data):,} selected parcels, "
+                    f"{len(all_parcels_data):,} total parcels, {len(include_vars_base)} variables")
+    else:
+        logger.info(f"UTA-STAR with PIECEWISE LINEAR: {len(parcel_data):,} selected parcels, "
+                    f"{len(all_parcels_data):,} total parcels, {len(include_vars_base)} variables, K={K} segments")
     
     n_selected = len(parcel_data)
     n_vars = len(include_vars_base)
@@ -2305,13 +2312,13 @@ def solve_uta_disaggregation(parcel_data, include_vars, all_parcels_data, threat
     non_subset_idx = np.where(non_subset_mask)[0]
     
     # Optimized sampling for faster performance
-    # With Gurobi: can handle more, without: use less
+    # Use larger sample size as requested (5000)
     if HAS_GUROBI:
-        # Gurobi can handle ~2000 efficiently
-        sample_size = min(2000, max(len(non_subset_idx) // 30, 300))
+        # Gurobi can handle 5000 efficiently
+        sample_size = min(5000, max(len(non_subset_idx) // 10, 500))
     else:
-        # PuLP needs smaller sample
-        sample_size = min(1000, max(len(non_subset_idx) // 60, 200))
+        # PuLP can also handle 5000 with optimization
+        sample_size = min(5000, max(len(non_subset_idx) // 20, 300))
     if len(non_subset_idx) > sample_size:
         # Spatial stratified sampling
         step = len(non_subset_idx) / sample_size
@@ -2787,10 +2794,19 @@ def generate_solution_files(include_vars, best_weights, weights_pct, total_score
             "  This finds weights that push selected parcels to top ranks."
         ])
     elif optimization_type in ['uta_disaggregation', 'uta_star', 'uta']:
+        # Check if it's linear or piecewise
+        is_linear = request_data.get('use_linear_uta', False)
+        if is_linear:
+            method_name = "UTA-STAR with Linear Weights"
+            approach_desc = "  Learn linear utility functions (simple weighted sum)"
+        else:
+            method_name = "UTA-STAR with Piecewise Linear Comparison"
+            approach_desc = "  Learn monotone piecewise-linear marginal utilities u_i(x)"
+        
         txt_lines.extend([
             "",
-            "OPTIMIZATION TYPE: UTA-STAR (Preference Disaggregation)",
-            "OBJECTIVE: Learn piecewise linear utility functions that best",
+            f"OPTIMIZATION TYPE: {method_name}",
+            "OBJECTIVE: Learn utility functions that best",
             "           explain why selected parcels should be preferred",
             "",
             f"Total parcels analyzed: {parcel_count:,}",
@@ -2798,13 +2814,36 @@ def generate_solution_files(include_vars, best_weights, weights_pct, total_score
             f"Average utility: {avg_score:.3f}",
             "",
             "MATHEMATICAL APPROACH:",
-            "  Learn monotone piecewise-linear marginal utilities u_i(x)",
+            approach_desc,
             "  Minimize ranking violations between selected and non-selected parcels",
-            "  Utilities capture non-linear preferences (e.g., diminishing returns)",
-            "",
-            "NOTE: Displayed weights represent utility at maximum value.",
-            "      Actual scoring uses non-linear piecewise utility functions."
         ])
+        
+        if not is_linear:
+            txt_lines.extend([
+                "  Utilities capture non-linear preferences (e.g., diminishing returns)",
+                "",
+                "NOTE: Displayed weights represent utility at maximum value.",
+                "      Actual scoring uses non-linear piecewise utility functions."
+            ])
+        else:
+            txt_lines.extend([
+                "  Linear utilities provide simple interpretable weights",
+                "",
+                "NOTE: Weights directly represent linear importance of each factor."
+            ])
+        
+        # Add utility functions if available
+        if hasattr(request_data, 'get') and 'uta_utilities' in request_data:
+            txt_lines.extend([
+                "",
+                "LEARNED UTILITY FUNCTIONS:",
+                "-" * 30
+            ])
+            utilities = request_data['uta_utilities']
+            for var_name, utility_points in utilities.items():
+                txt_lines.append(f"\n{var_name}:")
+                for point in utility_points:
+                    txt_lines.append(f"  x={point['break']:.2f} -> u={point['value']:.3f}")
     else:
         txt_lines.extend([
             "",
@@ -3460,15 +3499,23 @@ def infer_weights_uta():
         # Get threat set size from request or use default
         threat_size = data.get('threat_size', 200)
         
+        # Check if using linear weights
+        use_linear = data.get('use_linear_uta', False)
+        
         # Run true UTA disaggregation optimization
-        result = solve_uta_disaggregation(parcel_data, include_vars, all_parcels_data, threat_size)
+        result = solve_uta_disaggregation(parcel_data, include_vars, all_parcels_data, threat_size, K=4, use_linear=use_linear)
         best_weights, weights_pct, total_score, success, uta_metrics = result
         
         if not success:
             return jsonify({"error": "UTA optimization failed - check if selected parcels have reasonable scores"}), 400
         
-        # Generate files with UTA optimization type
-        data_with_type = {**data, 'optimization_type': 'uta_disaggregation'}
+        # Generate files with UTA optimization type and utilities
+        data_with_type = {**data, 'optimization_type': 'uta_disaggregation', 'use_linear_uta': use_linear}
+        
+        # Add utilities to data if available
+        if uta_metrics and 'marginals' in uta_metrics:
+            data_with_type['uta_utilities'] = uta_metrics['marginals']
+        
         lp_content, txt_content = generate_solution_files(
             include_vars, best_weights, weights_pct, total_score, 
             parcel_data, data_with_type
@@ -3564,6 +3611,152 @@ def infer_weights_uta():
     except Exception as e:
         force_memory_cleanup("infer-weights-uta exception", locals())
         logger.error(f"Exception in /api/infer-weights-uta: {e}")
+        return jsonify({"error": str(e), "traceback": traceback.format_exc()}), 500
+
+
+@app.route('/api/infer-weights-uta-linear', methods=['POST'])
+def infer_weights_uta_linear():
+    """Infer optimal weights using UTA-STAR with linear utilities (no breakpoints)"""
+    start_time = time.time()
+    try:
+        data = request.get_json()
+        logger.info("UTA-STAR with linear weights optimization called")
+        
+        # Validate input
+        if not data.get('selection'):
+            return jsonify({"error": "No selection provided"}), 400
+        
+        # Get include_vars and apply corrections
+        include_vars = data.get('include_vars', [var + '_s' for var in Config.WEIGHT_VARS_BASE])
+        include_vars = correct_variable_names(include_vars)
+        
+        if not include_vars:
+            return jsonify({"error": "No variables selected for optimization"}), 400
+        
+        logger.info(f"Using corrected include_vars for UTA-LINEAR optimization: {include_vars}")
+        
+        # Get parcel scores for optimization
+        parcel_data, include_vars = get_parcel_scores_for_optimization(data, include_vars)
+        if not parcel_data:
+            return jsonify({"error": "No parcels found in selection"}), 400
+        
+        # Get all parcels data for UTA
+        all_parcels_data = data.get('parcel_scores', [])
+        if not all_parcels_data:
+            return jsonify({"error": "No parcel scores provided for UTA optimization"}), 400
+        
+        logger.info(f"UTA-LINEAR OPTIMIZATION: selected parcels={len(parcel_data)}, total parcels={len(all_parcels_data)}")
+        
+        # Get threat set size from request or use default
+        threat_size = data.get('threat_size', 200)
+        
+        # Run UTA with linear weights (use_linear=True)
+        result = solve_uta_disaggregation(parcel_data, include_vars, all_parcels_data, threat_size, K=4, use_linear=True)
+        best_weights, weights_pct, total_score, success, uta_metrics = result
+        
+        if not success:
+            return jsonify({"error": "UTA-LINEAR optimization failed - check if selected parcels have reasonable scores"}), 400
+        
+        # Generate files with UTA-LINEAR optimization type
+        data_with_type = {**data, 'optimization_type': 'uta_disaggregation', 'use_linear_uta': True}
+        
+        # Add utilities to data if available (for linear, should be simple)
+        if uta_metrics and 'marginals' in uta_metrics:
+            data_with_type['uta_utilities'] = uta_metrics['marginals']
+        
+        lp_content, txt_content = generate_solution_files(
+            include_vars, best_weights, weights_pct, total_score, 
+            parcel_data, data_with_type
+        )
+        
+        # Create session for file storage
+        import uuid
+        session_id = str(uuid.uuid4())
+        session_dir = os.path.join(tempfile.gettempdir(), 'fire_risk_sessions', session_id)
+        os.makedirs(session_dir, exist_ok=True)
+        
+        # Save files
+        with open(os.path.join(session_dir, 'optimization.lp'), 'w') as f:
+            f.write(lp_content)
+        with open(os.path.join(session_dir, 'solution.txt'), 'w') as f:
+            f.write(txt_content)
+        
+        # Save parcel data for report
+        parcel_data_for_report = []
+        for parcel in parcel_data:
+            parcel_data_for_report.append({
+                'parcel_id': parcel.get('parcel_id') or parcel.get('id'),
+                'scores': parcel.get('scores', {}),
+                'raw': parcel.get('raw', {})
+            })
+        
+        with open(os.path.join(session_dir, 'parcel_data.json'), 'w') as f:
+            json.dump(parcel_data_for_report, f)
+        
+        # Save metadata
+        num_parcels = len(parcel_data) if isinstance(parcel_data, list) else 0
+        
+        with open(os.path.join(session_dir, 'metadata.json'), 'w') as f:
+            metadata = {
+                'weights': weights_pct,
+                'total_score': total_score,
+                'num_parcels': num_parcels,
+                'include_vars': include_vars,
+                'optimization_type': 'uta_linear',
+                'threat_size': threat_size,
+                'ttl': time.time() + (60 * 60)  # 1 hour TTL
+            }
+            if uta_metrics:
+                metadata['uta_metrics'] = uta_metrics
+            json.dump(metadata, f)
+        
+        # Response data
+        elapsed_time = time.time() - start_time
+        response_data = {
+            'weights': weights_pct,
+            'total_score': total_score,
+            'num_parcels': num_parcels,
+            'session_id': session_id,
+            'download_url': f'/api/download-lp/{session_id}',
+            'elapsed_time': elapsed_time,
+            'optimization_type': 'uta_linear'
+        }
+        
+        # Add UTA-specific metrics
+        if uta_metrics:
+            response_data['average_rank'] = uta_metrics['average_rank']
+            response_data['median_rank'] = uta_metrics['median_rank']
+            response_data['top_500_count'] = uta_metrics.get('top_500_count', 0)
+            response_data['top_500_rate'] = uta_metrics.get('top_500_rate', 0.0)
+            response_data['top_1000_count'] = uta_metrics.get('top_1000_count', 0)
+            response_data['top_1000_rate'] = uta_metrics.get('top_1000_rate', 0.0)
+            response_data['top_10_pct_rate'] = uta_metrics['top_10_pct_rate']
+            response_data['top_25_pct_rate'] = uta_metrics['top_25_pct_rate']
+            response_data['total_violations'] = uta_metrics['total_violations']
+            response_data['threat_identification_time'] = uta_metrics['threat_identification_time']
+            response_data['lp_solve_time'] = uta_metrics['lp_solve_time']
+            # Include marginal value functions for plotting
+            if 'marginals' in uta_metrics:
+                response_data['marginals'] = uta_metrics['marginals']
+            
+            # Include UTA scores for all parcels (Float32Array encoded)
+            if 'all_scores' in uta_metrics:
+                response_data['all_scores'] = uta_metrics['all_scores']
+            
+            # Include parcel_id_to_index mapping
+            if 'parcel_id_to_index' in uta_metrics:
+                response_data['parcel_id_to_index'] = uta_metrics['parcel_id_to_index']
+        
+        logger.info(f"UTA-LINEAR optimization complete in {elapsed_time:.2f}s, scores: {total_score:.2f}")
+        
+        # Memory cleanup
+        force_memory_cleanup("End of infer-weights-uta-linear", locals())
+        
+        return jsonify(response_data)
+        
+    except Exception as e:
+        force_memory_cleanup("infer-weights-uta-linear exception", locals())
+        logger.error(f"Exception in /api/infer-weights-uta-linear: {e}")
         return jsonify({"error": str(e), "traceback": traceback.format_exc()}), 500
 
 
