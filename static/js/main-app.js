@@ -1941,11 +1941,26 @@
                     alertMessage += `LP solve time: ${data.lp_solve_time.toFixed(2)}s`;
                     alert(alertMessage);
                 } else if (isPromethee && data.average_rank !== undefined) {
-                    // SA-specific results
-                    let alertMessage = `Simulated Annealing optimization complete in ${data.elapsed_time.toFixed(2)}s!\n\n`;
+                    // SA-specific results with multi-start details
+                    let alertMessage = `Multi-Start Simulated Annealing optimization complete in ${data.elapsed_time.toFixed(2)}s!\n\n`;
                     alertMessage += `Average rank of selected parcels: ${data.average_rank.toFixed(0)}\n`;
+                    if (data.median_rank !== undefined) {
+                        alertMessage += `Median rank: ${data.median_rank.toFixed(0)}\n`;
+                    }
                     alertMessage += `Selected parcels in top 10%: ${data.top_10_pct_rate.toFixed(1)}%\n`;
-                    alertMessage += `Selected parcels in top 25%: ${data.top_25_pct_rate.toFixed(1)}%`;
+                    alertMessage += `Selected parcels in top 25%: ${data.top_25_pct_rate.toFixed(1)}%\n`;
+                    if (data.num_starts !== undefined) {
+                        alertMessage += `\nMulti-start runs: ${data.num_starts}\n`;
+                    }
+                    if (data.best_start_type !== undefined) {
+                        alertMessage += `Best solution from: ${data.best_start_type} initialization\n`;
+                    }
+                    if (data.improvement_pct !== undefined) {
+                        alertMessage += `Improvement over baseline: ${data.improvement_pct.toFixed(1)}%\n`;
+                    }
+                    if (data.preference_gap !== undefined) {
+                        alertMessage += `Preference gap: ${data.preference_gap.toFixed(3)}`;
+                    }
                     alert(alertMessage);
                 } else {
                     // Absolute optimization results
